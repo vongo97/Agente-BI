@@ -235,7 +235,13 @@ async def export_chart(fig_json: dict):
     img_bytes = export_plotly_to_image(json.dumps(fig_json))
     if not img_bytes:
         raise HTTPException(status_code=500, detail="Error generando imagen del gráfico")
-    return Response(content=img_bytes, media_type="image/png")
+    
+    filename = f"chart_{int(os.path.getmtime(__file__))}.png"
+    return Response(
+        content=img_bytes, 
+        media_type="image/png",
+        headers={"Content-Disposition": f"attachment; filename={filename}"}
+    )
 
 @app.get("/export/pdf/{chat_id}")
 async def export_pdf_report(chat_id: int, user_id: str, db: Session = Depends(get_db)):
