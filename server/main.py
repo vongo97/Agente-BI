@@ -148,7 +148,6 @@ async def analyze(
         raise HTTPException(status_code=400, detail="No hay datos cargados para analizar")
     
     session_data = data_store[user_id]
-    os.environ["GOOGLE_API_KEY"] = api_key
     
     try:
         # Determinar contexto según el modo
@@ -159,8 +158,8 @@ async def analyze(
             context = session_data["schema"]
             data_var = "engine"
 
-        # 1. Obtener código de Gemini
-        raw_response = analyze_with_gemini(context, query, mode=session_data["type"])
+        # 1. Obtener código de Gemini (Pasando la API key del usuario)
+        raw_response = analyze_with_gemini(context, query, api_key, mode=session_data["type"])
         
         # 2. Ejecutar análisis
         output_text, fig = execute_analysis(session_data["data"], raw_response, data_var)

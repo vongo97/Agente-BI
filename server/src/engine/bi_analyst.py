@@ -26,11 +26,12 @@ def validate_api_key(api_key):
             return False, "Permiso denegado. Verifica que la API Key tenga habilitado el servicio de Generative Language."
         return False, f"Error de conexión: {error_msg}"
 
-def analyze_with_gemini(data_context, query, chat_history=[], mode="file", model_name="gemini-2.5-flash"):
+def analyze_with_gemini(data_context, query, api_key, chat_history=[], mode="file", model_name="gemini-2.5-flash"):
     """
     Genera código Python/Pandas/SQL para el análisis basado en la consulta del usuario y el historial.
     """
     try:
+        genai.configure(api_key=api_key)
         model = genai.GenerativeModel(model_name)
         
         if mode == "file":
@@ -84,11 +85,12 @@ def analyze_with_gemini(data_context, query, chat_history=[], mode="file", model
     except Exception as e:
         return f"Error en la comunicación con Gemini: {e}"
 
-def generate_report_narrative(data_context, query, mode="file", model_name="gemini-2.5-flash"):
+def generate_report_narrative(data_context, query, api_key, mode="file", model_name="gemini-2.5-flash"):
     """
     Genera una narrativa profesional y profunda sobre los resultados de un análisis.
     """
     try:
+        genai.configure(api_key=api_key)
         model = genai.GenerativeModel(model_name)
         
         if mode == "file":
