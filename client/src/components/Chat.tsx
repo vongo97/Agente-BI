@@ -2,9 +2,10 @@
 
 import { useState, useRef, useEffect } from "react";
 import { useSession } from "next-auth/react";
-import { Send, Bot, User, Loader2, BarChart3, ChevronRight, Share2, Sparkles, Menu, PlusCircle, Pin, Download, FileDown } from "lucide-react";
+import { Send, Bot, User, Loader2, BarChart3, ChevronRight, Share2, Sparkles, Menu, PlusCircle, Pin, Download, FileDown, FileText } from "lucide-react";
 import { analyzeData, pinToDashboard, exportChartAsPng, getPdfExportUrl } from "@/lib/api";
 import { useDashboard, Message } from "@/context/DashboardContext";
+import { ReportBuilder } from "./ReportBuilder";
 import dynamic from "next/dynamic";
 
 // Importación dinámica de Plotly para evitar errores de SSR
@@ -22,6 +23,7 @@ export function Chat() {
     const { apiKey, dataSource, setSidebarOpen, messages, setMessages, activeChatId, setActiveChatId } = useDashboard();
     const [input, setInput] = useState("");
     const [loading, setLoading] = useState(false);
+    const [reportBuilderOpen, setReportBuilderOpen] = useState(false);
     const scrollRef = useRef<HTMLDivElement>(null);
 
     const userId = session?.user?.email || "default_user";
@@ -109,9 +111,17 @@ export function Chat() {
                     <h2 className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] flex items-center gap-2 truncate">Analista AI</h2>
                 </div>
                 <div className="flex items-center gap-2 lg:gap-4">
+                    {messages.length > 0 && (
+                        <button
+                            onClick={() => setReportBuilderOpen(true)}
+                            className="flex items-center gap-2 px-3 py-1.5 bg-blue-600/20 hover:bg-blue-600/30 rounded-full border border-blue-500/20 text-[10px] font-bold text-blue-400 hover:text-blue-300 transition-all uppercase tracking-tighter"
+                        >
+                            <FileText className="w-3.5 h-3.5" /> Generar Reporte Pro
+                        </button>
+                    )}
                     {activeChatId && (
                         <a href={getPdfExportUrl(activeChatId, userId)} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 px-3 py-1.5 bg-white/[0.05] hover:bg-white/[0.1] rounded-full border border-white/10 text-[10px] font-bold text-gray-400 hover:text-white transition-all uppercase tracking-tighter">
-                            <FileDown className="w-3.5 h-3.5" /> Reporte PDF
+                            <FileDown className="w-3.5 h-3.5" /> PDF Simple
                         </a>
                     )}
                     <button onClick={handleNewChat} className="flex items-center gap-2 px-3 py-1.5 bg-white/[0.05] hover:bg-white/[0.1] rounded-full border border-white/10 text-[10px] font-bold text-gray-400 hover:text-white transition-all uppercase tracking-tighter">
@@ -236,6 +246,13 @@ export function Chat() {
                 </div>
                 <p className="mt-4 text-[9px] text-gray-800 font-black uppercase tracking-[0.2em] text-center">Precision BI Logic Engine • 2026</p>
             </div>
+
+            <ReportBuilder
+                isOpen={reportBuilderOpen}
+                onClose={() => setReportBuilderOpen(false)}
+                messages={messages}
+                userId={userId}
+            />
         </div>
     );
 }

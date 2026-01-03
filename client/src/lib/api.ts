@@ -116,5 +116,28 @@ export async function exportChartAsPng(figJson: any) {
   return response.blob();
 }
 
+export async function generateReportSummary(query: string, apiKey: string, userId: string) {
+  const formData = new FormData();
+  formData.append("query", query);
+  formData.append("api_key", apiKey);
+  formData.append("user_id", userId);
+
+  const response = await fetch(`${API_URL}/generate-report-summary`, {
+    method: "POST",
+    body: formData,
+  });
+  return handleResponse(response);
+}
+
+export async function exportProfessionalReport(reportData: any) {
+  const response = await fetch(`${API_URL}/export/report`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(reportData),
+  });
+  if (!response.ok) throw new Error("Error exportando reporte profesional");
+  return response.blob();
+}
+
 export const getPdfExportUrl = (chatId: number, userId: string) => 
   `${API_URL}/export/pdf/${chatId}?user_id=${userId}`;

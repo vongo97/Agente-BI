@@ -206,6 +206,20 @@ async def analyze(
         print(traceback.format_exc())
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.post("/generate-report-summary")
+async def generate_summary(
+    query: str = Form(...),
+    api_key: str = Form(...),
+    user_id: str = Form(...)
+):
+    check_authorization(user_id)
+    if user_id not in data_store:
+        raise HTTPException(status_code=400, detail="No hay datos cargados")
+    
+    session_data = data_store[user_id]
+    summary = generate_report_narrative(session_data["data"], query, api_key, mode=session_data["type"])
+    return {"summary": summary}
+
 @app.get("/history")
 async def get_history(user_id: str, db: Session = Depends(get_db)):
     check_authorization(user_id)
@@ -240,6 +254,24 @@ async def export_chart(fig_json: dict):
     return Response(
         content=img_bytes, 
         media_type="image/png",
+        headers={"Content-Disposition": f"attachment; filename={filename}"}
+    )
+
+@app.post("/export/report")
+async def export_pro_report(data: dict):
+    user_id = data.get("user_id")
+    check_authorization(user_id)
+    
+    title = data.get("title", "Reporte de Análisis BI")
+    summary = data.get("summary", "Resumen ejecutivo no proporcionado.")
+    items = data.get("items", [])
+    
+    pdf_bytes = generate_pro_report(title, summary, user_id, items)
+    
+    filename = f"reporte_ejecutivo_{int(os.path.getmtime(__file__))}.pdf"
+    return Response(
+        content=bytes(pdf_bytes),
+        media_type="application/pdf",
         headers={"Content-Disposition": f"attachment; filename={filename}"}
     )
 
