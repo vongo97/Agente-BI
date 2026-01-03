@@ -5,8 +5,14 @@ from datetime import datetime
 import os
 
 # Configuración de la base de datos
-DB_URL = "sqlite:///./bi_agent.db"
-engine = create_engine(DB_URL, connect_args={"check_same_thread": False})
+DB_URL = os.getenv("DATABASE_URL", "sqlite:///./bi_agent.db")
+# Solución para URLs de Render/Heroku que usan postgres:// en vez de postgresql://
+if DB_URL.startswith("postgres://"):
+    DB_URL = DB_URL.replace("postgres://", "postgresql://", 1)
+
+engine = create_engine(DB_URL)
+if "sqlite" in DB_URL:
+    engine = create_engine(DB_URL, connect_args={"check_same_thread": False})
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
