@@ -21,10 +21,10 @@ load_dotenv()
 
 app = FastAPI(title="Agente BI API")
 
-# Configurar CORS para el frontend en React
+# Configurar CORS para el frontend
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # En producción cambiar por el dominio de DuckDNS
+    allow_origin_regex=".*", # Permite todos los subdominios y dominios (necesario para Vercel dynamic URLs)
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
