@@ -252,9 +252,9 @@ async def export_pdf_report(chat_id: int, user_id: str, db: Session = Depends(ge
             "fig": json.loads(m.figure_json) if m.figure_json else None
         })
     
-    pdf_bytes = generate_pdf_report(session_data.get("user_name", user_id), messages_list)
+    pdf_bytes = generate_pdf_report(user_id, messages_list)
     return Response(
-        content=pdf_bytes, 
+        content=bytes(pdf_bytes), 
         media_type="application/pdf",
         headers={"Content-Disposition": f"attachment; filename=reporte_bi_{chat_id}.pdf"}
     )
