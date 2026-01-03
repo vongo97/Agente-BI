@@ -40,8 +40,8 @@ class DashboardItem(Base):
     __tablename__ = "dashboard_items"
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(String, index=True)
-    chat_id = Column(Integer, ForeignKey("chats.id"))
-    message_id = Column(Integer, ForeignKey("messages.id"))
+    chat_id = Column(Integer, ForeignKey("chats.id", ondelete="CASCADE"))
+    message_id = Column(Integer, ForeignKey("messages.id", ondelete="CASCADE"))
     pinned_at = Column(DateTime, default=datetime.utcnow)
     
     chat = relationship("Chat", back_populates="dashboard_items")

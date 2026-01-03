@@ -327,13 +327,22 @@ async def get_dashboard(user_id: str, db: Session = Depends(get_db)):
     items = db.query(DashboardItem).filter(DashboardItem.user_id == user_id).all()
     results = []
     for item in items:
-        results.append({
-            "id": item.id,
-            "chat_title": item.chat.title,
-            "content": item.message.content,
-            "fig": json.loads(item.message.figure_json) if item.message.figure_json else None,
-            "pinned_at": item.pinned_at
-        })
+        # Seguridad: Si el chat o mensaje original fueron eliminados, saltamos este item
+        if not item.chat or not item.message:
+            continue
+            
+        try:
+            results.append({
+                "id": item.id,
+                "chat_title": item.chat.title,
+                "content": item.message.content,
+                "fig": json.loads(item.message.figure_json) if item.message.figure_json else None,
+                "pinned_at": item.pinned_at
+            })
+        except Exception as e:
+            print(f"Error procesando item del dashboard: {e}")
+            continue
+            
     return results
 
 @app.delete("/dashboard/{item_id}")
