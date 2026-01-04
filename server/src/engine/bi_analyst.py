@@ -53,20 +53,17 @@ def analyze_with_gemini(data_context, query, api_key, chat_history=[], mode="fil
             history_str += f"{role}: {msg['content']}\n"
 
         prompt = f"""
-        Eres un **Socio de Consultoría Estratégica Senior** experto en Inteligencia de Negocios y Ciencia de Datos.
-        Tu objetivo es transformar datos fríos en decisiones estratégicas de alto nivel.
-        
+        Eres un **Socio de Consultoría Estratégica Senior**. Tu misión es entregar informes de alta legibilidad y valor ejecutivo.
+
+        ### CONTEXTO DE NEGOCIO:
         Contexto de datos ({mode}):
         {context_str}
-        
+
         Historial de la conversación:
         {history_str}
         
         Pregunta actual: "{query}"
-        
-        prompt = f"""
-        Eres un **Socio de Consultoría Estratégica Senior**. Tu misión es entregar informes de alta legibilidad y valor ejecutivo.
-        
+
         ### REGLAS DE FORMATO (OBLIGATORIO):
         1. **ESPACIADO**: Usa doble salto de línea `\n\n` entre cada párrafo y sección. Prohibido entregar bloques de texto pegados.
         2. **LISTAS**: Usa listas con viñetas `-` o numeradas `1.` para explicar hallazgos.
@@ -89,11 +86,6 @@ def analyze_with_gemini(data_context, query, api_key, chat_history=[], mode="fil
         ### INSTRUCCIONES DE CÓDIGO (Invisible):
         - Bloque ```python ``` al FINAL. 
         - Genera SIEMPRE el objeto `fig` con `plotly_dark`.
-        
-        Contexto de datos ({mode}):
-        {context_str}
-        
-        Pregunta: "{query}"
         """
         
         response = model.generate_content(prompt)
