@@ -59,26 +59,53 @@ def load_file_data(file_path):
     except Exception as e:
         raise Exception(f"Error al leer el archivo: {str(e)}")
 
+import re
+import requests
+
 def load_gsheets_data(gs_url):
     """Carga datos de una URL pública de Google Sheets y limpia los nombres de columnas."""
     try:
-        if "/d/" in gs_url:
-            sheet_id = gs_url.split("/d/")[1].split("/")[0]
-            gid = "0"
-            if "gid=" in gs_url:
-                gid = gs_url.split("gid=")[1].split("&")[0].split("#")[0]
-            
-            # Usar formato export?format=csv que es más directo para pandas
-            csv_url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/export?format=csv&gid={gid}"
-            
-            print(f"[DEBUG] Conectando a Google Sheets: {csv_url}")
-            
-            # Añadir timeout y headers para evitar bloqueos
-            df = pd.read_csv(csv_url, storage_options={'User-Agent': 'Mozilla/5.0'})
+        # Extraer Sheet ID usando regex
+        match_id = re.search(r"/d/([a-zA-Z0-9-_]+)", gs_url)
+        if not match_id:
+            print(f"[DEBUG] No se encontró Sheet ID en: {gs_url}")
+            return None
+        
+        sheet_id = match_id.group(1)
+        
+        # Extraer GID (pestaña) usando regex
+        match_gid = re.search(r"gid=([0-9]+)", gs_url)
+        gid = match_gid.group(1) if match_gid else "0"
+        
+        # Intentar con el formato export primero
+        csv_url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/export?format=csv&gid={gid}"
+        print(f"[DEBUG] Intento 1 (Export): {csv_url}")
+        
+        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'}
+        
+        response = requests.get(csv_url, headers=headers, timeout=15)
+        
+        if response.status_code == 200:
+            from io import StringIO
+            df = pd.read_csv(StringIO(response.text))
             return _clean_dataframe(df)
         
-        print(f"[DEBUG] URL de Google Sheets no válida: {gs_url}")
-        return None
+        print(f"[DEBUG] Error {response.status_code} en Intento 1. Probando alternativa...")
+        
+        # Intento 2: Formato pub (Publicar en la web)
+        pub_url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/pub?output=csv&gid={gid}"
+        print(f"[DEBUG] Intento 2 (Pub): {pub_url}")
+        response = requests.get(pub_url, headers=headers, timeout=15)
+        
+        if response.status_code == 200:
+            from io import StringIO
+            df = pd.read_csv(StringIO(response.text))
+            return _clean_dataframe(df)
+            
+        error_msg = f"HTTP {response.status_code}: {response.text[:100]}"
+        print(f"[DEBUG] Fallaron todos los intentos: {error_msg}")
+        raise Exception(f"Google no permitió la descarga. Error: {error_msg}. ¿La hoja es pública?")
+        
     except Exception as e:
-        print(f"[DEBUG] Error en load_gsheets_data: {str(e)}")
+        print(f"[DEBUG] Excepción en load_gsheets_data: {str(e)}")
         raise e
