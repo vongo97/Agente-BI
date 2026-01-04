@@ -254,21 +254,10 @@ async def detect_anomalies(
     api_key: str = Form(...),
     user_id: str = Form(...)
 ):
-    check_authorization(user_id)
-    print(f"\n[DEBUG] Petición /detect-anomalies para: '{user_id}'")
-    
-    session_data = get_user_data(user_id)
-    
-    if not session_data:
-        raise HTTPException(status_code=400, detail=f"No hay datos cargados para el usuario '{user_id}'. Por favor, vuelve a subir el archivo.")
-    
-    session_data = data_store[user_id]
-    
-    if session_data["type"] != "file":
-         return {"analysis": "El detector proactivo actualmente solo está disponible para archivos (CSV/Excel). Próximamente soporte para SQL."}
-    
-    analysis = detect_anomalies_hybrid(session_data["data"], api_key)
-    return {"analysis": analysis}
+    """Temporalmente desactivado para mejora de motor"""
+    return {
+        "analysis": "### 🚀 Detective de Datos: Próximamente\n\nEstamos refinando el motor de auditoría proactiva para ofrecerte hallazgos estratégicos con una precisión absoluta. Esta función estará disponible en la próxima actualización.\n\n*Mientras tanto, puedes seguir realizando preguntas directas a tu analista en el chat.*"
+    }
 
 @app.get("/history")
 async def get_history(user_id: str, db: Session = Depends(get_db)):

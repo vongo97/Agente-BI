@@ -53,7 +53,9 @@ def analyze_with_gemini(data_context, query, api_key, chat_history=[], mode="fil
             history_str += f"{role}: {msg['content']}\n"
 
         prompt = f"""
-        Eres un experto analista de BI y programador senior de Python.
+        Eres un **Socio de Consultoría Estratégica Senior** experto en Inteligencia de Negocios y Ciencia de Datos.
+        Tu objetivo es transformar datos fríos en decisiones estratégicas de alto nivel.
+        
         Contexto de datos ({mode}):
         {context_str}
         
@@ -62,22 +64,25 @@ def analyze_with_gemini(data_context, query, api_key, chat_history=[], mode="fil
         
         Pregunta actual: "{query}"
         
-        Instrucciones de Programación y Visualización:
-        1. Considera el historial para análisis evolutivos.
-        2. Escribe un bloque de código Python encerrado en ```python ```.
-        3. Usa la variable '{data_var}' como entrada.
-        4. IMPORTANTE: Los nombres de columnas están limpios (strip).
-        5. USA `print()` para explicar brevemente el hallazgo principal.
+        ### REGLAS DE ORO DE RESPUESTA (CRÍTICO):
+        1. **PROHIBIDO TERMINANTEMENTE**: No uses `df.info()`, `df.describe()`, `print(df)` o cualquier comando que genere logs técnicos crudos como '<class 'pandas...'>'.
+        2. **TONO**: Profesional, ejecutivo, directo y persuasivo. Evita el lenguaje técnico excesivo; habla de beneficios, tendencias y riesgos.
+        3. **ESTRUCTURA DE MENSAJE**:
+           - Comienza SIEMPRE con un encabezado `### 📊 Análisis Estratégico`.
+           - Usa **Negrita** para resaltar cifras clave (ej: **$4.5M**, **+15% de crecimiento**).
+           - Usa tablas Markdown solo si son extremadamente necesarias para comparar 2-3 valores.
+           - Termina con una breve conclusión titulada `💡 Recomendación Directa`.
         
-        Guía de Gráficos (Plotly):
-        - SIEMPRE crea el objeto `fig` y usa el template `plotly_dark` para que combine con la UI.
-        - Tendencias Temporales: `px.line` o `px.area`.
-        - Comparaciones Categorical: `px.bar` (¡ordena los datos de mayor a menor!).
-        - Partes de un todo: `px.pie` (con agujero central como 'donut') o `px.treemap` si hay muchas categorías.
-        - Relaciones/Correlación: `px.scatter` con línea de tendencia si aplica.
-        - Distribución: `px.histogram` o `px.box`.
-        - Jerarquías: `px.sunburst` o `px.treemap`.
-        - Personaliza: Añade títulos claros (`title`), etiquetas de ejes (`labels`) y una paleta de colores vibrante (ej: `color_discrete_sequence=px.colors.qualitative.Prism`).
+        ### INSTRUCCIONES DE CÓDIGO (Capa Invisible):
+        - Escribe el bloque de código Python encerrado en ```python ``` al FINAL de tu respuesta.
+        - Usa la variable '{data_var}' como entrada.
+        - SIEMPRE crea el objeto `fig` usando `plotly_dark`.
+        - Para visualizaciones:
+           - Tipos de gráficos: `px.area` para tendencias, `px.bar` (ordenado) para rankings, `px.pie` (donut) para proporciones.
+           - Colores: Usa paletas vibrantes y sofisticadas (ej: `color_discrete_sequence=px.colors.qualitative.Bold`).
+           - Títulos: Pon títulos estratégicos al gráfico, no solo nombres de variables.
+        
+        Genera ahora tu respuesta estructurada.
         """
         
         response = model.generate_content(prompt)
@@ -122,33 +127,43 @@ def generate_report_narrative(data_context, query, api_key, mode="file", model_n
 
 def execute_analysis(context_obj, raw_response, var_name):
     """
-    Ejecuta el código generado y devuelve la salida textual y el objeto gráfico.
+    Ejecuta el código generado y devuelve la narrativa del asistente + el objeto gráfico.
+    Separamos el texto de la respuesta (IA) del código a ejecutar.
     """
-    # Guardar el estado original
+    # 1. Separar narrativa de código
+    narrative = re.sub(r"```python\n(.*?)```", "", raw_response, flags=re.DOTALL).strip()
+    code_match = re.search(r"```python\n(.*?)```", raw_response, re.DOTALL)
+    
+    if not code_match:
+        return narrative, None
+
+    # 2. Ejecutar código para obtener el gráfico
+    clean_code = code_match.group(1).replace(".show()", "")
+    
+    # Capturar salida del código (por si la IA insiste en print, pero priorizamos la narrativa)
     old_stdout = sys.stdout
     redirected_output = sys.stdout = StringIO()
     
-    # Inyectar librerías
     local_vars = {var_name: context_obj, 'pd': pd, 'px': px}
     
     try:
-        # Extraer código
-        code_match = re.search(r"```python\n(.*?)```", raw_response, re.DOTALL)
-        clean_code = code_match.group(1) if code_match else raw_response
-        
-        # Eliminar posibles llamadas a .show() o similares que bloqueen
-        clean_code = clean_code.replace(".show()", "")
-        
         exec(clean_code, {}, local_vars)
-        
-        output = redirected_output.getvalue()
+        code_stdout = redirected_output.getvalue().strip()
         fig = local_vars.get('fig', None)
         
+        # Si el código generó texto (print), lo añadimos al final de la narrativa como "Detalles técnicos"
+        # pero de forma sutil
+        final_text = narrative
+        if code_stdout:
+            # Si el stdout contiene basura técnica, lo ignoramos mejor
+            if not any(x in code_stdout.lower() for x in ["<class", "dtype:", "memory usage"]):
+                final_text += f"\n\n---\n{code_stdout}"
+        
         sys.stdout = old_stdout
-        return output, fig
+        return final_text, fig
     except Exception as e:
         sys.stdout = old_stdout
-        return f"Error en ejecución: {e}\nCódigo generado:\n{raw_response}", None
+        return f"### ⚠️ Error en el Procesamiento\nHubo un problema ejecutando el análisis lógico solicitado.\n\n*Detalle técnico: {e}*", None
 
 def detect_anomalies_hybrid(df: pd.DataFrame, api_key: str):
     """
