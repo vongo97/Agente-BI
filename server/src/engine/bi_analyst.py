@@ -64,25 +64,36 @@ def analyze_with_gemini(data_context, query, api_key, chat_history=[], mode="fil
         
         Pregunta actual: "{query}"
         
-        ### REGLAS DE ORO DE RESPUESTA (CRÍTICO):
-        1. **PROHIBIDO TERMINANTEMENTE**: No uses `df.info()`, `df.describe()`, `print(df)` o cualquier comando que genere logs técnicos crudos como '<class 'pandas...'>'.
-        2. **TONO**: Profesional, ejecutivo, directo y persuasivo. Evita el lenguaje técnico excesivo; habla de beneficios, tendencias y riesgos.
-        3. **ESTRUCTURA DE MENSAJE**:
-           - Comienza SIEMPRE con un encabezado `### 📊 Análisis Estratégico`.
-           - Usa **Negrita** para resaltar cifras clave (ej: **$4.5M**, **+15% de crecimiento**).
-           - Usa tablas Markdown solo si son extremadamente necesarias para comparar 2-3 valores.
-           - Termina con una breve conclusión titulada `💡 Recomendación Directa`.
+        prompt = f"""
+        Eres un **Socio de Consultoría Estratégica Senior**. Tu misión es entregar informes de alta legibilidad y valor ejecutivo.
         
-        ### INSTRUCCIONES DE CÓDIGO (Capa Invisible):
-        - Escribe el bloque de código Python encerrado en ```python ``` al FINAL de tu respuesta.
-        - Usa la variable '{data_var}' como entrada.
-        - SIEMPRE crea el objeto `fig` usando `plotly_dark`.
-        - Para visualizaciones:
-           - Tipos de gráficos: `px.area` para tendencias, `px.bar` (ordenado) para rankings, `px.pie` (donut) para proporciones.
-           - Colores: Usa paletas vibrantes y sofisticadas (ej: `color_discrete_sequence=px.colors.qualitative.Bold`).
-           - Títulos: Pon títulos estratégicos al gráfico, no solo nombres de variables.
+        ### REGLAS DE FORMATO (OBLIGATORIO):
+        1. **ESPACIADO**: Usa doble salto de línea `\n\n` entre cada párrafo y sección. Prohibido entregar bloques de texto pegados.
+        2. **LISTAS**: Usa listas con viñetas `-` o numeradas `1.` para explicar hallazgos.
+        3. **ENCABEZADOS**: Usa `##` y `###` para separar las secciones del informe.
+        4. **CIFRAS**: Resalta cada cifra importante en **negrita**.
         
-        Genera ahora tu respuesta estructurada.
+        ### ESTRUCTURA DE LA RESPUESTA:
+        ## 📊 Análisis Estratégico: [Título del Hallazgo]
+        
+        [Párrafo introductorio breve con el contexto]
+        
+        ### 🔍 Principales Hallazgos:
+        - **[Punto clave 1]**: [Explicación detallada pero concisa]
+        - **[Punto clave 2]**: [Explicación con datos]
+        
+        ### 💡 Recomendaciones:
+        1. **[Acción 1]**: [Por qué y para qué]
+        2. **[Acción 2]**: [Impacto esperado]
+        
+        ### INSTRUCCIONES DE CÓDIGO (Invisible):
+        - Bloque ```python ``` al FINAL. 
+        - Genera SIEMPRE el objeto `fig` con `plotly_dark`.
+        
+        Contexto de datos ({mode}):
+        {context_str}
+        
+        Pregunta: "{query}"
         """
         
         response = model.generate_content(prompt)

@@ -7,6 +7,8 @@ import { analyzeData, pinToDashboard, exportChartAsPng, getPdfExportUrl, detectA
 import { useDashboard, Message } from "@/context/DashboardContext";
 import { ReportBuilder } from "./ReportBuilder";
 import dynamic from "next/dynamic";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 // Importación dinámica de Plotly para evitar errores de SSR
 const Plot = dynamic(() => import("react-plotly.js"), {
@@ -205,10 +207,13 @@ export function Chat() {
                                             <span className="text-[10px] font-black uppercase tracking-widest">Alerta de Anomalía Detectada</span>
                                         </div>
                                     )}
-                                    {msg.content}
-                                    {msg.role === 'assistant' && (msg.content.includes("⚠️") || msg.content.includes("Auditor de Datos")) && (
-                                        <div className="absolute top-0 right-0 w-24 h-24 bg-orange-500/10 blur-3xl -z-10 animate-pulse" />
+                                    <div className="absolute top-0 right-0 w-24 h-24 bg-orange-500/10 blur-3xl -z-10 animate-pulse" />
                                     )}
+                                    <div className="markdown-content prose prose-invert prose-sm max-w-none prose-headings:text-white prose-headings:font-bold prose-headings:mb-2 prose-p:mb-4 prose-li:mb-1">
+                                        <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                                            {msg.content}
+                                        </ReactMarkdown>
+                                    </div>
                                 </div>
                                 {msg.fig && (
                                     <div className="bg-[#0a0a0a] border border-white/5 rounded-3xl p-6 shadow-2xl overflow-hidden group">
