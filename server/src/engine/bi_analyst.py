@@ -149,3 +149,57 @@ def execute_analysis(context_obj, raw_response, var_name):
     except Exception as e:
         sys.stdout = old_stdout
         return f"Error en ejecución: {e}\nCódigo generado:\n{raw_response}", None
+
+def detect_anomalies_hybrid(df: pd.DataFrame, api_key: str):
+    """
+    Sistema Híbrido: Detecta anomalías matemáticas con Pandas (Z-score) 
+    y las interpreta estratégicamente con Gemini.
+    """
+    try:
+        numeric_cols = df.select_dtypes(include=['number']).columns
+        findings = []
+        
+        # 1. Detección de Outliers (Z-Score)
+        for col in numeric_cols:
+            mean = df[col].mean()
+            std = df[col].std()
+            if std == 0: continue
+            
+            # Buscamos valores con Z-Score > 3 (Extremos)
+            outliers = df[abs((df[col] - mean) / std) > 3]
+            
+            if not outliers.empty:
+                count = len(outliers)
+                val_max = outliers[col].max()
+                findings.append(f"- Se detectaron {count} valores atípicos en la columna '{col}'. El valor máximo detectado es {val_max} (Promedio: {mean:.2f}).")
+
+        if not findings:
+            findings_str = "No se detectaron desviaciones estadísticas significativas (Z-Score > 3) en los datos numéricos."
+        else:
+            findings_str = "\n".join(findings)
+
+        # 2. Interpretación con Gemini
+        genai.configure(api_key=api_key)
+        model = genai.GenerativeModel("gemini-2.5-flash")
+        
+        prompt = f"""
+        Actúa como un Auditor de Datos Senior. He realizado un análisis estadístico sobre un dataset y estos son los hallazgos:
+        
+        {findings_str}
+        
+        Información del Dataset:
+        Columnas: {df.columns.tolist()}
+        Muestra de Datos: {df.head(5).to_dict()}
+        
+        Tu tarea:
+        1. Evalúa la criticidad de estos hallazgos (Baja, Media, Alta).
+        2. Explica racionalmente por qué estos "outliers" podrían ser importantes para el negocio.
+        3. Si no hay anomalías, felicita al usuario por la consistencia de sus datos y menciona una tendencia positiva que veas en la muestra.
+        
+        Formato: Usa Markdown con emojis. Sé directo y profesional.
+        """
+        
+        response = model.generate_content(prompt)
+        return response.text
+    except Exception as e:
+        return f"⚠️ Error en el detector de anomalías: {e}"

@@ -2,8 +2,8 @@
 
 import { useState, useRef, useEffect } from "react";
 import { useSession } from "next-auth/react";
-import { Send, Bot, User, Loader2, BarChart3, ChevronRight, Share2, Sparkles, Menu, PlusCircle, Pin, Download, FileDown, FileText } from "lucide-react";
-import { analyzeData, pinToDashboard, exportChartAsPng, getPdfExportUrl } from "@/lib/api";
+import { Send, Bot, User, Loader2, BarChart3, ChevronRight, Share2, Sparkles, Menu, PlusCircle, Pin, Download, FileDown, FileText, Radio, ShieldAlert } from "lucide-react";
+import { analyzeData, pinToDashboard, exportChartAsPng, getPdfExportUrl, detectAnomalies } from "@/lib/api";
 import { useDashboard, Message } from "@/context/DashboardContext";
 import { ReportBuilder } from "./ReportBuilder";
 import dynamic from "next/dynamic";
@@ -23,6 +23,7 @@ export function Chat() {
     const { apiKey, dataSource, setSidebarOpen, messages, setMessages, activeChatId, setActiveChatId } = useDashboard();
     const [input, setInput] = useState("");
     const [loading, setLoading] = useState(false);
+    const [detectingAnomalies, setDetectingAnomalies] = useState(false);
     const [reportBuilderOpen, setReportBuilderOpen] = useState(false);
     const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -64,6 +65,29 @@ export function Chat() {
             setMessages(prev => [...prev, { role: 'assistant', content: "Lo siento, hubo un error al procesar tu análisis." }]);
         } finally {
             setLoading(false);
+        }
+    };
+
+    const handleDetectAnomalies = async () => {
+        if (!apiKey) {
+            alert("Por favor, introduce tu API Key en la barra lateral.");
+            return;
+        }
+        setDetectingAnomalies(true);
+        try {
+            const res = await detectAnomalies(apiKey, userId);
+
+            const newMessage: Message = {
+                role: 'assistant',
+                content: res.analysis,
+                id: Date.now()
+            };
+
+            setMessages(prev => [...prev, newMessage]);
+        } catch (err: any) {
+            alert("Error en el detective de datos: " + (err.message || "Desconocido"));
+        } finally {
+            setDetectingAnomalies(false);
         }
     };
 
@@ -111,6 +135,17 @@ export function Chat() {
                     <h2 className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] flex items-center gap-2 truncate">Analista AI</h2>
                 </div>
                 <div className="flex items-center gap-2 lg:gap-4">
+                    {dataSource && (
+                        <button
+                            onClick={handleDetectAnomalies}
+                            disabled={detectingAnomalies}
+                            className={`flex items-center gap-2 px-3 py-1.5 rounded-full border transition-all text-[10px] font-bold uppercase tracking-tighter ${detectingAnomalies ? 'bg-orange-500/10 border-orange-500/20 text-orange-400 animate-pulse' : 'bg-orange-500/20 hover:bg-orange-500/30 border-orange-500/20 text-orange-400 hover:text-orange-300'
+                                }`}
+                        >
+                            <Radio className={`w-3.5 h-3.5 ${detectingAnomalies ? 'animate-spin' : ''}`} />
+                            {detectingAnomalies ? 'Escaneando...' : 'Detective de Datos'}
+                        </button>
+                    )}
                     {messages.length > 0 && (
                         <button
                             onClick={() => setReportBuilderOpen(true)}
@@ -157,9 +192,23 @@ export function Chat() {
                                     <Bot className="w-6 h-6 text-white" />
                                 </div>
                             )}
-                            <div className={`max-w-[85%] space-y-6 ${msg.role === 'user' ? 'text-right' : ''}`}>
-                                <div className={`inline-block px-6 py-4 rounded-3xl text-sm leading-relaxed shadow-2xl ${msg.role === 'user' ? 'bg-blue-600 text-white rounded-tr-none' : 'bg-[#111] text-gray-200 border border-white/5 rounded-tl-none font-medium'}`}>
+                            <div className={`max-w-[85%] space-y-4 ${msg.role === 'user' ? 'text-right' : ''}`}>
+                                <div className={`inline-block px-6 py-4 rounded-3xl text-sm leading-relaxed shadow-2xl relative overflow-hidden ${msg.role === 'user'
+                                        ? 'bg-blue-600 text-white rounded-tr-none'
+                                        : msg.content.includes("⚠️") || msg.content.includes("Hallazgo") || msg.content.includes("Auditor")
+                                            ? 'bg-orange-500/5 text-orange-100 border-2 border-orange-500/20 rounded-tl-none font-medium'
+                                            : 'bg-[#111] text-gray-200 border border-white/5 rounded-tl-none font-medium'
+                                    }`}>
+                                    {(msg.content.includes("⚠️") || msg.content.includes("Hallazgo")) && msg.role === 'assistant' && (
+                                        <div className="flex items-center gap-2 mb-2 text-orange-400">
+                                            <ShieldAlert className="w-4 h-4" />
+                                            <span className="text-[10px] font-black uppercase tracking-widest">Alerta de Anomalía Detecada</span>
+                                        </div>
+                                    )}
                                     {msg.content}
+                                    {msg.role === 'assistant' && (msg.content.includes("⚠️") || msg.content.includes("Hallazgo")) && (
+                                        <div className="absolute top-0 right-0 w-24 h-24 bg-orange-500/10 blur-3xl -z-10 animate-pulse" />
+                                    )}
                                 </div>
                                 {msg.fig && (
                                     <div className="bg-[#0a0a0a] border border-white/5 rounded-3xl p-6 shadow-2xl overflow-hidden group">
@@ -169,8 +218,8 @@ export function Chat() {
                                                 <span className="text-[10px] font-black text-gray-600 uppercase tracking-[0.2em]">Visualización Dinámica</span>
                                             </div>
                                         </div>
-                                        <div className="mt-6 border border-white/5 rounded-2xl overflow-hidden bg-black/40 relative group/chart">
-                                            <div className="absolute top-4 right-4 z-10 opacity-0 group-hover/chart:opacity-100 transition-opacity flex gap-2">
+                                        <div className="mt-4 p-5 bg-white/[0.03] border border-white/10 rounded-2xl flex flex-col items-center justify-center min-h-[300px] group/plot relative">
+                                            <div className="absolute top-4 right-4 z-10 opacity-0 group-hover/plot:opacity-100 transition-opacity flex gap-2">
                                                 <button onClick={() => handleExportPng(msg.fig, msg.content)} className="p-2 bg-blue-600/90 hover:bg-blue-600 rounded-lg text-white shadow-xl transition-all" title="Descargar PNG">
                                                     <Download className="w-4 h-4" />
                                                 </button>

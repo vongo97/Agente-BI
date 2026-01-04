@@ -220,6 +220,23 @@ async def generate_summary(
     summary = generate_report_narrative(session_data["data"], query, api_key, mode=session_data["type"])
     return {"summary": summary}
 
+@app.post("/detect-anomalies")
+async def detect_anomalies(
+    api_key: str = Form(...),
+    user_id: str = Form(...)
+):
+    check_authorization(user_id)
+    if user_id not in data_store:
+        raise HTTPException(status_code=400, detail="No hay datos cargados para analizar")
+    
+    session_data = data_store[user_id]
+    
+    if session_data["type"] != "file":
+         return {"analysis": "El detector proactivo actualmente solo está disponible para archivos (CSV/Excel). Próximamente soporte para SQL."}
+    
+    analysis = detect_anomalies_hybrid(session_data["data"], api_key)
+    return {"analysis": analysis}
+
 @app.get("/history")
 async def get_history(user_id: str, db: Session = Depends(get_db)):
     check_authorization(user_id)

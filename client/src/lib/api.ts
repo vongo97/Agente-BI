@@ -139,5 +139,17 @@ export async function exportProfessionalReport(reportData: any) {
   return response.blob();
 }
 
+export async function detectAnomalies(apiKey: string, userId: string) {
+  const formData = new FormData();
+  formData.append("api_key", apiKey);
+  formData.append("user_id", userId);
+
+  const response = await fetch(`${API_URL}/detect-anomalies`, {
+    method: "POST",
+    body: formData,
+  });
+  return handleResponse(response);
+}
+
 export const getPdfExportUrl = (chatId: number, userId: string) => 
   `${API_URL}/export/pdf/${chatId}?user_id=${userId}`;
