@@ -61,13 +61,24 @@ def load_file_data(file_path):
 
 def load_gsheets_data(gs_url):
     """Carga datos de una URL pública de Google Sheets y limpia los nombres de columnas."""
-    if "/d/" in gs_url:
-        sheet_id = gs_url.split("/d/")[1].split("/")[0]
-        gid = "0"
-        if "gid=" in gs_url:
-            gid = gs_url.split("gid=")[1].split("&")[0].split("#")[0]
+    try:
+        if "/d/" in gs_url:
+            sheet_id = gs_url.split("/d/")[1].split("/")[0]
+            gid = "0"
+            if "gid=" in gs_url:
+                gid = gs_url.split("gid=")[1].split("&")[0].split("#")[0]
+            
+            # Usar formato export?format=csv que es más directo para pandas
+            csv_url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/export?format=csv&gid={gid}"
+            
+            print(f"[DEBUG] Conectando a Google Sheets: {csv_url}")
+            
+            # Añadir timeout y headers para evitar bloqueos
+            df = pd.read_csv(csv_url, storage_options={'User-Agent': 'Mozilla/5.0'})
+            return _clean_dataframe(df)
         
-        csv_url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/export?format=csv&gid={gid}"
-        df = pd.read_csv(csv_url)
-        return _clean_dataframe(df)
-    return None
+        print(f"[DEBUG] URL de Google Sheets no válida: {gs_url}")
+        return None
+    except Exception as e:
+        print(f"[DEBUG] Error en load_gsheets_data: {str(e)}")
+        raise e
