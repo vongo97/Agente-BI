@@ -58,7 +58,7 @@ async def validate_key(api_key: str = Form(...)):
 @app.post("/upload")
 async def upload_file(user_id: str = Form(...), file: UploadFile = File(...)):
     check_authorization(user_id)
-    print(f"\n[DEBUG] Intentando subir archivo para {user_id}: {file.filename}")
+    print(f"\n[DEBUG] RECIBIDO /upload - ID: '{user_id}' - File: {file.filename}")
     try:
         import tempfile
         suffix = os.path.splitext(file.filename)[1].lower()
@@ -226,8 +226,11 @@ async def detect_anomalies(
     user_id: str = Form(...)
 ):
     check_authorization(user_id)
+    print(f"\n[DEBUG] RECIBIDO /detect-anomalies - ID: '{user_id}'")
+    print(f"[DEBUG] IDs en data_store: {list(data_store.keys())}")
+    
     if user_id not in data_store:
-        raise HTTPException(status_code=400, detail="No hay datos cargados para analizar")
+        raise HTTPException(status_code=400, detail=f"No hay datos cargados para el usuario '{user_id}'. IDs activos: {list(data_store.keys())}")
     
     session_data = data_store[user_id]
     

@@ -194,10 +194,10 @@ export function Chat() {
                             )}
                             <div className={`max-w-[85%] space-y-4 ${msg.role === 'user' ? 'text-right' : ''}`}>
                                 <div className={`inline-block px-6 py-4 rounded-3xl text-sm leading-relaxed shadow-2xl relative overflow-hidden ${msg.role === 'user'
-                                        ? 'bg-blue-600 text-white rounded-tr-none'
-                                        : msg.content.includes("⚠️") || msg.content.includes("Hallazgo") || msg.content.includes("Auditor")
-                                            ? 'bg-orange-500/5 text-orange-100 border-2 border-orange-500/20 rounded-tl-none font-medium'
-                                            : 'bg-[#111] text-gray-200 border border-white/5 rounded-tl-none font-medium'
+                                    ? 'bg-blue-600 text-white rounded-tr-none'
+                                    : msg.content.includes("⚠️") || msg.content.includes("Hallazgo") || msg.content.includes("Auditor")
+                                        ? 'bg-orange-500/5 text-orange-100 border-2 border-orange-500/20 rounded-tl-none font-medium'
+                                        : 'bg-[#111] text-gray-200 border border-white/5 rounded-tl-none font-medium'
                                     }`}>
                                     {(msg.content.includes("⚠️") || msg.content.includes("Hallazgo")) && msg.role === 'assistant' && (
                                         <div className="flex items-center gap-2 mb-2 text-orange-400">
