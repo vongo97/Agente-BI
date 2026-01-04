@@ -207,9 +207,13 @@ export function Chat() {
                                             <span className="text-[10px] font-black uppercase tracking-widest">Alerta de Anomalía Detectada</span>
                                         </div>
                                     )}
-                                    <div className="absolute top-0 right-0 w-24 h-24 bg-orange-500/10 blur-3xl -z-10 animate-pulse" />
+                                    {msg.role === 'assistant' && (msg.content.includes("⚠️") || msg.content.includes("Auditor de Datos")) && (
+                                        <div className="absolute top-0 right-0 w-24 h-24 bg-orange-500/10 blur-3xl -z-10 animate-pulse" />
                                     )}
-                                    <div className="markdown-content prose prose-invert prose-sm max-w-none prose-headings:text-white prose-headings:font-bold prose-headings:mb-2 prose-p:mb-4 prose-li:mb-1">
+                                    <div className="markdown-content prose prose-invert prose-sm max-w-none
+                                    prose-headings:text-white prose-headings:font-bold prose-headings:mt-4 prose-headings:mb-2
+                                    prose-p:mb-4 prose-p:leading-relaxed
+                                    prose-li:mb-2 prose-ul:list-disc prose-ul:ml-4 prose-ol:list-decimal prose-ol:ml-4">
                                         <ReactMarkdown remarkPlugins={[remarkGfm]}>
                                             {msg.content}
                                         </ReactMarkdown>
