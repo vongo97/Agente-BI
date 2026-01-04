@@ -88,25 +88,21 @@ async def upload_file(user_id: str = Form(...), file: UploadFile = File(...)):
     print(f"\n[DEBUG] RECIBIDO /upload - ID: '{user_id}' - File: {file.filename}")
     try:
         import tempfile
+        import shutil
         suffix = os.path.splitext(file.filename)[1].lower()
-        print(f"[DEBUG] Extensión detectada: {suffix}")
         
+        # Usar NamedTemporaryFile con buffer para evitar bloqueos de memoria
         with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
-            content = await file.read()
-            print(f"[DEBUG] Bytes leídos: {len(content)}")
-            tmp.write(content)
+            shutil.copyfileobj(file.file, tmp)
             file_location = tmp.name
         
         print(f"[DEBUG] Guardado temporal en: {file_location}")
         
         try:
-            print(f"[DEBUG] Cargando datos con load_file_data...")
             df = load_file_data(file_location)
-            print(f"[DEBUG] Carga exitosa. Columnas: {df.columns.tolist()}")
-            
             data_store[user_id] = {"type": "file", "data": df}
             
-            # Persistir en disco para evitar pérdida por reinicio/múltiples workers
+            # Persistir en disco
             df.to_pickle(get_session_file(user_id))
             
             return {
@@ -149,9 +145,13 @@ async def connect_gsheets(user_id: str = Form(...), url: str = Form(...)):
     try:
         df = load_gsheets_data(url)
         if df is None:
-            raise Exception("URL de Google Sheets no válida o no pública. Asegúrate de que el documento esté compartido como 'Cualquier persona con el enlace puede leer'.")
+            raise Exception("URL de Google Sheets no válida o no pública.")
             
         data_store[user_id] = {"type": "file", "data": df}
+        
+        # PERSISTENCIA: Muy importante para que funcione en PC y Celular
+        df.to_pickle(get_session_file(user_id))
+        print(f"[DEBUG] Google Sheets persistido para {user_id}")
         
         return {
             "filename": "Google Sheet",

@@ -32,6 +32,8 @@ def analyze_with_gemini(data_context, query, api_key, chat_history=[], mode="fil
     1. Genera y ejecuta código para obtener datos reales.
     2. Genera la narrativa estratégica basada en esos datos reales.
     """
+    if not api_key:
+        return "Error: API Key no proporcionada."
     try:
         genai.configure(api_key=api_key)
         model = genai.GenerativeModel(model_name)
