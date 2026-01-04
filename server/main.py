@@ -43,6 +43,33 @@ def check_authorization(email: str):
         raise HTTPException(status_code=403, detail="Usuario no autorizado")
     return True
 
+# Directorio para sesiones (caché de datos)
+SESSIONS_DIR = "sessions_cache"
+if not os.path.exists(SESSIONS_DIR):
+    os.makedirs(SESSIONS_DIR)
+
+def get_session_file(user_id: str):
+    import hashlib
+    safe_id = hashlib.md5(user_id.encode()).hexdigest()
+    return os.path.join(SESSIONS_DIR, f"{safe_id}.pkl")
+
+def get_user_data(user_id: str):
+    """Obtiene los datos del usuario, buscándolos en memoria o cargándolos desde el disco."""
+    if user_id in data_store:
+        return data_store[user_id]
+    
+    # Intentar cargar desde disco (caché de sesión)
+    cache_path = get_session_file(user_id)
+    if os.path.exists(cache_path):
+        try:
+            print(f"[DEBUG] Restaurando sesión desde disco para {user_id}")
+            df = pd.read_pickle(cache_path)
+            data_store[user_id] = {"type": "file", "data": df}
+            return data_store[user_id]
+        except Exception as e:
+            print(f"Error restaurando sesión: {e}")
+    return None
+
 # Inicializar Base de Datos
 init_db()
 
@@ -79,11 +106,14 @@ async def upload_file(user_id: str = Form(...), file: UploadFile = File(...)):
             
             data_store[user_id] = {"type": "file", "data": df}
             
+            # Persistir en disco para evitar pérdida por reinicio/múltiples workers
+            df.to_pickle(get_session_file(user_id))
+            
             return {
                 "filename": file.filename,
                 "columns": df.columns.tolist(),
                 "rows": len(df),
-                "message": "Archivo cargado con éxito"
+                "message": "Archivo cargado con éxito y persistido"
             }
         finally:
             if os.path.exists(file_location):
@@ -144,10 +174,9 @@ async def analyze(
     db: Session = Depends(get_db)
 ):
     check_authorization(user_id)
-    if user_id not in data_store:
-        raise HTTPException(status_code=400, detail="No hay datos cargados para analizar")
-    
-    session_data = data_store[user_id]
+    session_data = get_user_data(user_id)
+    if not session_data:
+        raise HTTPException(status_code=400, detail="No hay datos cargados para analizar. Por favor, sube tu archivo de nuevo.")
     
     try:
         # Determinar contexto según el modo
@@ -226,11 +255,12 @@ async def detect_anomalies(
     user_id: str = Form(...)
 ):
     check_authorization(user_id)
-    print(f"\n[DEBUG] RECIBIDO /detect-anomalies - ID: '{user_id}'")
-    print(f"[DEBUG] IDs en data_store: {list(data_store.keys())}")
+    print(f"\n[DEBUG] Petición /detect-anomalies para: '{user_id}'")
     
-    if user_id not in data_store:
-        raise HTTPException(status_code=400, detail=f"No hay datos cargados para el usuario '{user_id}'. IDs activos: {list(data_store.keys())}")
+    session_data = get_user_data(user_id)
+    
+    if not session_data:
+        raise HTTPException(status_code=400, detail=f"No hay datos cargados para el usuario '{user_id}'. Por favor, vuelve a subir el archivo.")
     
     session_data = data_store[user_id]
     
