@@ -28,70 +28,89 @@ def validate_api_key(api_key):
 
 def analyze_with_gemini(data_context, query, api_key, chat_history=[], mode="file", model_name="gemini-2.5-flash"):
     """
-    Genera código Python/Pandas/SQL para el análisis basado en la consulta del usuario y el historial.
+    Genera un análisis de dos pasos: 
+    1. Genera y ejecuta código para obtener datos reales.
+    2. Genera la narrativa estratégica basada en esos datos reales.
     """
     try:
         genai.configure(api_key=api_key)
         model = genai.GenerativeModel(model_name)
         
+        # --- PASO 1: GENERACIÓN DE CÓDIGO Y DATOS REALES ---
         if mode == "file":
             df = data_context
-            context_str = f"""
-            Dataset columns: {df.columns.tolist()}
-            Shape: {df.shape}
-            Head (3 rows): {df.head(3).to_string()}
-            """
+            context_str = f"Columns: {df.columns.tolist()}. Shape: {df.shape}. Head: {df.head(2).to_dict()}"
             data_var = "df"
         else:
-            context_str = f"Database Schema:\n{data_context}"
+            context_str = f"Schema: {data_context}"
             data_var = "engine"
 
-        # Formatear el historial para el prompt
+        code_prompt = f"""
+        Genera código Python para analizar estos datos y responder: "{query}".
+        
+        REGLAS TÉCNICAS:
+        1. Usa la variable `{data_var}` que ya está cargada.
+        2. LIMPZA: Si una columna numérica tiene símbolos ($, €, %) o es string, límpiala con `pd.to_numeric(..., errors='coerce')`.
+        3. RESULTADOS: Usa `print()` para mostrar CADA cifra importante que encuentres. Ejemplo: `print(f'Ticket Promedio: {{avg}}')`.
+        4. GRÁFICO: Genera SIEMPRE un objeto `fig` con Plotly Express usando `template='plotly_dark'`.
+        
+        Contexto del esquema:
+        {context_str}
+        
+        Genera solo el bloque de código entre triple comilla invertida.
+        """
+        
+        code_response = model.generate_content(code_prompt).text
+        code_match = re.search(r"```python\n(.*?)```", code_response, re.DOTALL)
+        
+        real_results = "No se pudieron obtener resultados numéricos."
+        fig_code = ""
+        
+        if code_match:
+            code_to_run = code_match.group(1).replace(".show()", "")
+            fig_code = f"```python\n{code_to_run}\n```"
+            
+            # Ejecución interna para capturar números
+            old_stdout = sys.stdout
+            redirected_output = sys.stdout = StringIO()
+            local_vars = {data_var: data_context, 'pd': pd, 'px': px}
+            try:
+                exec(code_to_run, {}, local_vars)
+                real_results = redirected_output.getvalue().strip() or "Cálculo ejecutado con éxito."
+            except Exception as e:
+                real_results = f"Error en ejecución: {e}"
+            finally:
+                sys.stdout = old_stdout
+
+        # --- PASO 2: GENERACIÓN DE NARRATIVA ESTRATÉGICA ---
         history_str = ""
-        for msg in chat_history[-5:]: # Enviamos los últimos 5 mensajes para contexto
+        for msg in chat_history[-3:]:
             role = "Usuario" if msg["role"] == "user" else "Agente"
             history_str += f"{role}: {msg['content']}\n"
 
-        prompt = f"""
-        Eres un **Socio de Consultoría Estratégica Senior**. Tu misión es entregar informes de alta legibilidad y valor ejecutivo.
-
-        ### CONTEXTO DE NEGOCIO:
-        Contexto de datos ({mode}):
+        narrative_prompt = f"""
+        Eres un Socio de Consultoría Estratégica Senior. Escribe un informe sobre: "{query}".
+        
+        DATOS REALES VERIFICADOS (Usa estos números OBLIGATORIAMENTE):
+        {real_results}
+        
+        INSTRUCCIONES:
+        1. NO inventes cifras. Usa solo los DATOS REALES arriba indicados.
+        2. Estructura: ## Título, ### Análisis, ### Recomendaciones.
+        3. Formato: Doble salto de línea, negritas en cifras y listas con viñetas.
+        4. Sé profundo y estratégico: explica el "porqué" de esos números para el negocio.
+        
+        Muestra del esquema para contexto adicional:
         {context_str}
-
-        Historial de la conversación:
-        {history_str}
-        
-        Pregunta actual: "{query}"
-
-        ### REGLAS DE FORMATO (OBLIGATORIO):
-        1. **ESPACIADO**: Usa doble salto de línea `\n\n` entre cada párrafo y sección. Prohibido entregar bloques de texto pegados.
-        2. **LISTAS**: Usa listas con viñetas `-` o numeradas `1.` para explicar hallazgos.
-        3. **ENCABEZADOS**: Usa `##` y `###` para separar las secciones del informe.
-        4. **CIFRAS**: Resalta cada cifra importante en **negrita**.
-        
-        ### ESTRUCTURA DE LA RESPUESTA:
-        ## 📊 Análisis Estratégico: [Título del Hallazgo]
-        
-        [Párrafo introductorio breve con el contexto]
-        
-        ### 🔍 Principales Hallazgos:
-        - **[Punto clave 1]**: [Explicación detallada pero concisa]
-        - **[Punto clave 2]**: [Explicación con datos]
-        
-        ### 💡 Recomendaciones:
-        1. **[Acción 1]**: [Por qué y para qué]
-        2. **[Acción 2]**: [Impacto esperado]
-        
-        ### INSTRUCCIONES DE CÓDIGO (Invisible):
-        - Bloque ```python ``` al FINAL. 
-        - Genera SIEMPRE el objeto `fig` con `plotly_dark`.
         """
         
-        response = model.generate_content(prompt)
-        return response.text
+        final_narrative = model.generate_content(narrative_prompt).text
+        
+        # Combinamos para que el motor principal (execute_analysis) pueda procesarlo
+        return f"{final_narrative}\n\n{fig_code}"
+
     except Exception as e:
-        return f"Error en la comunicación con Gemini: {e}"
+        return f"Error en el motor de pensamiento dual: {e}"
 
 def generate_report_narrative(data_context, query, api_key, mode="file", model_name="gemini-2.5-flash"):
     """
