@@ -95,17 +95,41 @@ def load_gsheets_data(gs_url):
         # Intento 2: Formato pub (Publicar en la web)
         pub_url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/pub?output=csv&gid={gid}"
         print(f"[DEBUG] Intento 2 (Pub): {pub_url}")
-        response = requests.get(pub_url, headers=headers, timeout=15)
+        response = requests.get(pub_url, headers=headers, timeout=10)
         
         if response.status_code == 200:
             from io import StringIO
             df = pd.read_csv(StringIO(response.text))
             return _clean_dataframe(df)
+
+        # Intento 3: Gviz Visualization API (Muy robusto para datos públicos)
+        gviz_url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/gviz/tq?tqx=out:csv&gid={gid}"
+        print(f"[DEBUG] Intento 3 (Gviz): {gviz_url}")
+        response = requests.get(gviz_url, headers=headers, timeout=10)
+
+        if response.status_code == 200:
+            from io import StringIO
+            df = pd.read_csv(StringIO(response.text))
+            return _clean_dataframe(df)
             
-        error_msg = f"HTTP {response.status_code}: {response.text[:100]}"
-        print(f"[DEBUG] Fallaron todos los intentos: {error_msg}")
-        raise Exception(f"Google no permitió la descarga. Error: {error_msg}. ¿La hoja es pública?")
+        # Si llegamos aquí, falló todo. Construir mensaje de ayuda específico.
+        status = response.status_code
+        error_context = "Acceso Denegado (401/403)" if status in [401, 403] else f"Error {status}"
+        
+        help_msg = f"""
+        Google rechazó la conexión ({error_context}). 
+        
+        Sigue estos pasos EXACTOS en tu Google Sheet:
+        1. Botón 'Compartir' (arriba a la derecha).
+        2. En 'Acceso general', cambia a 'Cualquier persona con el enlace'.
+        3. Asegúrate de que diga 'Lector'.
+        4. Copia el ENLACE de la barra de direcciones y pégalo aquí de nuevo.
+        """
+        print(f"[DEBUG] Fallaron todos los intentos: {status}")
+        raise Exception(help_msg.strip())
         
     except Exception as e:
-        print(f"[DEBUG] Excepción en load_gsheets_data: {str(e)}")
-        raise e
+        if "HTTP" in str(e) or "Google rechazó" in str(e):
+            raise e
+        print(f"[DEBUG] Excepción inesperada: {str(e)}")
+        raise Exception(f"Error técnico al conectar con Google: {str(e)}")
