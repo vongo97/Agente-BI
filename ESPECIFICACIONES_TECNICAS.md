@@ -67,6 +67,15 @@ Variables necesarias:
 
 ---
 
+## ⚡ Estrategia Render (Keep-Alive)
+
+Para evitar que el servidor gratuito de Render se "apague" por inactividad:
+1. **Frontend**: El chat muestra un aviso de "Preparando motor..." si detecta que el backend está hibernando.
+2. **Ping**: Se recomienda usar [cron-job.org](https://cron-job.org/) para llamar a la URL raíz del backend cada 14 minutos. Esto lo mantendrá siempre encendido sin costo adicional.
+3. **Script**: También puedes ejecutar `python keep_alive.py` desde una PC local conectada a internet.
+
+---
+
 ## 🛠️ Cómo Editar el Proyecto
 
 1. **Para cambiar el estilo visual de la IA**: Edita el "Prompt" en `server/src/engine/bi_analyst.py` dentro de la función `analyze_with_gemini`.

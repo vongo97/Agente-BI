@@ -8,6 +8,7 @@ import { Chat } from "@/components/Chat";
 import { DashboardView } from "@/components/DashboardView";
 import { useDashboard } from "@/context/DashboardContext";
 import { Loader2 } from "lucide-react";
+import { ServerStatusTracker } from "@/components/ServerStatusTracker";
 
 export default function Home() {
   const { data: session, status } = useSession();
@@ -37,6 +38,7 @@ export default function Home() {
       <div className="flex-1 flex flex-col h-screen overflow-hidden">
         {view === 'chat' ? <Chat /> : <DashboardView />}
       </div>
+      <ServerStatusTracker />
     </main>
   );
 }
