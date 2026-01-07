@@ -1,4 +1,4 @@
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+const API_URL = typeof window !== 'undefined' ? '/backend' : (process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000");
 
 async function handleResponse(response: Response) {
   if (!response.ok) {
@@ -31,12 +31,14 @@ export async function uploadFile(file: File, userId: string) {
   return handleResponse(response);
 }
 
-export async function analyzeData(query: string, apiKey: string, userId: string, chatId?: number) {
+export async function analyzeData(query: string, apiKey: string, userId: string, chatId?: number, provider?: "gemini" | "mistral" | "hybrid", mistralKey?: string) {
   const formData = new FormData();
   formData.append("query", query);
   formData.append("api_key", apiKey);
   formData.append("user_id", userId);
   if (chatId) formData.append("chat_id", chatId.toString());
+  if (provider) formData.append("provider", provider);
+  if (mistralKey) formData.append("mistral_key", mistralKey);
 
   const response = await fetch(`${API_URL}/analyze`, {
     method: "POST",
@@ -94,6 +96,18 @@ export async function pinToDashboard(userId: string, chatId: number, messageId: 
   return handleResponse(response);
 }
 
+export async function pinCustomDashboardItem(userId: string, item: any) {
+  const formData = new FormData();
+  formData.append("user_id", userId);
+  formData.append("item_json", JSON.stringify(item));
+
+  const response = await fetch(`${API_URL}/dashboard/pin-custom`, {
+    method: "POST",
+    body: formData,
+  });
+  return handleResponse(response);
+}
+
 export async function getDashboard(userId: string) {
   const response = await fetch(`${API_URL}/dashboard?user_id=${userId}`);
   return handleResponse(response);
@@ -139,12 +153,28 @@ export async function exportProfessionalReport(reportData: any) {
   return response.blob();
 }
 
-export async function detectAnomalies(apiKey: string, userId: string) {
+export async function generateAutoDashboard(apiKey: string, userId: string, provider?: "gemini" | "mistral" | "hybrid", mistralKey?: string) {
   const formData = new FormData();
   formData.append("api_key", apiKey);
   formData.append("user_id", userId);
+  if (provider) formData.append("provider", provider);
+  if (mistralKey) formData.append("mistral_key", mistralKey);
 
-  const response = await fetch(`${API_URL}/detect-anomalies`, {
+  const response = await fetch(`${API_URL}/auto-dashboard`, {
+    method: "POST",
+    body: formData,
+  });
+  return handleResponse(response);
+}
+
+export async function suggestQuestions(userId: string, apiKey: string, provider?: "gemini" | "mistral" | "hybrid", mistralKey?: string) {
+  const formData = new FormData();
+  formData.append("user_id", userId);
+  formData.append("api_key", apiKey);
+  if (provider) formData.append("provider", provider);
+  if (mistralKey) formData.append("mistral_key", mistralKey);
+
+  const response = await fetch(`${API_URL}/suggest-questions`, {
     method: "POST",
     body: formData,
   });
@@ -153,3 +183,15 @@ export async function detectAnomalies(apiKey: string, userId: string) {
 
 export const getPdfExportUrl = (chatId: number, userId: string) => 
   `${API_URL}/export/pdf/${chatId}?user_id=${userId}`;
+
+export async function cleanData(userId: string, apiKey: string) {
+  const formData = new FormData();
+  formData.append("user_id", userId);
+  formData.append("api_key", apiKey);
+
+  const response = await fetch(`${API_URL}/clean-data`, {
+    method: "POST",
+    body: formData,
+  });
+  return handleResponse(response);
+}

@@ -8,7 +8,6 @@ import { Chat } from "@/components/Chat";
 import { DashboardView } from "@/components/DashboardView";
 import { useDashboard } from "@/context/DashboardContext";
 import { Loader2 } from "lucide-react";
-import { ServerStatusTracker } from "@/components/ServerStatusTracker";
 
 export default function Home() {
   const { data: session, status } = useSession();
@@ -28,17 +27,16 @@ export default function Home() {
     );
   }
 
-  if (!session) return null;
-
   const { view } = useDashboard();
 
+  if (!session) return null;
+
   return (
-    <main className="flex min-h-screen bg-black text-white">
+    <main className="flex min-h-screen bg-[var(--bg-primary)] text-[var(--text-primary)]">
       <Sidebar />
       <div className="flex-1 flex flex-col h-screen overflow-hidden">
         {view === 'chat' ? <Chat /> : <DashboardView />}
       </div>
-      <ServerStatusTracker />
     </main>
   );
 }

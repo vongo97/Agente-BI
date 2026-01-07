@@ -12,6 +12,10 @@ export type Message = {
 interface DashboardContextType {
     apiKey: string;
     setApiKey: (key: string) => void;
+    mistralKey: string;
+    setMistralKey: (key: string) => void;
+    aiProvider: "gemini" | "mistral" | "hybrid";
+    setAiProvider: (provider: "gemini" | "mistral" | "hybrid") => void;
     dataSource: { filename: string; columns: string[] } | null;
     setDataSource: (source: { filename: string; columns: string[] } | null) => void;
     isSidebarOpen: boolean;
@@ -24,12 +28,18 @@ interface DashboardContextType {
     setView: (view: 'chat' | 'dashboard') => void;
     isServerHealthy: boolean | null;
     isWakingUp: boolean;
+    suggestions: string[];
+    setSuggestions: (suggestions: string[]) => void;
+    loadingSuggestions: boolean;
+    setLoadingSuggestions: (loading: boolean) => void;
 }
 
 const DashboardContext = createContext<DashboardContextType | undefined>(undefined);
 
 export function DashboardProvider({ children }: { children: React.ReactNode }) {
     const [apiKey, setApiKey] = useState("");
+    const [mistralKey, setMistralKey] = useState("");
+    const [aiProvider, setAiProvider] = useState<"gemini" | "mistral" | "hybrid">("gemini");
     const [dataSource, setDataSource] = useState<{ filename: string; columns: string[] } | null>(null);
     const [isSidebarOpen, setSidebarOpen] = useState(false);
     const [messages, setMessages] = useState<Message[]>([]);
@@ -37,16 +47,32 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
     const [view, setView] = useState<'chat' | 'dashboard'>('chat');
     const [isServerHealthy, setIsServerHealthy] = useState<boolean | null>(null);
     const [isWakingUp, setIsWakingUp] = useState(false);
+    const [suggestions, setSuggestions] = useState<string[]>([]);
+    const [loadingSuggestions, setLoadingSuggestions] = useState(false);
 
-    // Cargar API Key de localStorage si existe
+    // Cargar API Keys y preferencias
     useEffect(() => {
-        const saved = localStorage.getItem("gemini_api_key");
-        if (saved) setApiKey(saved);
+        const savedGemini = localStorage.getItem("gemini_api_key");
+        if (savedGemini) setApiKey(savedGemini);
+
+        const savedMistral = localStorage.getItem("mistral_api_key");
+        if (savedMistral) setMistralKey(savedMistral);
+
+        const savedProvider = localStorage.getItem("ai_provider") as "gemini" | "mistral" | "hybrid";
+        if (savedProvider) setAiProvider(savedProvider);
     }, []);
 
     useEffect(() => {
         if (apiKey) localStorage.setItem("gemini_api_key", apiKey);
     }, [apiKey]);
+
+    useEffect(() => {
+        if (mistralKey) localStorage.setItem("mistral_api_key", mistralKey);
+    }, [mistralKey]);
+
+    useEffect(() => {
+        localStorage.setItem("ai_provider", aiProvider);
+    }, [aiProvider]);
 
     // Verificar salud del servidor (Render Wake-up)
     useEffect(() => {
@@ -80,12 +106,16 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
     return (
         <DashboardContext.Provider value={{
             apiKey, setApiKey,
+            mistralKey, setMistralKey,
+            aiProvider, setAiProvider,
             dataSource, setDataSource,
             isSidebarOpen, setSidebarOpen,
             messages, setMessages,
             activeChatId, setActiveChatId,
             view, setView,
-            isServerHealthy, isWakingUp
+            isServerHealthy, isWakingUp,
+            suggestions, setSuggestions,
+            loadingSuggestions, setLoadingSuggestions
         }}>
             {children}
         </DashboardContext.Provider>

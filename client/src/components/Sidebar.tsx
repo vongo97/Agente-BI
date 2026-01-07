@@ -6,10 +6,11 @@ import { useState, useEffect } from "react";
 import { validateApiKey, uploadFile, connectSql, connectGoogleSheets, getHistory, getChatDetails, getPdfExportUrl } from "@/lib/api";
 import { useDashboard } from "@/context/DashboardContext";
 import { History, MessageSquare, Clock } from "lucide-react";
+import { ThemeToggle } from "./ThemeToggle";
 
 export function Sidebar() {
     const { data: session } = useSession();
-    const { apiKey, setApiKey, dataSource, setDataSource, isSidebarOpen, setSidebarOpen, setMessages, setActiveChatId, activeChatId, view, setView } = useDashboard();
+    const { apiKey, setApiKey, mistralKey, setMistralKey, aiProvider, setAiProvider, dataSource, setDataSource, isSidebarOpen, setSidebarOpen, setMessages, setActiveChatId, activeChatId, view, setView } = useDashboard();
     const [apiKeyStatus, setApiKeyStatus] = useState<"idle" | "success" | "error">("idle");
     const [errorMsg, setErrorMsg] = useState("");
     const [uploading, setUploading] = useState(false);
@@ -74,6 +75,8 @@ export function Sidebar() {
         setUploading(true);
         try {
             const res = await uploadFile(e.target.files[0], userId);
+            setMessages([]); // Limpiar chat anterior para nueva fuente
+            setActiveChatId(null);
             setDataSource({ filename: res.filename, columns: res.columns });
         } catch (err: any) {
             console.error(err);
@@ -88,6 +91,8 @@ export function Sidebar() {
         setUploading(true);
         try {
             const res = await connectSql(sqlUrl, userId);
+            setMessages([]); // Limpiar chat anterior
+            setActiveChatId(null);
             setDataSource({ filename: "Base de Datos SQL", columns: ["SQL Engine Active"] });
             setShowSqlInput(false);
         } catch (err: any) {
@@ -103,6 +108,8 @@ export function Sidebar() {
         setUploading(true);
         try {
             const res = await connectGoogleSheets(gsheetsUrl, userId);
+            setMessages([]); // Limpiar chat anterior
+            setActiveChatId(null);
             setDataSource({ filename: "Google Sheet", columns: res.columns });
             setShowGSheetsInput(false);
         } catch (err: any) {
@@ -125,11 +132,11 @@ export function Sidebar() {
 
             <aside className={`
                 fixed lg:relative inset-y-0 left-0 z-50
-                w-80 bg-[#0a0a0a] border-r border-white/5 flex flex-col h-screen overflow-hidden
+                w-80 bg-[var(--bg-secondary)] border-r border-[var(--border-color)] flex flex-col h-screen overflow-hidden
                 transition-transform duration-300 ease-in-out
                 ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
             `}>
-                <div className="p-6 border-b border-white/5 bg-[#0a0a0a] relative">
+                <div className="p-6 border-b border-[var(--border-color)] bg-[var(--bg-secondary)] relative">
                     {/* Botón cerrar en móvil */}
                     <button
                         onClick={() => setSidebarOpen(false)}
@@ -142,31 +149,31 @@ export function Sidebar() {
                         <div className="p-2.5 bg-blue-600 rounded-xl shadow-lg shadow-blue-600/20 group-hover:scale-110 transition-transform">
                             <Activity className="w-6 h-6 text-white" />
                         </div>
-                        <h1 className="text-xl font-bold text-white tracking-tight">Agente BI <span className="text-[10px] bg-blue-600/20 text-blue-400 py-0.5 px-1.5 rounded ml-1 uppercase">v2.5</span></h1>
+                        <h1 className="text-xl font-bold text-[var(--text-primary)] tracking-tight">Agente BI <span className="text-[10px] bg-blue-600/20 text-blue-400 py-0.5 px-1.5 rounded ml-1 uppercase">v2.5</span></h1>
                     </div>
 
                     <div className="grid grid-cols-2 gap-2 mb-6">
                         <button
                             onClick={() => setView('chat')}
-                            className={`flex flex-col items-center justify-center p-3 rounded-xl border transition-all ${view === 'chat' ? 'bg-blue-600/10 border-blue-500/30 text-blue-400' : 'bg-white/[0.02] border-white/5 text-gray-500 hover:bg-white/[0.05]'}`}
+                            className={`flex flex-col items-center justify-center p-3 rounded-xl border transition-all ${view === 'chat' ? 'bg-blue-600/10 border-blue-500/30 text-blue-400' : 'bg-[var(--bg-tertiary)] border-[var(--border-color)] text-[var(--text-secondary)] hover:bg-gray-100 dark:hover:bg-white/[0.05]'}`}
                         >
                             <MessageSquare className="w-5 h-5 mb-1" />
                             <span className="text-[10px] font-black uppercase tracking-tighter">Chat</span>
                         </button>
                         <button
                             onClick={() => setView('dashboard')}
-                            className={`flex flex-col items-center justify-center p-3 rounded-xl border transition-all ${view === 'dashboard' ? 'bg-blue-600/10 border-blue-500/30 text-blue-400' : 'bg-white/[0.02] border-white/5 text-gray-500 hover:bg-white/[0.05]'}`}
+                            className={`flex flex-col items-center justify-center p-3 rounded-xl border transition-all ${view === 'dashboard' ? 'bg-blue-600/10 border-blue-500/30 text-blue-400' : 'bg-[var(--bg-tertiary)] border-[var(--border-color)] text-[var(--text-secondary)] hover:bg-gray-100 dark:hover:bg-white/[0.05]'}`}
                         >
                             <Activity className="w-5 h-5 mb-1" />
                             <span className="text-[10px] font-black uppercase tracking-tighter">Panel</span>
                         </button>
                     </div>
 
-                    <div className="bg-white/[0.03] border border-white/5 rounded-2xl p-4 flex items-center gap-3 hover:bg-white/[0.05] transition-colors">
+                    <div className="bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-2xl p-4 flex items-center gap-3 hover:bg-[var(--bg-primary)] transition-colors">
                         <img src={session?.user?.image || ""} className="w-10 h-10 rounded-full border-2 border-blue-600/30" alt="Profile" />
                         <div className="overflow-hidden">
-                            <p className="text-sm font-semibold text-white truncate">{session?.user?.name}</p>
-                            <p className="text-[10px] text-gray-500 font-medium truncate italic uppercase tracking-tighter">Sesión de Análisis Activa</p>
+                            <p className="text-sm font-semibold text-[var(--text-primary)] truncate">{session?.user?.name}</p>
+                            <p className="text-[10px] text-[var(--text-tertiary)] font-medium truncate italic uppercase tracking-tighter">Sesión de Análisis Activa</p>
                         </div>
                     </div>
                 </div>
@@ -174,30 +181,65 @@ export function Sidebar() {
                 <div className="flex-1 overflow-y-auto p-4 space-y-8 custom-scrollbar">
                     {/* Configuración */}
                     <div>
-                        <label className="flex items-center gap-2 text-[10px] font-black text-gray-600 uppercase tracking-[0.2em] mb-4">
-                            <Settings className="w-3.5 h-3.5" /> Motor de IA
+                        <label className="flex items-center gap-2 text-[10px] font-black text-[var(--text-tertiary)] uppercase tracking-[0.2em] mb-4">
+                            <Settings className="w-3.5 h-3.5" /> Configuración IA
                         </label>
                         <div className="space-y-4">
-                            <div className="relative">
-                                <input
-                                    type="password"
-                                    value={apiKey}
-                                    onChange={handleApiKeyChange}
-                                    placeholder="Google API Key..."
-                                    className="w-full bg-black border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-blue-500/50 focus:ring-4 focus:ring-blue-500/5 transition-all"
-                                />
-                                <div className="absolute right-3 top-1/2 -translate-y-1/2">
-                                    {apiKeyStatus === "success" && <CheckCircle2 className="w-4 h-4 text-green-500" />}
-                                    {apiKeyStatus === "error" && <AlertCircle className="w-4 h-4 text-red-500" />}
-                                </div>
-                                {apiKeyStatus === "error" && (
-                                    <div className="mt-2 p-2 bg-red-500/10 border border-red-500/20 rounded-lg">
-                                        <p className="text-[10px] text-red-400 leading-tight font-medium">{errorMsg}</p>
-                                    </div>
-                                )}
+                            {/* Selector de Proveedor */}
+                            <div className="bg-[var(--bg-tertiary)] p-1 rounded-xl flex gap-1">
+                                <button
+                                    onClick={() => setAiProvider("gemini")}
+                                    className={`flex-1 py-1.5 text-[9px] lg:text-[10px] font-bold uppercase tracking-wider rounded-lg transition-all ${aiProvider === 'gemini' ? 'bg-blue-600 text-white shadow-md' : 'text-[var(--text-secondary)] hover:bg-black/5 dark:hover:bg-white/5'}`}
+                                >
+                                    Gemini
+                                </button>
+                                <button
+                                    onClick={() => setAiProvider("mistral")}
+                                    className={`flex-1 py-1.5 text-[9px] lg:text-[10px] font-bold uppercase tracking-wider rounded-lg transition-all ${aiProvider === 'mistral' ? 'bg-purple-600 text-white shadow-md' : 'text-[var(--text-secondary)] hover:bg-black/5 dark:hover:bg-white/5'}`}
+                                >
+                                    Mistral
+                                </button>
+                                <button
+                                    onClick={() => setAiProvider("hybrid")}
+                                    className={`flex-1 py-1.5 text-[9px] lg:text-[10px] font-bold uppercase tracking-wider rounded-lg transition-all ${aiProvider === 'hybrid' ? 'bg-gradient-to-r from-blue-600 to-purple-600 text-white shadow-md' : 'text-[var(--text-secondary)] hover:bg-black/5 dark:hover:bg-white/5'}`}
+                                    title="Modo Colaborativo: Gemini (Ingeniero) + Mistral (Estratega)"
+                                >
+                                    Dual
+                                </button>
                             </div>
+
+                            {/* Google API Key - Solo en Gemini o Dual */}
+                            {(aiProvider === 'gemini' || aiProvider === 'hybrid') && (
+                                <div className="relative">
+                                    <input
+                                        type="password"
+                                        value={apiKey}
+                                        onChange={handleApiKeyChange}
+                                        placeholder="Google API Key (Gemini)..."
+                                        className="w-full bg-[var(--bg-tertiary)] border border-blue-500/50 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/5 rounded-xl px-4 py-3 text-sm text-[var(--text-primary)] placeholder-[var(--text-tertiary)] focus:outline-none transition-all"
+                                    />
+                                    <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                                        {apiKeyStatus === "success" && <CheckCircle2 className="w-4 h-4 text-green-500" />}
+                                        {apiKeyStatus === "error" && <AlertCircle className="w-4 h-4 text-red-500" />}
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Mistral API Key - Solo en Mistral o Dual */}
+                            {(aiProvider === 'mistral' || aiProvider === 'hybrid') && (
+                                <div className="relative">
+                                    <input
+                                        type="password"
+                                        value={mistralKey}
+                                        onChange={(e) => setMistralKey(e.target.value)}
+                                        placeholder="Mistral API Key (Mistral)..."
+                                        className="w-full bg-[var(--bg-tertiary)] border border-purple-500/50 focus:border-purple-500 focus:ring-4 focus:ring-purple-500/5 rounded-xl px-4 py-3 text-sm text-[var(--text-primary)] placeholder-[var(--text-tertiary)] focus:outline-none transition-all"
+                                    />
+                                </div>
+                            )}
                         </div>
                     </div>
+
 
                     {/* Fuentes de Datos */}
                     <div>
@@ -340,7 +382,9 @@ export function Sidebar() {
                     </div>
                 </div>
 
-                <div className="p-6 border-t border-white/5 bg-[#0a0a0a]">
+
+                <div className="p-6 border-t border-[var(--border-color)] bg-[var(--bg-secondary)] space-y-3">
+                    <ThemeToggle />
                     <button
                         onClick={() => signOut()}
                         className="w-full flex items-center justify-center gap-2 px-4 py-4 text-gray-500 hover:text-red-400 hover:bg-red-500/10 rounded-2xl transition-all text-xs font-black uppercase tracking-[0.2em]"

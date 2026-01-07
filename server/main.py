@@ -8,7 +8,7 @@ from typing import List, Optional
 import json
 
 # Importar el motor de BI existente
-from src.engine.bi_analyst import analyze_with_gemini, execute_analysis, validate_api_key
+from src.engine.bi_analyst import analyze_with_gemini, analyze_data, execute_analysis, validate_api_key, suggest_questions, ai_data_cleaner, generate_auto_dashboard
 from src.connectors.data_connectors import load_file_data, load_gsheets_data, get_sql_engine, get_db_schema
 from src.database import init_db, get_db, Chat, Message, DashboardItem
 from src.utils.exporter import export_plotly_to_image, generate_pdf_report
@@ -18,6 +18,16 @@ from fastapi.responses import Response as FAResponse
 import io
 
 load_dotenv()
+
+# Configuración de Logs de Depuración
+import logging
+logging.basicConfig(
+    filename='debug_server.log',
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    force=True
+)
+logger = logging.getLogger(__name__)
 
 app = FastAPI(title="Agente BI API")
 
@@ -171,12 +181,18 @@ async def analyze(
     api_key: str = Form(...),
     user_id: str = Form(...), # Email del usuario
     chat_id: Optional[int] = Form(None),
+    provider: str = Form("gemini"),
+    mistral_key: Optional[str] = Form(None),
     db: Session = Depends(get_db)
 ):
     check_authorization(user_id)
     session_data = get_user_data(user_id)
     if not session_data:
         raise HTTPException(status_code=400, detail="No hay datos cargados para analizar. Por favor, sube tu archivo de nuevo.")
+    
+    logger.info(f"Analyze request. Provider: {provider}. Mistral Key Present: {bool(mistral_key)}")
+    if mistral_key:
+        logger.info(f"Mistral Key (first 4): {mistral_key[:4]}...")
     
     try:
         # Determinar contexto según el modo
@@ -187,8 +203,8 @@ async def analyze(
             context = session_data["schema"]
             data_var = "engine"
 
-        # 1. Obtener código de Gemini (Pasando la API key del usuario)
-        raw_response = analyze_with_gemini(context, query, api_key, mode=session_data["type"])
+        # 1. Obtener código de Gemini o Mistral
+        raw_response = analyze_data(context, query, api_key, mode=session_data["type"], provider=provider or "gemini", mistral_key=mistral_key)
         
         # 2. Ejecutar análisis
         output_text, fig = execute_analysis(session_data["data"], raw_response, data_var)
@@ -242,10 +258,10 @@ async def generate_summary(
     user_id: str = Form(...)
 ):
     check_authorization(user_id)
-    if user_id not in data_store:
+    session_data = get_user_data(user_id)
+    if not session_data:
         raise HTTPException(status_code=400, detail="No hay datos cargados")
     
-    session_data = data_store[user_id]
     summary = generate_report_narrative(session_data["data"], query, api_key, mode=session_data["type"])
     return {"summary": summary}
 
@@ -393,6 +409,152 @@ async def unpin_from_dashboard(item_id: int, user_id: str, db: Session = Depends
     db.delete(item)
     db.commit()
     return {"message": "Eliminado del dashboard"}
+
+@app.post("/suggest-questions")
+async def get_suggestions(
+    user_id: str = Form(...), 
+    api_key: str = Form(...),
+    provider: str = Form("gemini"),
+    mistral_key: Optional[str] = Form(None)
+):
+    session_data = get_user_data(user_id)
+    if not session_data:
+        print(f"[DEBUG] No user data found for {user_id} in /suggest-questions")
+        raise HTTPException(status_code=404, detail="No hay datos cargados para este usuario.")
+    
+    context = session_data["data"]
+    mode = session_data["type"]
+    
+    # Si es SQL, el context es el motor, pasamos el esquema
+    if mode == "sql":
+        from src.connectors.data_connectors import validate_sql_connection
+        _, schema = validate_sql_connection(session_data["url"])
+        context = schema
+
+    suggestions = suggest_questions(context, api_key, mode=mode, provider=provider, mistral_key=mistral_key)
+    return {"suggestions": suggestions}
+
+@app.post("/clean-data")
+async def clean_data(user_id: str = Form(...), api_key: str = Form(...)):
+    check_authorization(user_id)
+    session_data = get_user_data(user_id)
+    if not session_data:
+        raise HTTPException(status_code=400, detail="No hay datos cargados para limpiar.")
+    
+    if session_data["type"] != "file":
+        raise HTTPException(status_code=400, detail="La limpieza automática solo está disponible para archivos y Google Sheets.")
+    
+    df = session_data["data"]
+    cleaned_df, summary = ai_data_cleaner(df, api_key)
+    
+    # Actualizar cache y persistencia
+    data_store[user_id]["data"] = cleaned_df
+    cleaned_df.to_pickle(get_session_file(user_id))
+    
+    return {
+        "summary": summary,
+        "columns": cleaned_df.columns.tolist(),
+        "rows": len(cleaned_df)
+    }
+
+@app.post("/auto-dashboard")
+async def auto_dashboard(
+    user_id: str = Form(...), 
+    api_key: str = Form(...),
+    provider: str = Form("gemini"),
+    mistral_key: Optional[str] = Form(None)
+):
+    logger.info(f"Petición /auto-dashboard recibida. User: {user_id}")
+    try:
+        check_authorization(user_id)
+        session_data = get_user_data(user_id)
+        
+        if not session_data or session_data["type"] != "file":
+             raise HTTPException(status_code=400, detail="Se requieren datos de archivo.")
+             
+        df = session_data["data"]
+        results = generate_auto_dashboard(df, api_key, provider, mistral_key)
+        
+        return {"status": "success", "dashboard": results}
+    except Exception as e:
+        logger.exception("Error en /auto-dashboard")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/dashboard/pin-custom")
+async def pin_custom_item(user_id: str = Form(...), item_json: str = Form(...)):
+    """
+    Ancla un ítem arbitrario (JSON stringified) al dashboard.
+    """
+    logger.info(f"Pin Custom Item request for {user_id}")
+    try:
+        check_authorization(user_id)
+        import json
+        item_data = json.loads(item_json)
+        
+        # Validar estructura mínima
+        if "title" not in item_data or "fig" not in item_data:
+            raise HTTPException(status_code=400, detail="Invalid item structure")
+            
+        session = SessionLocal()
+        # Verificar si ya existe un dashboard, si no crear
+        # Por simplicidad, asumimos chat_id nulo para ítems globales o creamos un chat dummy?
+        # Mejor: usaremos NULL chat_id para ítems globales si el modelo lo permite.
+        # Revisando db schema... DashboardItem tiene chat_id (ForeignKey).
+        # Necesitamos un chat_id. Si no nos pasan, usaremos el último activo o uno por defecto "Dashboard".
+        # PERO, el frontend tiene activeChatId. Lo pediremos como parámetro opcional.
+        # Si item_data viene de Auto Dash, no tiene mensaje ID asociado necesariamente.
+        
+        # Estrategia: Crear un "Chat de Dashboard" oculto para este usuario si no existe?
+        # O simplemente permitir chat_id nulo en DB? (Requeriría migración).
+        # Solución rápida: Asignar al último chat del usuario.
+        
+        last_chat = session.query(Chat).filter(Chat.user_id == user_id).order_by(Chat.created_at.desc()).first()
+        target_chat_id = last_chat.id if last_chat else None
+        
+        if not target_chat_id:
+             # Crear chat por defecto
+             new_chat = Chat(user_id=user_id, title="Dashboard Assets")
+             session.add(new_chat)
+             session.commit()
+             target_chat_id = new_chat.id
+
+        # Crear el Message dummy para sostener el gráfico (para compatibilidad)
+        # O guardar directamente en DashboardItem?
+        # DashboardItem vincula (dashboard_id, message_id).
+        # Dashboard vincula (user_id).
+        
+        # 1. Obtener/Crear Dashboard
+        dashboard = session.query(Dashboard).filter(Dashboard.user_id == user_id).first()
+        if not dashboard:
+            dashboard = Dashboard(user_id=user_id, title="Main Dashboard")
+            session.add(dashboard)
+            session.commit()
+            
+        # 2. Crear Mensaje Dummy (necesario por FK message_id)
+        msg_content = f"Anclado desde Auto-Dash: {item_data.get('insight', '')}"
+        dummy_msg = MessageModel(
+            chat_id=target_chat_id,
+            role="assistant",
+            content=msg_content,
+            figure=item_data["fig"]
+        )
+        session.add(dummy_msg)
+        session.commit()
+        
+        # 3. Anclar
+        dash_item = DashboardItem(
+            dashboard_id=dashboard.id,
+            message_id=dummy_msg.id
+        )
+        session.add(dash_item)
+        session.commit()
+        
+        return {"status": "success", "id": dash_item.id}
+    except Exception as e:
+        logger.exception("Error pinning custom item")
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        session.close()
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)
