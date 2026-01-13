@@ -47,17 +47,41 @@ def load_file_data(file_path):
     ext = file_path.lower()
     try:
         if ext.endswith('.csv'):
-            # Probar múltiples encodings para evitar errores de decodificación
+            # Probar múltiples encodings y separadores para evitar errores
             encodings = ['utf-8', 'latin-1', 'cp1252', 'iso-8859-1']
+            separators = [',', ';', '\t']
+            last_error = None
+            
             for encoding in encodings:
+                for sep in separators:
+                    try:
+                        print(f"[DEBUG] Intentando cargar CSV con encoding: {encoding} y sep: {sep}")
+                        # Intentamos cargar con el separador específico
+                        df = pd.read_csv(file_path, encoding=encoding, sep=sep)
+                        
+                        # Si solo hay una columna y el separador no es coma, probablemente el sep sea incorrecto
+                        if len(df.columns) == 1 and sep != ',':
+                            continue
+                            
+                        print(f"[DEBUG] EXITO: Archivo CSV cargado con encoding: {encoding} y sep: {sep}")
+                        return _clean_dataframe(df)
+                    except (UnicodeDecodeError, pd.errors.ParserError) as e:
+                        last_error = e
+                        continue
+                
+                # Intento final con el motor de python que intenta adivinar el separador
                 try:
-                    df = pd.read_csv(file_path, encoding=encoding)
-                    print(f"[DEBUG] Archivo CSV cargado con éxito usando encoding: {encoding}")
+                    print(f"[DEBUG] Intento alternativo (engine='python') con encoding: {encoding}")
+                    df = pd.read_csv(file_path, encoding=encoding, sep=None, engine='python', on_bad_lines='skip')
+                    print(f"[DEBUG] EXITO: Archivo CSV cargado con motor python, encoding: {encoding}")
                     return _clean_dataframe(df)
-                except UnicodeDecodeError:
+                except:
                     continue
-            # Si ninguno funciona, dejar que lance el último error
-            return _clean_dataframe(pd.read_csv(file_path))
+            
+            # Si ninguno funciona, lanzar el último error con detalle
+            error_msg = f"No se pudo leer el CSV. Asegúrate de que el formato sea correcto. Error técnico: {last_error}"
+            print(f"[DEBUG] {error_msg}")
+            raise Exception(error_msg)
         elif ext.endswith(('.xls', '.xlsx', '.xlsm')):
             return _clean_dataframe(pd.read_excel(file_path))
         else:
