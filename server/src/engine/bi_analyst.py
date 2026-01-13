@@ -122,10 +122,11 @@ def analyze_data(data_context, query, api_key, chat_history=[], mode="file", pro
         
         REGLAS TÉCNICAS:
         1. Usa la variable `{data_var}` que ya está cargada.
-        2. LIMPIEZA: Si una columna numérica tiene símbolos ($, €, %) o es string, límpiala con `pd.to_numeric(..., errors='coerce')`.
-        3. RESULTADOS: Usa `print()` para mostrar CADA cifra importante que encuentres. Ejemplo: `print(f'Ticket Promedio: {{avg}}')`.
-        4. GRÁFICO: Genera SIEMPRE un objeto `fig` con Plotly Express usando `template='plotly_dark'`.
-        5. COLORES VÁLIDOS: Usa SOLO estas escalas de colores de Plotly:
+        2. LIBRERÍAS: Usa `pd` para Pandas y `px` para Plotly Express. Ya están importadas.
+        3. FECHAS: No uses `datetime.timezone.zone`. Usa `pd.to_datetime()` y métodos estándar de Pandas para series temporales.
+        4. RESULTADOS: Usa `print()` para mostrar CADA cifra importante que encuentres. Ejemplo: `print(f'Ticket Promedio: {{avg}}')`.
+        5. GRÁFICO: Genera SIEMPRE un objeto `fig` con Plotly Express usando `template='plotly_dark'`.
+        6. COLORES VÁLIDOS: Usa SOLO estas escalas de colores de Plotly:
            - Para secuenciales: 'Viridis', 'Plasma', 'Inferno', 'Magma', 'Blues', 'Greens', 'Reds'
            - Para divergentes: 'RdBu', 'Spectral', 'Picnic'
            - NO uses 'RdYlGn' ni otras escalas no estándar
@@ -150,9 +151,10 @@ def analyze_data(data_context, query, api_key, chat_history=[], mode="file", pro
             # Ejecución interna para capturar números
             old_stdout = sys.stdout
             redirected_output = sys.stdout = StringIO()
-            local_vars = {data_var: data_context, 'pd': pd, 'px': px}
+            # Importante: Pasar el mismo dict como globals y locals para que las funciones internas vean las globales (ej. 'pd')
+            exec_globals = {data_var: data_context, 'pd': pd, 'px': px, 'np': __import__('numpy')}
             try:
-                exec(code_to_run, {}, local_vars)
+                exec(code_to_run, exec_globals, exec_globals)
                 real_results = redirected_output.getvalue().strip() or "Cálculo ejecutado con éxito."
             except Exception as e:
                 real_results = f"Error en ejecución: {e}"
@@ -248,12 +250,12 @@ def execute_analysis(context_obj, raw_response, var_name):
     old_stdout = sys.stdout
     redirected_output = sys.stdout = StringIO()
     
-    local_vars = {var_name: context_obj, 'pd': pd, 'px': px}
+    exec_globals = {var_name: context_obj, 'pd': pd, 'px': px, 'np': __import__('numpy'), 'json': __import__('json')}
     
     try:
-        exec(clean_code, {}, local_vars)
+        exec(clean_code, exec_globals, exec_globals)
         code_stdout = redirected_output.getvalue().strip()
-        fig = local_vars.get('fig', None)
+        fig = exec_globals.get('fig', None)
         
         # Si el código generó texto (print), lo añadimos al final de la narrativa como "Detalles técnicos"
         # pero de forma sutil

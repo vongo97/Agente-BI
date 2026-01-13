@@ -47,6 +47,16 @@ def load_file_data(file_path):
     ext = file_path.lower()
     try:
         if ext.endswith('.csv'):
+            # Probar múltiples encodings para evitar errores de decodificación
+            encodings = ['utf-8', 'latin-1', 'cp1252', 'iso-8859-1']
+            for encoding in encodings:
+                try:
+                    df = pd.read_csv(file_path, encoding=encoding)
+                    print(f"[DEBUG] Archivo CSV cargado con éxito usando encoding: {encoding}")
+                    return _clean_dataframe(df)
+                except UnicodeDecodeError:
+                    continue
+            # Si ninguno funciona, dejar que lance el último error
             return _clean_dataframe(pd.read_csv(file_path))
         elif ext.endswith(('.xls', '.xlsx', '.xlsm')):
             return _clean_dataframe(pd.read_excel(file_path))
