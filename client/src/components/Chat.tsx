@@ -398,8 +398,13 @@ export function Chat() {
                                                     autosize: true,
                                                     paper_bgcolor: 'rgba(0,0,0,0)',
                                                     plot_bgcolor: 'rgba(0,0,0,0)',
-                                                    font: { color: '#888' },
-                                                    margin: { t: 30, b: 30, l: 30, r: 30 },
+                                                    font: {
+                                                        color: '#aaa',
+                                                        family: 'Inter, sans-serif',
+                                                        size: 10
+                                                    },
+                                                    margin: { t: 40, b: 40, l: 50, r: 20 },
+                                                    showlegend: msg.fig.layout.showlegend ?? false,
                                                     xaxis: { ...msg.fig.layout.xaxis, gridcolor: '#111', zerolinecolor: '#222' },
                                                     yaxis: { ...msg.fig.layout.yaxis, gridcolor: '#111', zerolinecolor: '#222' }
                                                 }}

@@ -118,18 +118,19 @@ def analyze_data(data_context, query, api_key, chat_history=[], mode="file", pro
             data_var = "engine"
 
         code_prompt = f"""
-        Genera código Python para analizar estos datos y responder: "{query}".
+        Genera código Python para un reporte EJECUTIVO y MINIMALISTA sobre "{query}".
         
-        REGLAS TÉCNICAS:
-        1. Usa la variable `{data_var}` que ya está cargada.
-        2. LIBRERÍAS: Usa `pd` para Pandas y `px` para Plotly Express. Ya están importadas.
-        3. FECHAS: No uses `datetime.timezone.zone`. Usa `pd.to_datetime()` y métodos estándar de Pandas para series temporales.
-        4. RESULTADOS: Usa `print()` para mostrar CADA cifra importante que encuentres. Ejemplo: `print(f'Ticket Promedio: {{avg}}')`.
-        5. GRÁFICO: Genera SIEMPRE un objeto `fig` con Plotly Express usando `template='plotly_dark'`.
-        6. COLORES VÁLIDOS: Usa SOLO estas escalas de colores de Plotly:
-           - Para secuenciales: 'Viridis', 'Plasma', 'Inferno', 'Magma', 'Blues', 'Greens', 'Reds'
-           - Para divergentes: 'RdBu', 'Spectral', 'Picnic'
-           - NO uses 'RdYlGn' ni otras escalas no estándar
+        REGLAS DE DISEÑO PREMIUM:
+        1. LIBRERÍAS: Usa `pd` y `px`. Ya están disponibles.
+        2. GRÁFICO (CRÍTICO): Genera SIEMPRE un objeto `fig`.
+           - Usa `template='plotly_dark'`.
+           - LIMPIEZA: No pongas leyenda si solo hay una categoría. Usa `fig.update_layout(showlegend=False)`.
+           - COLOR: Si usas `color='columna'`, desactiva la barra lateral con `fig.update_coloraxes(showscale=False)`.
+        3. NARRATIVA: Sé conciso y estratégico (estilo Consultoría).
+           - Usa `##` para títulos ejecutivos.
+           - Usa TABLAS de Markdown para comparar cifras.
+           - Usa `> [!IMPORTANT]` para recomendaciones clave.
+        4. FECHAS: Usa `pd.to_datetime()` y métodos estándar de Pandas.
         
         Contexto del esquema:
         {context_str}
