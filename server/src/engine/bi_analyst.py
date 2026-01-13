@@ -111,26 +111,26 @@ def analyze_data(data_context, query, api_key, chat_history=[], mode="file", pro
         # --- PASO 1: GENERACIÓN DE CÓDIGO Y DATOS REALES (EL INGENIERO) ---
         if mode == "file":
             df = data_context
-            context_str = f"Columns: {df.columns.tolist()}. Shape: {df.shape}. Head: {df.head(2).to_dict()}"
+            # Muestra más significativa para que la IA entienda el tipo de datos
+            context_str = f"Columns: {df.columns.tolist()}\nTotal Rows: {df.shape[0]}\nSample Data (First 5 rows):\n{df.head(5).to_string()}"
             data_var = "df"
         else:
             context_str = f"Schema: {data_context}"
             data_var = "engine"
 
         code_prompt = f"""
-        Genera código Python para un reporte EJECUTIVO y MINIMALISTA sobre "{query}".
+        Actúa como un Ingeniero de Datos Senior. Tu objetivo es extraer DATOS PRECISOS de la variable `{data_var}` para responder: "{query}".
         
-        REGLAS DE DISEÑO PREMIUM:
-        1. LIBRERÍAS: Usa `pd` y `px`. Ya están disponibles.
-        2. GRÁFICO (CRÍTICO): Genera SIEMPRE un objeto `fig`.
-           - Usa `template='plotly_dark'`.
-           - LIMPIEZA: No pongas leyenda si solo hay una categoría. Usa `fig.update_layout(showlegend=False)`.
-           - COLOR: Si usas `color='columna'`, desactiva la barra lateral con `fig.update_coloraxes(showscale=False)`.
-        3. NARRATIVA: Sé conciso y estratégico (estilo Consultoría).
-           - Usa `##` para títulos ejecutivos.
-           - Usa TABLAS de Markdown para comparar cifras.
-           - Usa `> [!IMPORTANT]` para recomendaciones clave.
-        4. FECHAS: Usa `pd.to_datetime()` y métodos estándar de Pandas.
+        REGLAS DE ORO (OBLIGATORIAS):
+        1. CÁLCULO REAL: No teorices. Usa Pandas para agrupar, sumar o promediar los datos reales. 
+        2. IMPRESIÓN DE DATOS: Usa `print()` para mostrar los resultados numéricos de tus cálculos. 
+           Si calculas un ranking, haz `print(ranking_df)`. Si calculas un total, haz `print(f'Total: {{valor}}')`.
+           SIN ESTA IMPRESIÓN, EL ANALISTA NO PODRÁ ESCRIBIR EL REPORTE.
+        
+        DISEÑO DEL GRÁFICO:
+        - Genera SIEMPRE un objeto `fig` con Plotly Express.
+        - Usa `template='plotly_dark'`.
+        - Minimalismo: `fig.update_layout(showlegend=False)` si solo hay una serie.
         
         Contexto del esquema:
         {context_str}
