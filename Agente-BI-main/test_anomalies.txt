@@ -1,0 +1,11 @@
+Fecha,Producto,Ventas,Region
+2026-01-01,Laptop,1200,Norte
+2026-01-02,Mouse,25,Norte
+2026-01-03,Teclado,45,Sur
+2026-01-04,Monitor,300,Norte
+2026-01-05,Laptop,1150,Sur
+2026-01-06,Mouse,22,Sur
+2026-01-07,Teclado,10000,Norte
+2026-01-08,Monitor,310,Sur
+2026-01-09,Laptop,1250,Norte
+2026-01-10,Mouse,28,Sur
