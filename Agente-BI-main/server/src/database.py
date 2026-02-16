@@ -72,11 +72,18 @@ class DashboardItem(Base):
 
 # Crear tablas
 def init_db():
-    Base.metadata.create_all(bind=engine)
+    try:
+        Base.metadata.create_all(bind=engine)
+    except Exception as e:
+        print(f"ERROR en init_db: {str(e)}")
+        print("El servidor continuará pero la base de datos podría no estar lista.")
 
 def get_db():
     db = SessionLocal()
     try:
         yield db
+    except Exception as e:
+        print(f"Error en sesión de DB: {str(e)}")
+        raise
     finally:
         db.close()
