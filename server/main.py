@@ -73,8 +73,16 @@ def get_user_data(user_id: str):
     if os.path.exists(cache_path):
         try:
             print(f"[DEBUG] Restaurando sesión desde disco para {user_id}")
-            df = pd.read_pickle(cache_path)
-            data_store[user_id] = {"type": "file", "data": df}
+            # Cargar el objeto (ahora puede ser un dict de DFs)
+            stored_data = pd.read_pickle(cache_path)
+            
+            # Migración: Si lo que hay en el pkl es un DataFrame directo (viejas sesiones), 
+            # lo convertimos al nuevo formato de diccionario de tablas.
+            if isinstance(stored_data, pd.DataFrame):
+                data_store[user_id] = {"type": "file", "data": {"dataset_1": stored_data}}
+            else:
+                data_store[user_id] = {"type": stored_data.get("type", "file"), "data": stored_data.get("data", {})}
+                
             return data_store[user_id]
         except Exception as e:
             print(f"Error restaurando sesión: {e}")
@@ -110,16 +118,31 @@ async def upload_file(user_id: str = Form(...), file: UploadFile = File(...)):
         
         try:
             df = load_file_data(file_location)
-            data_store[user_id] = {"type": "file", "data": df}
             
-            # Persistir en disco
-            df.to_pickle(get_session_file(user_id))
+            # Obtener datos existentes o crear nuevos
+            session_data = get_user_data(user_id) or {"type": "file", "data": {}}
+            
+            # Limpiar nombre de archivo para usar como llave
+            safe_filename = "".join([c if c.isalnum() else "_" for c in file.filename.split('.')[0]])
+            
+            # Agregar el nuevo DF a la colección
+            if session_data["type"] == "file":
+                session_data["data"][safe_filename] = df
+            else:
+                session_data = {"type": "file", "data": {safe_filename: df}}
+            
+            data_store[user_id] = session_data
+            
+            # Persistir colección completa
+            pd.to_pickle(session_data, get_session_file(user_id))
             
             return {
                 "filename": file.filename,
+                "table_key": safe_filename,
                 "columns": df.columns.tolist(),
                 "rows": len(df),
-                "message": "Archivo cargado con éxito y persistido"
+                "total_tables": len(session_data["data"]),
+                "message": f"Archivo '{file.filename}' añadido con éxito"
             }
         finally:
             if os.path.exists(file_location):
@@ -157,16 +180,25 @@ async def connect_gsheets(user_id: str = Form(...), url: str = Form(...)):
         if df is None:
             raise Exception("URL de Google Sheets no válida o no pública.")
             
-        data_store[user_id] = {"type": "file", "data": df}
+        session_data = get_user_data(user_id) or {"type": "file", "data": {}}
+        sheet_key = f"gsheet_{len(session_data.get('data', {})) + 1}"
         
-        # PERSISTENCIA: Muy importante para que funcione en PC y Celular
-        df.to_pickle(get_session_file(user_id))
-        print(f"[DEBUG] Google Sheets persistido para {user_id}")
+        if session_data["type"] == "file":
+            session_data["data"][sheet_key] = df
+        else:
+            session_data = {"type": "file", "data": {sheet_key: df}}
+            
+        data_store[user_id] = session_data
+        
+        # PERSISTENCIA
+        pd.to_pickle(session_data, get_session_file(user_id))
         
         return {
             "filename": "Google Sheet",
+            "table_key": sheet_key,
             "columns": df.columns.tolist(),
             "rows": len(df),
+            "total_tables": len(session_data["data"]),
             "message": "Google Sheet conectado con éxito"
         }
     except Exception as e:
@@ -188,26 +220,31 @@ async def analyze(
     check_authorization(user_id)
     session_data = get_user_data(user_id)
     if not session_data:
-        raise HTTPException(status_code=400, detail="No hay datos cargados para analizar. Por favor, sube tu archivo de nuevo.")
-    
-    logger.info(f"Analyze request. Provider: {provider}. Mistral Key Present: {bool(mistral_key)}")
-    if mistral_key:
-        logger.info(f"Mistral Key (first 4): {mistral_key[:4]}...")
+        raise HTTPException(status_code=400, detail="No hay datos cargados para analizar.")
     
     try:
         # Determinar contexto según el modo
         if session_data["type"] == "file":
-            context = session_data["data"]
-            data_var = "df"
+            # Si hay múltiples tablas, enviamos un resumen de todas
+            all_dfs = session_data["data"]
+            context = {}
+            for name, df in all_dfs.items():
+                context[name] = {
+                    "columns": df.columns.tolist(),
+                    "sample": df.head(3).to_dict()
+                }
+            data_var = "dfs" # Cambiamos de 'df' a 'dfs' (diccionario)
+            context_to_send = context
         else:
-            context = session_data["schema"]
+            context_to_send = session_data["schema"]
             data_var = "engine"
 
-        # 1. Obtener código de Gemini o Mistral
-        raw_response = analyze_data(context, query, api_key, mode=session_data["type"], provider=provider or "gemini", mistral_key=mistral_key)
+        # 1. Obtener código de la IA
+        raw_response = analyze_data(context_to_send, query, api_key, mode=session_data["type"], provider=provider or "gemini", mistral_key=mistral_key)
         
-        # 2. Ejecutar análisis
-        output_text, fig = execute_analysis(session_data["data"], raw_response, data_var)
+        # 2. Ejecutar análisis (el executor recibirá el dict de DFs si es modo file)
+        execution_context = session_data["data"] if session_data["type"] == "file" else session_data["data"]
+        output_text, fig = execute_analysis(execution_context, raw_response, data_var)
         
         # Convertir figura de Plotly a JSON para el frontend
         fig_json = None

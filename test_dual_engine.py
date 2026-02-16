@@ -16,8 +16,8 @@ def test_dual_thinking():
 
     print("--- INICIANDO TEST DE PENSAMIENTO DUAL ---")
     
-    # 1. Cargar datos
-    df = pd.read_csv('j:/Automatizaciones/BI/BD PRUEBA.csv')
+    # 1. Cargar datos (Usando archivo de prueba local)
+    df = pd.read_csv('test_data.csv')
     query = "¿Cuál es el ticket promedio (total_order) de los pedidos ENTREGADOS?"
     
     print(f"Pregunta: {query}")
@@ -33,9 +33,9 @@ def test_dual_thinking():
     print(final_text)
     
     if fig:
-        print("\n✅ Gráfico generado correctamente.")
+        print("\n[OK] Gráfico generado correctamente.")
     else:
-        print("\n❌ No se generó gráfico.")
+        print("\n[ERROR] No se generó gráfico.")
 
 if __name__ == "__main__":
     test_dual_thinking()

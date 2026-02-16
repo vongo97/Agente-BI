@@ -5,15 +5,22 @@ import sys
 from io import StringIO
 import re
 import logging
+logger = logging.getLogger(__name__)
 import os
+
+# Nuevos módulos refactorizados
+from . import prompts
+from . import executor
+
 # Compatibilidad con mistralai >= 1.0.0
 try:
     from mistralai import Mistral
 except ImportError:
-    # Fallback para versiones anteriores si fuera necesario, pero apuntamos a la nueva
-    from mistralai.client import MistralClient as Mistral 
-
-logger = logging.getLogger(__name__)
+    try:
+        from mistralai.client import MistralClient as Mistral 
+    except ImportError:
+        Mistral = None
+        logger.warning("Mistralai no está instalado. El proveedor 'mistral' y 'hybrid' no funcionarán.")
 
 def validate_api_key(api_key, provider="gemini"):
     """
@@ -110,33 +117,27 @@ def analyze_data(data_context, query, api_key, chat_history=[], mode="file", pro
     try:
         # --- PASO 1: GENERACIÓN DE CÓDIGO Y DATOS REALES (EL INGENIERO) ---
         if mode == "file":
-            df = data_context
-            # Muestra más significativa para que la IA entienda el tipo de datos
-            context_str = f"Columns: {df.columns.tolist()}\nTotal Rows: {df.shape[0]}\nSample Data (First 5 rows):\n{df.head(5).to_string()}"
-            data_var = "df"
+            # Caso Multinivel / Multitabla
+            if isinstance(data_context, dict):
+                context_str = "TABLAS DISPONIBLES:\n"
+                for name, info in data_context.items():
+                    context_str += f"- Tabla '{name}': Columnas {info['columns']}\n"
+                    context_str += f"  Muestra: {info['sample']}\n\n"
+                data_var = "dfs"
+            else:
+                # Caso tradicional (Single DataFrame)
+                df = data_context
+                context_str = f"Columns: {df.columns.tolist()}\nTotal Rows: {df.shape[0]}\nSample Data (First 5 rows):\n{df.head(5).to_string()}"
+                data_var = "df"
         else:
             context_str = f"Schema: {data_context}"
             data_var = "engine"
 
-        code_prompt = f"""
-        Actúa como un Ingeniero de Datos Senior. Tu objetivo es extraer DATOS PRECISOS de la variable `{data_var}` para responder: "{query}".
-        
-        REGLAS DE ORO (OBLIGATORIAS):
-        1. CÁLCULO REAL: No teorices. Usa Pandas para agrupar, sumar o promediar los datos reales. 
-        2. IMPRESIÓN DE DATOS: Usa `print()` para mostrar los resultados numéricos de tus cálculos. 
-           Si calculas un ranking, haz `print(ranking_df)`. Si calculas un total, haz `print(f'Total: {{valor}}')`.
-           SIN ESTA IMPRESIÓN, EL ANALISTA NO PODRÁ ESCRIBIR EL REPORTE.
-        
-        DISEÑO DEL GRÁFICO:
-        - Genera SIEMPRE un objeto `fig` con Plotly Express.
-        - Usa `template='plotly_dark'`.
-        - Minimalismo: `fig.update_layout(showlegend=False)` si solo hay una serie.
-        
-        Contexto del esquema:
-        {context_str}
-        
-        Genera solo el bloque de código entre triple comilla invertida.
-        """
+        code_prompt = prompts.ENGINEER_PROMPT_TEMPLATE.format(
+            data_var=data_var,
+            query=query,
+            context_str=context_str
+        )
         
         # El Ingeniero genera el código
         code_response = generate_ai_content(code_prompt, engineer_key, engineer_provider)
@@ -149,18 +150,14 @@ def analyze_data(data_context, query, api_key, chat_history=[], mode="file", pro
             code_to_run = code_match.group(1).replace(".show()", "")
             fig_code = f"```python\n{code_to_run}\n```"
             
-            # Ejecución interna para capturar números
-            old_stdout = sys.stdout
-            redirected_output = sys.stdout = StringIO()
-            # Importante: Pasar el mismo dict como globals y locals para que las funciones internas vean las globales (ej. 'pd')
-            exec_globals = {data_var: data_context, 'pd': pd, 'px': px, 'np': __import__('numpy')}
-            try:
-                exec(code_to_run, exec_globals, exec_globals)
-                real_results = redirected_output.getvalue().strip() or "Cálculo ejecutado con éxito."
-            except Exception as e:
-                real_results = f"Error en ejecución: {e}"
-            finally:
-                sys.stdout = old_stdout
+            # Ejecución interna para capturar números usando el nuevo executor
+            # Nota: analyze_data captura resultados para el Estratega
+            temp_text, _ = executor.execute_analysis(data_context, code_response, data_var)
+            # Extraer solo la parte de "Detalles técnicos" (stdout) si existe
+            if "---" in temp_text:
+                real_results = temp_text.split("---")[-1].strip()
+            else:
+                real_results = temp_text or "Cálculo ejecutado."
 
         # --- PASO 2: GENERACIÓN DE NARRATIVA ESTRATÉGICA (EL ESTRATEGA) ---
         history_str = ""
@@ -168,21 +165,12 @@ def analyze_data(data_context, query, api_key, chat_history=[], mode="file", pro
             role = "Usuario" if msg["role"] == "user" else "Agente"
             history_str += f"{role}: {msg['content']}\n"
 
-        narrative_prompt = f"""
-        Eres un Socio de Consultoría Estratégica Senior. Escribe un informe sobre: "{query}".
-        
-        DATOS REALES VERIFICADOS (Calculados por el equipo de ingeniería):
-        {real_results}
-        
-        INSTRUCCIONES:
-        1. NO inventes cifras. Basate EXCLUSIVAMENTE en los DATOS REALES arriba indicados.
-        2. Estructura: ## Título Impactante, ### Análisis Profundo, ### Recomendaciones Accionables.
-        3. Formato: Doble salto de línea, negritas en cifras y listas con viñetas.
-        4. TONO: { 'Estratégico, directo y sofisticado (Estilo Mistral/McKinsey)' if strategist_provider == 'mistral' else 'Analítico y claro' }.
-        
-        Muestra del esquema para contexto adicional:
-        {context_str}
-        """
+        narrative_prompt = prompts.STRATEGIST_PROMPT_TEMPLATE.format(
+            query=query,
+            real_results=real_results,
+            tone_style='Estratégico, directo y sofisticado (Estilo Mistral/McKinsey)' if strategist_provider == 'mistral' else 'Analítico y claro',
+            context_str=context_str
+        )
         
         # El Estratega genera la narrativa
         final_narrative = generate_ai_content(narrative_prompt, strategist_key, strategist_provider)
@@ -211,21 +199,10 @@ def generate_report_narrative(data_context, query, api_key, mode="file", model_n
         else:
             context_str = f"Schema: {data_context}"
 
-        prompt = f"""
-        Como un Consultor Estratégico Senior, genera un Informe Ejecutivo basado en esta consulta: "{query}".
-        
-        Contexto de datos:
-        {context_str}
-        
-        El informe debe ser profesional, formal y estructurado. Debe incluir:
-        1. **Resumen Ejecutivo**: Un párrafo de alto nivel.
-        2. **Análisis del 'Por Qué'**: Explica posibles causas o lógica de negocio detrás de los números (usa fórmulas si es necesario).
-        3. **Implicaciones**: Qué significan estos resultados para el futuro del negocio.
-        4. **Recomendaciones Estratégicas**: 3 acciones concretas.
-        
-        IMPORTANTE: No uses código Python aquí. Solo texto narrativo de alta calidad empresarial. 
-        Usa un tono persuasivo y experto.
-        """
+        prompt = prompts.EXECUTIVE_REPORT_PROMPT.format(
+            query=query,
+            context_str=context_str
+        )
         
         response = model.generate_content(prompt)
         return response.text
@@ -234,43 +211,9 @@ def generate_report_narrative(data_context, query, api_key, mode="file", model_n
 
 def execute_analysis(context_obj, raw_response, var_name):
     """
-    Ejecuta el código generado y devuelve la narrativa del asistente + el objeto gráfico.
-    Separamos el texto de la respuesta (IA) del código a ejecutar.
+    Proxy para el nuevo módulo executor.
     """
-    # 1. Separar narrativa de código
-    narrative = re.sub(r"```python\n(.*?)```", "", raw_response, flags=re.DOTALL).strip()
-    code_match = re.search(r"```python\n(.*?)```", raw_response, re.DOTALL)
-    
-    if not code_match:
-        return narrative, None
-
-    # 2. Ejecutar código para obtener el gráfico
-    clean_code = code_match.group(1).replace(".show()", "")
-    
-    # Capturar salida del código (por si la IA insiste en print, pero priorizamos la narrativa)
-    old_stdout = sys.stdout
-    redirected_output = sys.stdout = StringIO()
-    
-    exec_globals = {var_name: context_obj, 'pd': pd, 'px': px, 'np': __import__('numpy'), 'json': __import__('json')}
-    
-    try:
-        exec(clean_code, exec_globals, exec_globals)
-        code_stdout = redirected_output.getvalue().strip()
-        fig = exec_globals.get('fig', None)
-        
-        # Si el código generó texto (print), lo añadimos al final de la narrativa como "Detalles técnicos"
-        # pero de forma sutil
-        final_text = narrative
-        if code_stdout:
-            # Si el stdout contiene basura técnica, lo ignoramos mejor
-            if not any(x in code_stdout.lower() for x in ["<class", "dtype:", "memory usage"]):
-                final_text += f"\n\n---\n{code_stdout}"
-        
-        sys.stdout = old_stdout
-        return final_text, fig
-    except Exception as e:
-        sys.stdout = old_stdout
-        return f"### ⚠️ Error en el Procesamiento\nHubo un problema ejecutando el análisis lógico solicitado.\n\n*Detalle técnico: {e}*", None
+    return executor.execute_analysis(context_obj, raw_response, var_name)
 
 def detect_anomalies_hybrid(df: pd.DataFrame, api_key: str):
     """
@@ -304,22 +247,11 @@ def detect_anomalies_hybrid(df: pd.DataFrame, api_key: str):
         genai.configure(api_key=api_key)
         model = genai.GenerativeModel("gemini-2.5-flash")
         
-        prompt = f"""
-        Actúa como un Auditor de Datos Senior. He realizado un análisis estadístico sobre un dataset y estos son los hallazgos:
-        
-        {findings_str}
-        
-        Información del Dataset:
-        Columnas: {df.columns.tolist()}
-        Muestra de Datos: {df.head(5).to_dict()}
-        
-        Tu tarea:
-        1. Evalúa la criticidad de estos hallazgos (Baja, Media, Alta).
-        2. Explica racionalmente por qué estos "outliers" podrían ser importantes para el negocio.
-        3. Si no hay anomalías, felicita al usuario por la consistencia de sus datos y menciona una tendencia positiva que veas en la muestra.
-        
-        Formato: Usa Markdown con emojis. Sé directo y profesional.
-        """
+        prompt = prompts.ANOMALY_AUDITOR_PROMPT.format(
+            findings_str=findings_str,
+            columns=df.columns.tolist(),
+            sample=df.head(5).to_dict()
+        )
         
         response = model.generate_content(prompt)
         return response.text
@@ -341,17 +273,9 @@ def suggest_questions(data_context, api_key, mode="file", provider="gemini", mis
         else:
             context_str = f"Schema: {data_context}"
 
-        prompt = f"""
-        Como un Consultor Senior de BI, analiza este esquema de datos y propón las 3 preguntas más críticas que un dueño de negocio debería hacerse para obtener valor inmediato.
-        
-        Esquema: {context_str}
-        
-        REGLAS:
-        1. Las preguntas deben ser profundas, no solo descriptivas.
-        2. Deben poder responderse con un análisis de datos o gráfico.
-        3. Devuelve SOLO una lista de Python con los 3 strings de las preguntas. Ejemplo: ["¿Cuál es el canal con mayor ROI?", "...", "..."]
-        4. No uses bloques de código, solo la lista directa.
-        """
+        prompt = prompts.BI_SUGGESTIONS_PROMPT.format(
+            context_str=context_str
+        )
         
         # Usar el provider seleccionado
         response_text = generate_ai_content(prompt, effective_key, provider, mistral_key)
@@ -398,29 +322,9 @@ def ai_data_cleaner(df: pd.DataFrame, api_key: str, model_name: str = "gemini-2.
         genai.configure(api_key=api_key)
         model = genai.GenerativeModel(model_name)
 
-        prompt = f"""
-        Actúa como un Experto en Data Cleaning con Pandas.
-        Analiza este perfil de dataset y genera un script de limpieza.
-
-        PERFIL:
-        {profile_str}
-
-        TU MISIÓN:
-        Genera código Python (Pandas) para:
-        1. Estandarizar nombres de columnas (snake_case).
-        2. Manejar nulos (imputar o rellenar con sentido común).
-        3. Eliminar duplicados.
-        4. Corregir tipos de datos (especialmente fechas y números almacenados como texto).
-        5. Crea una variable 'clean_summary' (string multilínea) que explique brevemente qué se limpió.
-
-        REGLAS CRÍTICAS:
-        - El dataframe YA EXISTE y se llama 'df'. **NO LO RE-CREES**. No uses `pd.DataFrame(...)` con la muestra.
-        - Solo aplica transformaciones al objeto 'df' existente (ej: `df['col'] = ...`).
-        - Devuelve SOLO el código dentro de un bloque ```python.
-        - No borres columnas a menos que estén 100% vacías.
-        - Si el usuario tiene 1000 filas, al final del script 'df' DEBE seguir teniendo las mismas (o menos solo si hubo duplicados).
-        - No uses `df.head()` o similares para limitar el resultado.
-        """
+        prompt = prompts.DATA_CLEANER_PROMPT.format(
+            profile_str=profile_str
+        )
 
         response = model.generate_content(prompt)
         code_match = re.search(r"```python\n(.*?)\n```", response.text, re.DOTALL)
@@ -430,25 +334,8 @@ def ai_data_cleaner(df: pd.DataFrame, api_key: str, model_name: str = "gemini-2.
         else:
             code = code_match.group(1)
 
-        # 3. Ejecución segura
-        # Preparamos el entorno para exec
-        import pandas as pd
-        initial_rows = len(df)
-        namespace = {"df": df.copy(), "pd": pd, "np": __import__('numpy')}
-        
-        print(f"[DEBUG] Ejecutando código de limpieza generado:\n{code}")
-        
-        exec(code, namespace)
-        
-        cleaned_df = namespace.get("df")
-        
-        # Guardas de seguridad: Si el código de la IA borró casi todo por error, revertimos
-        if len(cleaned_df) < initial_rows and len(cleaned_df) <= 5 and initial_rows > 10:
-            print(f"[WARNING] Limpieza sospechosa: de {initial_rows} a {len(cleaned_df)} filas. Revirtiendo.")
-            return df, "Error: La IA intentó truncar los datos erróneamente. Se han mantenido los datos originales por seguridad."
-
-        summary = namespace.get("clean_summary", "Limpieza relámpago completada.")
-        
+        # 3. Ejecución segura usando el nuevo executor
+        cleaned_df, summary = executor.safe_exec_cleaning(df, code)
         return cleaned_df, summary
 
     except Exception as e:
@@ -483,25 +370,10 @@ def generate_auto_dashboard(df, api_key, provider="gemini", mistral_key=None):
         logger.info(f"Data context prepared. Rows: {len(df)}")
 
         # 2. Pedir ideas de gráficos (cantidad dinámica pero siempre al menos 2)
-        planning_prompt = f"""
-        Eres un Experto en Business Intelligence. Tienes este dataset:
-        {info_str}
-        Muestra:
-        {head_str}
-
-        Tu tarea: Diseñar entre 2 y 4 gráficos para un Dashboard Ejecutivo.
-        
-        REGLAS:
-        - SIEMPRE genera mínimo 2 gráficos
-        - Si los datos son ricos, genera hasta 4
-        - Deben ser variados (barras, líneas, tortas, etc.)
-        
-        Responde SOLO con un JSON array, formato:
-        [
-            {{ "title": "Título", "query": "Descripción del gráfico" }},
-            {{ "title": "Título 2", "query": "Descripción del gráfico 2" }}
-        ]
-        """
+        planning_prompt = prompts.DASHBOARD_PLANNER_PROMPT.format(
+            info_str=info_str,
+            head_str=head_str
+        )
         
         logger.info(f"Requesting dynamic plan from {provider}...")
         plan_response = generate_ai_content(planning_prompt, effective_key, provider)
@@ -538,18 +410,9 @@ def generate_auto_dashboard(df, api_key, provider="gemini", mistral_key=None):
             title = item["title"]
             logger.info(f"Generating Item {idx+1}: {title}...")
             
-            code_prompt = f"""
-            Genera código Python para crear un gráfico Plotly Express (`fig`) que responda: "{query}".
-            Usa el dataframe `df`.
-            
-            IMPORTANTE:
-            - La variable del dataframe es `df`.
-            - Crea la figura en la variable `fig`.
-            - Usa `template='plotly_dark'`.
-            - NO hagas `fig.show()`.
-            - Al final, convierte a JSON: `fig_json = fig.to_json()`
-            - Solo imprime el JSON final: `print(fig_json)`
-            """
+            code_prompt = prompts.DASHBOARD_GRAPH_CODE_PROMPT.format(
+                query=query
+            )
             
             try:
                 code_resp = generate_ai_content(code_prompt, effective_key, provider)
