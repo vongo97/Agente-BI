@@ -9,9 +9,12 @@ DB_URL = os.getenv("DATABASE_URL", "sqlite:///./bi_agent.db")
 
 # Limpieza básica (quitar psql command, espacios o comillas accidentales)
 if DB_URL:
-    DB_URL = DB_URL.strip().strip('"').strip("'")
+    # Eliminar saltos de línea y espacios accidentales (común al copiar de terminales)
+    DB_URL = DB_URL.replace("\n", "").replace("\r", "").strip().strip('"').strip("'")
     if DB_URL.startswith("psql "):
         DB_URL = DB_URL.replace("psql ", "", 1).strip().strip("'").strip('"')
+    # Eliminar espacios internos que puedan romper SQLAlchemy
+    DB_URL = DB_URL.replace(" ", "")
 
 # Debugging (con máscara para seguridad)
 def mask_url(url):
