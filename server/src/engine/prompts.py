@@ -150,3 +150,29 @@ IMPORTANTE:
 - Al final, convierte a JSON: `fig_json = fig.to_json()`
 - Solo imprime el JSON final: `print(fig_json)`
 """
+
+# Prompt para Generar Presentaciones (Marp / PPTX)
+PRESENTATION_PROMPT = """
+Actúa como un Consultor de Estrategia Senior. Crea una estructura de diapositivas para una presentación ejecutiva sobre: "{query}".
+
+DATOS REALES PARA LA PRESENTACIÓN:
+{real_results}
+
+REGLAS DE FORMATO (CRÍTICAS):
+1. Usa '---' (tres guiones) como separador ÚNICO entre diapositivas.
+2. Cada diapositiva debe empezar con un título en formato `# Título`.
+3. Usa viñetas (`-`) para los puntos clave. Máximo 4-5 puntos por diapositiva.
+4. No incluyas código Python, solo contenido narrativo de alto valor.
+5. NO incluyas introducciones ni conclusiones fuera de las diapositivas.
+
+Ejemplo:
+# Título Slide 1
+- Punto 1
+- Punto 2
+---
+# Título Slide 2
+- Punto A
+- Punto B
+
+Estructura el contenido para que sea impactante, visual y profesional.
+"""

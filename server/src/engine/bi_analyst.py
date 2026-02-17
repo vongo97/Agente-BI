@@ -165,12 +165,21 @@ def analyze_data(data_context, query, api_key, chat_history=[], mode="file", pro
             role = "Usuario" if msg["role"] == "user" else "Agente"
             history_str += f"{role}: {msg['content']}\n"
 
-        narrative_prompt = prompts.STRATEGIST_PROMPT_TEMPLATE.format(
-            query=query,
-            real_results=real_results,
-            tone_style='Estratégico, directo y sofisticado (Estilo Mistral/McKinsey)' if strategist_provider == 'mistral' else 'Analítico y claro',
-            context_str=context_str
-        )
+        # SELECCIÓN DE PROMPT (Análisis vs Presentación)
+        is_presentation = any(word in query.lower() for word in ["presentación", "presentacion", "diapositiva", "slides", "deck"])
+        
+        if is_presentation:
+            narrative_prompt = prompts.PRESENTATION_PROMPT.format(
+                query=query,
+                real_results=real_results
+            )
+        else:
+            narrative_prompt = prompts.STRATEGIST_PROMPT_TEMPLATE.format(
+                query=query,
+                real_results=real_results,
+                tone_style='Estratégico, directo y sofisticado (Estilo Mistral/McKinsey)' if strategist_provider == 'mistral' else 'Analítico y claro',
+                context_str=context_str
+            )
         
         # El Estratega genera la narrativa
         final_narrative = generate_ai_content(narrative_prompt, strategist_key, strategist_provider)
@@ -268,8 +277,14 @@ def suggest_questions(data_context, api_key, mode="file", provider="gemini", mis
     
     try:
         if mode == "file":
-            df = data_context
-            context_str = f"Dataset: {df.columns.tolist()}. Tipos: {df.dtypes.to_dict()}"
+            # Soporte multitabla
+            if isinstance(data_context, dict):
+                context_str = "TABLAS DISPONIBLES:\n"
+                for name, info in data_context.items():
+                    context_str += f"- {name}: {info['columns']}\n"
+            else:
+                df = data_context
+                context_str = f"Dataset: {df.columns.tolist()}. Tipos: {df.dtypes.to_dict()}"
         else:
             context_str = f"Schema: {data_context}"
 

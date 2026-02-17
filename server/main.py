@@ -10,8 +10,9 @@ import json
 # Importar el motor de BI existente
 from src.engine.bi_analyst import analyze_with_gemini, analyze_data, execute_analysis, validate_api_key, suggest_questions, ai_data_cleaner, generate_auto_dashboard
 from src.connectors.data_connectors import load_file_data, load_gsheets_data, get_sql_engine, get_db_schema
-from src.database import init_db, get_db, Chat, Message, DashboardItem
+from src.database import init_db, get_db, Chat, Message, DashboardItem, UserConfig
 from src.utils.exporter import export_plotly_to_image, generate_pdf_report
+from src.engine.pptx_generator import create_presentation
 from sqlalchemy.orm import Session
 from fastapi import Depends, Response
 from fastapi.responses import Response as FAResponse
@@ -96,9 +97,42 @@ async def root():
     return {"status": "online", "message": "BI Agent API is running"}
 
 @app.post("/validate-key")
-async def validate_key(api_key: str = Form(...)):
-    is_valid, error = validate_api_key(api_key)
+async def validate_key(api_key: str = Form(...), provider: str = Form("gemini")):
+    is_valid, error = validate_api_key(api_key, provider=provider)
     return {"valid": is_valid, "error": error}
+
+@app.get("/user-config")
+async def get_user_config(user_id: str, db: Session = Depends(get_db)):
+    check_authorization(user_id)
+    config = db.query(UserConfig).filter(UserConfig.user_id == user_id).first()
+    if not config:
+        return {"gemini_key": "", "mistral_key": "", "gamma_key": ""}
+    return {
+        "gemini_key": config.gemini_key,
+        "mistral_key": config.mistral_key,
+        "gamma_key": config.gamma_key
+    }
+
+@app.post("/user-config")
+async def set_user_config(
+    user_id: str = Form(...),
+    gemini_key: Optional[str] = Form(None),
+    mistral_key: Optional[str] = Form(None),
+    gamma_key: Optional[str] = Form(None),
+    db: Session = Depends(get_db)
+):
+    check_authorization(user_id)
+    config = db.query(UserConfig).filter(UserConfig.user_id == user_id).first()
+    if not config:
+        config = UserConfig(user_id=user_id)
+        db.add(config)
+    
+    if gemini_key is not None: config.gemini_key = gemini_key
+    if mistral_key is not None: config.mistral_key = mistral_key
+    if gamma_key is not None: config.gamma_key = gamma_key
+    
+    db.commit()
+    return {"message": "Configuración guardada correctamente"}
 
 @app.post("/upload")
 async def upload_file(user_id: str = Form(...), file: UploadFile = File(...)):
@@ -218,6 +252,19 @@ async def analyze(
     db: Session = Depends(get_db)
 ):
     check_authorization(user_id)
+    
+    # --- FILTRO DE SALUDOS ("HOLA") ---
+    greetings = ["hola", "hi", "hey", "buenos dias", "buenas tardes", "buenas noches", "que tal", "como estas"]
+    clean_query = query.lower().strip().replace("!", "").replace("?", "")
+    if clean_query in greetings:
+        return {
+            "chat_id": None,
+            "message_id": None,
+            "analysis": f"¡Hola! 👋 Soy tu Analista BI. Estoy listo para ayudarte a descubrir insights en tus datos. ¿Qué quieres analizar hoy?\n\n*Puedes preguntarme sobre tendencias, anomalías o pedirme que cree una presentación.*",
+            "figure": None,
+            "code": "# Saludo detectado"
+        }
+
     session_data = get_user_data(user_id)
     if not session_data:
         raise HTTPException(status_code=400, detail="No hay datos cargados para analizar.")
@@ -387,6 +434,35 @@ async def export_pdf_report(chat_id: int, user_id: str, db: Session = Depends(ge
         content=bytes(pdf_bytes), 
         media_type="application/pdf",
         headers={"Content-Disposition": f"attachment; filename=reporte_bi_{chat_id}.pdf"}
+    )
+
+@app.post("/export-pptx")
+async def export_pptx(data: dict):
+    content = data.get("content")
+    if not content:
+        raise HTTPException(status_code=400, detail="Contenido no proporcionado")
+    
+    # Crear archivo temporal
+    import tempfile
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".pptx") as tmp:
+        temp_path = tmp.name
+    
+    success, result = create_presentation(content, temp_path)
+    
+    if not success:
+        if os.path.exists(temp_path): os.remove(temp_path)
+        raise HTTPException(status_code=500, detail=f"Error generando PPTX: {result}")
+
+    with open(temp_path, "rb") as f:
+        file_bytes = f.read()
+    
+    os.remove(temp_path) # Limpiar
+    
+    filename = f"presentacion_bi_{int(os.path.getmtime(__file__))}.pptx"
+    return Response(
+        content=file_bytes,
+        media_type="application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        headers={"Content-Disposition": f"attachment; filename={filename}"}
     )
 
 # --- ENDPOINTS DE DASHBOARD ---

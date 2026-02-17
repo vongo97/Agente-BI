@@ -59,6 +59,14 @@ class Message(Base):
     chat = relationship("Chat", back_populates="messages")
     dashboard_item = relationship("DashboardItem", back_populates="message", uselist=False)
 
+class UserConfig(Base):
+    __tablename__ = "user_configs"
+    user_id = Column(String, primary_key=True, index=True) # Email del usuario
+    gemini_key = Column(String, nullable=True)
+    mistral_key = Column(String, nullable=True)
+    gamma_key = Column(String, nullable=True)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
 class DashboardItem(Base):
     __tablename__ = "dashboard_items"
     id = Column(Integer, primary_key=True, index=True)
