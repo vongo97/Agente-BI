@@ -7,9 +7,11 @@ import os
 # Configuración de la base de datos
 DB_URL = os.getenv("DATABASE_URL", "sqlite:///./bi_agent.db")
 
-# Limpieza básica (quitar espacios o comillas accidentales)
+# Limpieza básica (quitar psql command, espacios o comillas accidentales)
 if DB_URL:
     DB_URL = DB_URL.strip().strip('"').strip("'")
+    if DB_URL.startswith("psql "):
+        DB_URL = DB_URL.replace("psql ", "", 1).strip().strip("'").strip('"')
 
 # Debugging (con máscara para seguridad)
 def mask_url(url):
