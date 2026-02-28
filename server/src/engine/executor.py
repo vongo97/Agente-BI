@@ -25,10 +25,18 @@ def execute_analysis(context_obj, raw_response, var_name):
 
     # --- SEGURIDAD: Sandboxing ---
     # Bloquear palabras clave peligrosas antes de la ejecución
-    forbidden = ["os.", "subprocess", "shutil", "open(", "eval(", "exec(", "getattr", "setattr", "delattr", "socket", "requests"]
+    
+    # 1. Limpiar el código por si la IA añade comentarios descriptivos con palabras prohibidas
+    code_to_check = re.sub(r'#.*', '', clean_code)
+    
+    forbidden = ["import ", "os.", "sys.", "subprocess", "shutil", "open(", "eval(", "exec(", "getattr", "setattr", "delattr", "socket", "requests"]
     for word in forbidden:
-        if word in clean_code:
-            logger.warning(f"Intento de ejecución de código prohibido detectado: {word}")
+        if word in code_to_check:
+            logger.warning(f"BLOCKED CODE ATTEMPT: '{word}' found in generated code.")
+            # Loguear el código completo para auditoría
+            with open("security_blocks.log", "a", encoding="utf-8") as f:
+                f.write(f"\n--- BLOCKED {word} ---\n{clean_code}\n-------------------\n")
+                
             return f"### 🛡️ Bloqueo de Seguridad\nSe detectó una operación no permitida (`{word}`) en el código generado. El análisis ha sido abortado por seguridad.", None
 
     # 2. Ejecutar código para obtener el gráfico
@@ -94,10 +102,14 @@ def safe_exec_cleaning(df, code):
     """
     Ejecutor especializado para tareas de limpieza de datos con sandbox.
     """
+    # 1. Limpiar el código por si la IA añade comentarios descriptivos
+    code_to_check = re.sub(r'#.*', '', code)
+    
     # Verificación de seguridad rápida
-    forbidden = ["os.", "subprocess", "open(", "eval(", "exec("]
+    forbidden = ["import ", "os.", "sys.", "subprocess", "open(", "eval(", "exec("]
     for word in forbidden:
-        if word in code:
+        if word in code_to_check:
+             logger.warning(f"BLOCKED CLEANING CODE ATTEMPT: '{word}'")
              return df, f"Error: Código de limpieza bloqueado por seguridad (palabra '{word}' prohibida)."
 
     initial_rows = len(df)
