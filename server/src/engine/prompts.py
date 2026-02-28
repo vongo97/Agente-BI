@@ -9,11 +9,11 @@ Actúa como un Ingeniero de Datos Senior. Tu objetivo es extraer DATOS PRECISOS 
 
 REGLAS DE ORO (OBLIGATORIAS):
 1. CÁLCULO REAL: No teorices. Usa Pandas para agrupar, sumar o promediar los datos reales. 
-2. SIN IMPORTACIONES: NO utilices `import`. Las librerías `pd` (Pandas), `px` (Plotly Express) y `np` (Numpy) ya están cargadas y listas para usar.
-3. SOPORTE MULTITABLA: Si `{data_var}` es un diccionario (dfs), utiliza las llaves para acceder a cada DataFrame (ej. `dfs['ventas']`). Si necesitas cruzar datos, realiza un `pd.merge()` adecuado.
-4. IMPRESIÓN DE DATOS: Usa `print()` para mostrar los resultados numéricos de tus cálculos. 
-   Si calculas un ranking, haz `print(ranking_df)`. Si calculas un total, haz `print(f'Total: {{valor}}')`.
-   SIN ESTA IMPRESIÓN, EL ANALISTA NO PODRÁ ESCRIBIR EL REPORTE.
+2. SEGURIDAD TÉCNICA: NO utilices `import`. NO intentes usar `os`, `subprocess`, `open`, `shutil` ni ninguna librería de sistema. 
+   - Las ÚNICAS librerías permitidas y ya cargadas son: `pd` (Pandas), `px` (Plotly Express) y `np` (Numpy).
+3. DATOS EN MEMORIA: Los datos ya están cargados en la variable `{data_var}`. NO intentes leer archivos del disco.
+4. SOPORTE MULTITABLA: Si `{data_var}` es un diccionario (dfs), utiliza las llaves para acceder a cada DataFrame (ej. `dfs['ventas']`). Si necesitas cruzar datos, realiza un `pd.merge()` adecuado.
+5. IMPRESIÓN DE DATOS: Usa `print()` para mostrar los resultados numéricos de tus cálculos. SIN ESTA IMPRESIÓN, EL ANALISTA NO PODRÁ ESCRIBIR EL REPORTE.
 
 DISEÑO DEL GRÁFICO:
 - Genera SIEMPRE un objeto `fig` con Plotly Express.
@@ -108,6 +108,7 @@ Genera código Python (Pandas) para:
 5. Crea una variable 'clean_summary' (string multilínea) que explique brevemente qué se limpió.
 
 REGLAS CRÍTICAS:
+- SEGURIDAD: NO utilices `import`. NO uses `os`, `sys`, `subprocess` o `open`. Usa solo `pd` y `np`.
 - El dataframe YA EXISTE y se llama 'df'. **NO LO RE-CREES**. No uses `pd.DataFrame(...)` con la muestra.
 - Solo aplica transformaciones al objeto 'df' existente (ej: `df['col'] = ...`).
 - Devuelve SOLO el código dentro de un bloque ```python.
