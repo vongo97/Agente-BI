@@ -29,15 +29,16 @@ def execute_analysis(context_obj, raw_response, var_name):
     # 1. Limpiar el código por si la IA añade comentarios descriptivos con palabras prohibidas
     code_to_check = re.sub(r'#.*', '', clean_code)
     
-    forbidden = ["import ", "os.", "sys.", "subprocess", "shutil", "open(", "eval(", "exec(", "getattr", "setattr", "delattr", "socket", "requests"]
-    for word in forbidden:
-        if word in code_to_check:
-            logger.warning(f"BLOCKED CODE ATTEMPT: '{word}' found in generated code.")
-            # Loguear el código completo para auditoría
-            with open("security_blocks.log", "a", encoding="utf-8") as f:
-                f.write(f"\n--- BLOCKED {word} ---\n{clean_code}\n-------------------\n")
-                
-            return f"### 🛡️ Bloqueo de Seguridad\nSe detectó una operación no permitida (`{word}`) en el código generado. El análisis ha sido abortado por seguridad.", None
+    # RELAJADO TEMPORALMENTE A PETICIÓN DEL USUARIO PARA EVITAR FALSOS POSITIVOS PERSISTENTES
+    # forbidden = ["import ", "os.", "sys.", "subprocess", "shutil", "open(", "eval(", "exec(", "getattr", "setattr", "delattr", "socket", "requests"]
+    # for word in forbidden:
+    #     if word in code_to_check:
+    #         logger.warning(f"BLOCKED CODE ATTEMPT: '{word}' found in generated code.")
+    #         # Loguear el código completo para auditoría
+    #         with open("security_blocks.log", "a", encoding="utf-8") as f:
+    #             f.write(f"\n--- BLOCKED {word} ---\n{clean_code}\n-------------------\n")
+    #             
+    #         return f"### 🛡️ Bloqueo de Seguridad\nSe detectó una operación no permitida (`{word}`) en el código generado. El análisis ha sido abortado por seguridad.", None
 
     # 2. Ejecutar código para obtener el gráfico
     old_stdout = sys.stdout
@@ -105,12 +106,12 @@ def safe_exec_cleaning(df, code):
     # 1. Limpiar el código por si la IA añade comentarios descriptivos
     code_to_check = re.sub(r'#.*', '', code)
     
-    # Verificación de seguridad rápida
-    forbidden = ["import ", "os.", "sys.", "subprocess", "open(", "eval(", "exec("]
-    for word in forbidden:
-        if word in code_to_check:
-             logger.warning(f"BLOCKED CLEANING CODE ATTEMPT: '{word}'")
-             return df, f"Error: Código de limpieza bloqueado por seguridad (palabra '{word}' prohibida)."
+    # Verificación de seguridad rápida (RELAJADA TEMPORALMENTE)
+    # forbidden = ["import ", "os.", "sys.", "subprocess", "open(", "eval(", "exec("]
+    # for word in forbidden:
+    #     if word in code_to_check:
+    #          logger.warning(f"BLOCKED CLEANING CODE ATTEMPT: '{word}'")
+    #          return df, f"Error: Código de limpieza bloqueado por seguridad (palabra '{word}' prohibida)."
 
     initial_rows = len(df)
     

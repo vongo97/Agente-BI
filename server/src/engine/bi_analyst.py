@@ -295,20 +295,28 @@ def suggest_questions(data_context, api_key, mode="file", provider="gemini", mis
         # Usar el provider seleccionado
         response_text = generate_ai_content(prompt, effective_key, provider, mistral_key)
         
-        # Intentar limpiar la respuesta por si la IA añade texto extra
-        text = response_text.replace("```python", "").replace("```", "").strip()
+        # Limpieza robusta
+        # 1. Quitar bloques de código si existen
+        text = re.sub(r'```(?:python|json)?\n?(.*?)\n?```', r'\1', response_text, flags=re.DOTALL).strip()
         
-        # Evaluar de forma segura (fallback si falla la evaluación)
+        # 2. Intentar parsear como lista de Python/JSON
         try:
-            suggestions = eval(text)
+            # Primero intentamos con json por si devolvió un array JSON
+            import json
+            suggestions = json.loads(text)
             if isinstance(suggestions, list):
-                return suggestions[:3]
+                return [str(s) for s in suggestions[:3]]
         except:
-            # Si falla el eval, intentar extraer con regex
-            matches = re.findall(r'"([^"]*)"', text)
-            if matches:
+            pass
+            
+        try:
+            # Luego intentamos con regex para extraer lo que esté entre comillas
+            matches = re.findall(r'["\'](.*?)["\']', text)
+            if len(matches) >= 3:
                 return matches[:3]
-                
+        except:
+            pass
+
         return ["¿Cuál es el resumen general de mis datos?", "¿Cuáles son las métricas clave?", "¿Hay alguna anomalía importante?"]
         
     except Exception as e:
