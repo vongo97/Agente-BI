@@ -58,17 +58,22 @@ def get_safe_environment(var_name=None, context_obj=None):
     Construye un entorno de ejecución (globals) seguro y enriquecido.
     """
     real_import = __import__
+    
     def restricted_import(name, globals=None, locals=None, fromlist=(), level=0):
-        # Mapeamos nombres comunes y paquetes permitidos
-        allowed_prefixes = {
+        # Whitelist de paquetes raíz permitidos
+        allowed_packages = {
             'pandas', 'pd', 'numpy', 'np', 'plotly', 'px', 'json', 're',
             'math', 'datetime', 'collections', 'itertools', 'io', 'six', 'pytz'
         }
-        top_level = name.split('.')[0]
-        if top_level in allowed_prefixes:
+        
+        # Obtenemos el nombre del paquete raíz (e.g., 'plotly' de 'plotly.express')
+        root_package = name.split('.')[0]
+        
+        if root_package in allowed_packages:
             return real_import(name, globals, locals, fromlist, level)
         
-        raise ImportError(f"La librería '{name}' no está permitida. Usa pandas, numpy, plotly, math o datetime.")
+        logger.warning(f"BLOCKED IMPORT ATTEMPT: {name}")
+        raise ImportError(f"La librería '{name}' no está permitida en este entorno. Usa solo las herramientas estándar de BI (Pandas, Plotly, Math, Datetime).")
 
     safe_builtins = {
         'print': print, 'range': range, 'len': len, 'enumerate': enumerate,
@@ -77,7 +82,7 @@ def get_safe_environment(var_name=None, context_obj=None):
         'list': list, 'dict': dict, 'set': set, 'tuple': tuple,
         'sorted': sorted, 'reversed': reversed, 'any': any, 'all': all,
         'isinstance': isinstance, 'type': type, 'hasattr': hasattr,
-        'getattr': getattr, 'dir': dir, 'dict': dict,
+        'getattr': getattr, 'dir': dir,
         'Exception': Exception, 'ValueError': ValueError, 'TypeError': TypeError,
         'StopIteration': StopIteration, 'KeyError': KeyError, 'IndexError': IndexError,
         '__import__': restricted_import
@@ -87,6 +92,7 @@ def get_safe_environment(var_name=None, context_obj=None):
         'pd': pd, 'px': px, 'np': np, 'json': json,
         '__builtins__': safe_builtins
     }
+    
     if var_name:
         env[var_name] = context_obj
     return env
@@ -124,7 +130,7 @@ def execute_analysis(context_obj, raw_response, var_name):
         
         final_text = narrative
         if code_stdout:
-            # Filtramos basura técnica redundante
+            # Filtramos basura técnica redundante o peligrosa
             if not any(x in code_stdout.lower() for x in ["<class", "memory usage", "object at 0x"]):
                 final_text += f"\n\n---\n{code_stdout}"
         
@@ -133,16 +139,23 @@ def execute_analysis(context_obj, raw_response, var_name):
     except KeyError as e:
         key_name = str(e).strip("'")
         available_keys = list(context_obj.keys()) if isinstance(context_obj, dict) else "N/A"
-        if key_name in ["df", "dfs", "dataset"]:
-            return f"### ⚠️ Error de Estructura\nUsa la variable `{var_name}`. Tablas: `{available_keys}`", None
-        return f"### ⚠️ Error de Referencia\nNo existe `{e}` en las tablas: `{available_keys}`", None
+        
+        # Mensaje de ayuda si la IA usa nombres de tablas genéricos o erróneos
+        if key_name in ["df", "dfs", "dataset", "ventas", "data", "table"]:
+            return f"### ⚠️ Error de Estructura\nLa IA intentó acceder a `{key_name}`, pero los datos están en `{var_name}`.\n\n**Tablas disponibles**: `{available_keys}`", None
+            
+        return f"### ⚠️ Error de Referencia\nEl nombre `{key_name}` no existe en las tablas: `{available_keys}`", None
 
     except ImportError as e:
         return f"### 🛡️ Restricción de Librería\n{str(e)}", None
 
     except Exception as e:
         logger.error(f"Execution Error: {e}")
-        return f"### ⚠️ Error de Análisis\n{str(e)}", None
+        # Simplificar mensajes de error complejos de Pandas/Numpy para el usuario
+        err_msg = str(e)
+        if "not found in axis" in err_msg:
+            err_msg = "Una de las columnas mencionadas no existe en el dataset."
+        return f"### ⚠️ Error de Análisis\n{err_msg}", None
     finally:
         sys.stdout = old_stdout
 
