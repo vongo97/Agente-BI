@@ -57,21 +57,17 @@ def get_safe_environment(var_name=None, context_obj=None):
     """
     Construye un entorno de ejecución (globals) seguro y enriquecido.
     """
+    real_import = __import__
     def restricted_import(name, globals=None, locals=None, fromlist=(), level=0):
-        safe_modules = {
-            'pandas': pd, 'pd': pd,
-            'numpy': np, 'np': np,
-            'plotly.express': px, 'px': px,
-            'json': json,
-            're': re,
-            'math': __import__('math'),
-            'datetime': __import__('datetime'),
-            'collections': __import__('collections'),
-            'itertools': __import__('itertools'),
-            'io': __import__('io')
+        # Mapeamos nombres comunes y paquetes permitidos
+        allowed_prefixes = {
+            'pandas', 'pd', 'numpy', 'np', 'plotly', 'px', 'json', 're',
+            'math', 'datetime', 'collections', 'itertools', 'io', 'six', 'pytz'
         }
-        if name in safe_modules:
-            return safe_modules[name]
+        top_level = name.split('.')[0]
+        if top_level in allowed_prefixes:
+            return real_import(name, globals, locals, fromlist, level)
+        
         raise ImportError(f"La librería '{name}' no está permitida. Usa pandas, numpy, plotly, math o datetime.")
 
     safe_builtins = {
