@@ -53,27 +53,59 @@ class SecurityError(Exception):
     """Excepción personalizada para bloqueos de seguridad."""
     pass
 
+class SmartDataContext(dict):
+    """
+    Un diccionario inteligente que permite acceder a tablas mediante alias comunes
+    y proporciona mensajes de error útiles si una tabla no existe.
+    """
+    def __init__(self, data_dict):
+        super().__init__(data_dict)
+        self.raw_data = data_dict
+        # Alias automáticos si solo hay una tabla
+        if len(data_dict) == 1:
+            self.main_key = list(data_dict.keys())[0]
+            self._aliases = {"ventas", "data", "df", "dataset", "table", "resultados"}
+        else:
+            self.main_key = None
+            self._aliases = {}
+
+    def __getitem__(self, key):
+        # 1. Intento de acceso directo
+        if key in self.raw_data:
+            return self.raw_data[key]
+        
+        # 2. Intento vía alias (solo si hay una única tabla principal)
+        if self.main_key and key.lower() in self._aliases:
+            return self.raw_data[self.main_key]
+        
+        # 3. Fallo informativo
+        available = list(self.raw_data.keys())
+        msg = f"No existe la tabla '{key}'. "
+        if self.main_key:
+            msg += f"¿Quisiste decir '{self.main_key}'? (Puedes usar '{key}' como alias)."
+        else:
+            msg += f"Tablas disponibles: {available}"
+        raise KeyError(msg)
+
 def get_safe_environment(var_name=None, context_obj=None):
     """
     Construye un entorno de ejecución (globals) seguro y enriquecido.
     """
     real_import = __import__
     
+    # Envolvemos el contexto en el mapeador inteligente
+    smart_context = SmartDataContext(context_obj) if isinstance(context_obj, dict) else context_obj
+
     def restricted_import(name, globals=None, locals=None, fromlist=(), level=0):
-        # Whitelist de paquetes raíz permitidos
         allowed_packages = {
             'pandas', 'pd', 'numpy', 'np', 'plotly', 'px', 'json', 're',
             'math', 'datetime', 'collections', 'itertools', 'io', 'six', 'pytz'
         }
-        
-        # Obtenemos el nombre del paquete raíz (e.g., 'plotly' de 'plotly.express')
         root_package = name.split('.')[0]
-        
         if root_package in allowed_packages:
             return real_import(name, globals, locals, fromlist, level)
         
-        logger.warning(f"BLOCKED IMPORT ATTEMPT: {name}")
-        raise ImportError(f"La librería '{name}' no está permitida en este entorno. Usa solo las herramientas estándar de BI (Pandas, Plotly, Math, Datetime).")
+        raise ImportError(f"Librería '{name}' bloqueada por seguridad. Usa Pandas, Plotly o Datetime.")
 
     safe_builtins = {
         'print': print, 'range': range, 'len': len, 'enumerate': enumerate,
@@ -94,14 +126,13 @@ def get_safe_environment(var_name=None, context_obj=None):
     }
     
     if var_name:
-        env[var_name] = context_obj
+        env[var_name] = smart_context
     return env
 
 def execute_analysis(context_obj, raw_response, var_name):
     """
-    Ejecuta el código generado en un sandbox AST y devuelve resultados.
+    Ejecuta el código generado en un sandbox AST con Smart Context.
     """
-    # 1. Extraer código
     narrative = re.sub(r"```python\n(.*?)```", "", raw_response, flags=re.DOTALL).strip()
     code_match = re.search(r"```python\n(.*?)```", raw_response, re.DOTALL)
     
@@ -110,14 +141,11 @@ def execute_analysis(context_obj, raw_response, var_name):
 
     clean_code = code_match.group(1).replace(".show()", "")
 
-    # 2. Validar Seguridad AST
     try:
         validate_code_safety(clean_code)
     except (SecurityError, ValueError) as e:
-        logger.warning(f"SANDBOX BLOCK: {e}")
         return f"### 🛡️ Restricción de Seguridad\n{str(e)}", None
 
-    # 3. Preparar Entorno
     old_stdout = sys.stdout
     redirected_output = sys.stdout = StringIO()
     exec_globals = get_safe_environment(var_name, context_obj)
@@ -130,28 +158,21 @@ def execute_analysis(context_obj, raw_response, var_name):
         
         final_text = narrative
         if code_stdout:
-            # Filtramos basura técnica redundante o peligrosa
+            # Filtramos solo si es basura técnica real
             if not any(x in code_stdout.lower() for x in ["<class", "memory usage", "object at 0x"]):
                 final_text += f"\n\n---\n{code_stdout}"
         
         return final_text, fig
 
     except KeyError as e:
-        key_name = str(e).strip("'")
-        available_keys = list(context_obj.keys()) if isinstance(context_obj, dict) else "N/A"
-        
-        # Mensaje de ayuda si la IA usa nombres de tablas genéricos o erróneos
-        if key_name in ["df", "dfs", "dataset", "ventas", "data", "table"]:
-            return f"### ⚠️ Error de Estructura\nLa IA intentó acceder a `{key_name}`, pero los datos están en `{var_name}`.\n\n**Tablas disponibles**: `{available_keys}`", None
-            
-        return f"### ⚠️ Error de Referencia\nEl nombre `{key_name}` no existe en las tablas: `{available_keys}`", None
+        # El SmartDataContext ya nos da un mensaje amigable
+        return f"### ⚠️ Error de Estructura\n{str(e).strip(\"'\")}", None
 
     except ImportError as e:
         return f"### 🛡️ Restricción de Librería\n{str(e)}", None
 
     except Exception as e:
         logger.error(f"Execution Error: {e}")
-        # Simplificar mensajes de error complejos de Pandas/Numpy para el usuario
         err_msg = str(e)
         if "not found in axis" in err_msg:
             err_msg = "Una de las columnas mencionadas no existe en el dataset."
@@ -161,7 +182,7 @@ def execute_analysis(context_obj, raw_response, var_name):
 
 def safe_exec_cleaning(df, code):
     """
-    Ejecutor de limpieza con validación AST.
+    Ejecutor de limpieza con validación AST y Smart Env.
     """
     try:
         validate_code_safety(code)
@@ -176,9 +197,8 @@ def safe_exec_cleaning(df, code):
         cleaned_df = namespace.get("df")
         summary = namespace.get("clean_summary", "Limpieza completada.")
         
-        # Protección contra truncado accidental
         if len(cleaned_df) < initial_rows and len(cleaned_df) <= 5 and initial_rows > 10:
-             return df, "Error: Truncado de datos detectado y revertido."
+             return df, "Error: Truncado de datos detectado."
              
         return cleaned_df, summary
     except Exception as e:

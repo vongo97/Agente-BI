@@ -119,7 +119,7 @@ def analyze_data(data_context, query, api_key, chat_history=[], mode="file", pro
         if mode == "file":
             # Caso Multinivel / Multitabla
             if isinstance(data_context, dict):
-                context_str = "BASE DE DATOS (Variable `dfs`):\n"
+                context_str = "ESTRUCTURA DE DATOS DISPONIBLE (Objeto `dfs`):\n"
                 table_names = list(data_context.keys())
                 for name, obj in data_context.items():
                     if isinstance(obj, pd.DataFrame):
@@ -129,18 +129,19 @@ def analyze_data(data_context, query, api_key, chat_history=[], mode="file", pro
                         cols = obj.get('columns', [])
                         sample = obj.get('sample', {})
                     
-                    # Guía explícita de acceso
-                    context_str += f"- Tabla REAL: '{name}' (Para acceder usa `dfs['{name}']`)\n"
-                    if len(table_names) == 1:
-                        context_str += f"  (Nota: Esta es la tabla principal de '{name}', trátala como tal.)\n"
+                    # Proporcionamos el nombre técnico y sugerimos el alias lógico
+                    context_str += f"- Tabla: '{name}' (Variable: `dfs['{name}']`)\n"
+                    if "venta" in name.lower() or len(table_names) == 1:
+                        context_str += "  [Alias disponible: 'ventas', 'data', 'df']\n"
+                    
                     context_str += f"  Columnas: {cols}\n"
                     context_str += f"  Muestra: {sample}\n\n"
                 
                 data_var = "dfs"
                 
-                # REGLA DE ORO: Si solo hay una tabla, recordarle a la IA que use ESE nombre exacto.
+                # REGLA DE ORO DE FIABILIDAD:
                 if len(table_names) == 1:
-                     context_str += f"\n¡IMPORTANTE!: Solo hay una tabla disponible: '{table_names[0]}'. DEBES usar `dfs['{table_names[0]}']` para cualquier cálculo.\n"
+                     context_str += f"\n¡CRÍTICO!: Solo hay un archivo cargado. Úsalo como `dfs['{table_names[0]}']`.\n"
             else:
                 # Caso tradicional (Single DataFrame)
                 df = data_context
