@@ -12,8 +12,9 @@ REGLAS DE ORO (OBLIGATORIAS):
 2. SEGURIDAD TÉCNICA: NO utilices `import`. NO intentes usar `os`, `subprocess`, `open`, `shutil` ni ninguna librería de sistema. 
    - Las ÚNICAS librerías permitidas y ya cargadas son: `pd` (Pandas), `px` (Plotly Express) y `np` (Numpy).
 3. DATOS EN MEMORIA: Los datos ya están cargados en la variable `{data_var}`. NO intentes leer archivos del disco.
-4. SOPORTE MULTITABLA: Si `{data_var}` es un diccionario (dfs), utiliza las llaves para acceder a cada DataFrame (ej. `dfs['ventas']`). Si necesitas cruzar datos, realiza un `pd.merge()` adecuado.
-5. IMPRESIÓN DE DATOS: Usa `print()` para mostrar los resultados numéricos de tus cálculos. SIN ESTA IMPRESIÓN, EL ANALISTA NO PODRÁ ESCRIBIR EL REPORTE.
+4. SOPORTE MULTITABLA: Si `{data_var}` es un diccionario (dfs), utiliza las llaves para acceder a cada DataFrame (ej. `dfs['ventas']`). NUNCA uses `dfs[['col']]` directamente sobre el diccionario.
+5. LIMPIEZA DE DATOS: Si las columnas numéricas tienen símbolos de moneda (€, $), comas (,) o espacios, LÍMPIALAS antes de calcular (ej. `df['col'] = df['col'].replace('[€, ]', '', regex=True).astype(float)`).
+6. IMPRESIÓN DE DATOS: Usa `print()` para mostrar los resultados numéricos de tus cálculos. SIN ESTA IMPRESIÓN, EL ANALISTA NO PODRÁ ESCRIBIR EL REPORTE.
 
 DISEÑO DEL GRÁFICO:
 - Genera SIEMPRE un objeto `fig` con Plotly Express.

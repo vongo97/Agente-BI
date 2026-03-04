@@ -286,11 +286,11 @@ async def analyze(
             context_to_send = session_data["schema"]
             data_var = "engine"
 
-        # 1. Obtener código de la IA
-        raw_response = analyze_data(context_to_send, query, api_key, mode=session_data["type"], provider=provider or "gemini", mistral_key=mistral_key)
+        # 1. Obtener código de la IA (Pasamos los DFs reales para que el Estratega tenga números reales)
+        raw_response = analyze_data(session_data["data"], query, api_key, mode=session_data["type"], provider=provider or "gemini", mistral_key=mistral_key)
         
-        # 2. Ejecutar análisis (el executor recibirá el dict de DFs si es modo file)
-        execution_context = session_data["data"] if session_data["type"] == "file" else session_data["data"]
+        # 2. Ejecutar análisis final
+        execution_context = session_data["data"]
         output_text, fig = execute_analysis(execution_context, raw_response, data_var)
         
         # Convertir figura de Plotly a JSON para el frontend

@@ -97,6 +97,11 @@ def execute_analysis(context_obj, raw_response, var_name):
         available_keys = list(context_obj.keys()) if isinstance(context_obj, dict) else "N/A"
         logger.error(f"KeyError: {e}. Available keys: {available_keys}")
         return f"### ⚠️ Error de Referencia\nLa IA intentó acceder a una tabla o columna llamada `{e}`, pero no existe.\n\n**Tablas disponibles:** `{available_keys}`", None
+    except TypeError as e:
+        if "unhashable type: 'list'" in str(e) and isinstance(context_obj, dict):
+            return f"### ⚠️ Error de Estructura\nLa IA intentó acceder a múltiples tablas a la vez de forma incorrecta (ej: `dfs[['tabla1', 'tabla2']]`).\n\n**Solución**: Debe acceder a una sola tabla a la vez usando `dfs['nombre_tabla']`.", None
+        logger.error(f"TypeError: {e}")
+        return f"### ⚠️ Error de Tipo\nHubo un problema de compatibilidad en el código: {e}", None
     except Exception as e:
         logger.error(f"Execution Error: {e}")
         return f"### ⚠️ Error en el Procesamiento\nHubo un problema ejecutando el análisis lógico solicitado.\n\n*Detalle técnico: {e}*", None

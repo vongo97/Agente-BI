@@ -119,10 +119,16 @@ def analyze_data(data_context, query, api_key, chat_history=[], mode="file", pro
         if mode == "file":
             # Caso Multinivel / Multitabla
             if isinstance(data_context, dict):
-                context_str = "TABLAS DISPONIBLES:\n"
-                for name, info in data_context.items():
-                    context_str += f"- Tabla '{name}': Columnas {info['columns']}\n"
-                    context_str += f"  Muestra: {info['sample']}\n\n"
+                context_str = "TABLAS DISPONIBLES (usa dfs['nombre']): \n"
+                for name, obj in data_context.items():
+                    if isinstance(obj, pd.DataFrame):
+                        cols = obj.columns.tolist()
+                        sample = obj.head(3).to_dict()
+                    else:
+                        cols = obj.get('columns', [])
+                        sample = obj.get('sample', {})
+                    context_str += f"- Tabla '{name}': Columnas {cols}\n"
+                    context_str += f"  Muestra: {sample}\n\n"
                 data_var = "dfs"
             else:
                 # Caso tradicional (Single DataFrame)
