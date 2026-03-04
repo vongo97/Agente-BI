@@ -21,23 +21,38 @@ def get_db_schema(engine):
     return schema_info
 
 def _clean_dataframe(df):
-    """Limpia los nombres de las columnas y prepara los datos numéricos."""
+    """Limpia los nombres de las columnas y prepara los datos numéricos de forma robusta."""
     df.columns = [c.strip() for c in df.columns]
     
-    # Limpieza inteligente de columnas numéricas que vienen como strings con moneda
     for col in df.columns:
         if df[col].dtype == 'object':
-            # Verificamos si parece una columna de dinero/unidades con formato
+            # Muestra para detectar si es una columna numérica "sucia"
             sample = df[col].dropna().head(10).astype(str)
-            if sample.str.contains(r'[€\$]').any():
-                # Eliminamos símbolos y espacios
-                cleaned = df[col].astype(str).str.replace(r'[€\$ ]', '', regex=True)
-                # Manejamos el formato: Si hay comas y puntos, asumimos formato US (1,000.00)
-                # Si solo hay comas, podría ser formato EU (1000,00). 
-                # Por simplicidad para este caso: borrar comas (miles) y convertir
-                cleaned = cleaned.str.replace(',', '')
+            
+            # Si contiene dígitos y caracteres no numéricos sospechosos (moneda, mojibake, espacios)
+            if sample.str.contains(r'\d').any() and sample.str.contains(r'[€\$â\x82\xac\x80 \xa0,]').any():
+                cleaned = df[col].astype(str)
+                
+                # 1. Eliminar símbolos de moneda y basura de encoding (â\x82¬ etc)
+                cleaned = cleaned.str.replace(r'[€\$â\x82\xac\x80 \xa0]', '', regex=True)
+                
+                # 2. Normalizar separadores (Manejo de , y .)
+                # Caso: 1.234,56 -> 1234.56
+                # Caso: 1,234.56 -> 1234.56
+                # Si tiene ambos, el último suele ser el decimal.
+                # Pero la mayoría de CSVs de negocios locales usan coma para decimal.
+                if cleaned.str.contains(r',').any() and cleaned.str.contains(r'\.').any():
+                    # Borramos comas (asumiendo miles)
+                    cleaned = cleaned.str.replace(',', '')
+                elif cleaned.str.contains(r',').any():
+                    # Solo comas -> Decimal europeo
+                    cleaned = cleaned.str.replace(',', '.')
+                
+                # 3. Limpieza final: solo números, punto y signo menos
+                cleaned = cleaned.str.replace(r'[^-0-9.]', '', regex=True)
+                
                 try:
-                    df[col] = pd.to_numeric(cleaned)
+                    df[col] = pd.to_numeric(cleaned, errors='coerce')
                 except:
                     pass
     return df

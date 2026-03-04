@@ -307,24 +307,31 @@ def suggest_questions(data_context, api_key, mode="file", provider="gemini", mis
         response_text = generate_ai_content(prompt, effective_key, provider, mistral_key)
         
         # Limpieza robusta
-        # 1. Quitar bloques de código si existen
-        text = re.sub(r'```(?:python|json)?\n?(.*?)\n?```', r'\1', response_text, flags=re.DOTALL).strip()
+        # 1. Intentar encontrar un bloque JSON explícito
+        json_match = re.search(r'```json\n?(.*?)\n?```', response_text, re.DOTALL)
+        text_to_parse = json_match.group(1) if json_match else response_text
         
-        # 2. Intentar parsear como lista de Python/JSON
+        # 2. Limpiar caracteres basura
+        text_to_parse = text_to_parse.strip()
+        
+        # 3. Intentar parsear como lista
         try:
-            # Primero intentamos con json por si devolvió un array JSON
             import json
-            suggestions = json.loads(text)
+            suggestions = json.loads(text_to_parse)
             if isinstance(suggestions, list):
-                return [str(s) for s in suggestions[:3]]
+                # Filtrar fragmentos cortos (ej. "y") y asegurar que sean strings
+                valid_s = [str(s).strip() for s in suggestions if len(str(s).strip()) > 15]
+                if valid_s:
+                    return valid_s[:3]
         except:
             pass
             
         try:
-            # Luego intentamos con regex para extraer lo que esté entre comillas
-            matches = re.findall(r'["\'](.*?)["\']', text)
-            if len(matches) >= 3:
-                return matches[:3]
+            # Fallback: Extraer todo lo que esté entre comillas o balanceado
+            matches = re.findall(r'["\'](.*?)["\']', text_to_parse)
+            valid_matches = [m.strip() for m in matches if len(m.strip()) > 15]
+            if len(valid_matches) >= 1:
+                return valid_matches[:3]
         except:
             pass
 
