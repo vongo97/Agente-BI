@@ -74,6 +74,8 @@ def execute_analysis(context_obj, raw_response, var_name):
         'ValueError': ValueError,
         'TypeError': TypeError,
         'StopIteration': StopIteration,
+        'isinstance': isinstance,
+        'type': type,
         '__import__': restricted_import
     }
 
@@ -150,7 +152,8 @@ def safe_exec_cleaning(df, code):
     # Namespace restringido para limpieza
     safe_builtins = {
         'len': len, 'str': str, 'int': int, 'float': float,
-        'list': list, 'dict': dict, 'range': range
+        'list': list, 'dict': dict, 'range': range,
+        'isinstance': isinstance, 'type': type
     }
     
     namespace = {
