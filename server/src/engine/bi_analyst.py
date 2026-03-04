@@ -280,8 +280,13 @@ def suggest_questions(data_context, api_key, mode="file", provider="gemini", mis
             # Soporte multitabla
             if isinstance(data_context, dict):
                 context_str = "TABLAS DISPONIBLES:\n"
-                for name, info in data_context.items():
-                    context_str += f"- {name}: {info['columns']}\n"
+                for name, df_obj in data_context.items():
+                    # Manejar si es un DF real o un dict descriptivo
+                    if isinstance(df_obj, pd.DataFrame):
+                        cols = df_obj.columns.tolist()
+                    else:
+                        cols = df_obj.get('columns', [])
+                    context_str += f"- {name}: {cols}\n"
             else:
                 df = data_context
                 context_str = f"Dataset: {df.columns.tolist()}. Tipos: {df.dtypes.to_dict()}"

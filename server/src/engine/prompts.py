@@ -87,8 +87,11 @@ Esquema: {context_str}
 REGLAS:
 1. Las preguntas deben ser profundas, no solo descriptivas.
 2. Deben poder responderse con un análisis de datos o gráfico.
-3. Devuelve SOLO una lista de Python con los 3 strings de las preguntas. Ejemplo: ["¿Cuál es el canal con mayor ROI?", "...", "..."]
-4. No uses bloques de código, solo la lista directa.
+3. Devuelve los resultados en una LISTA DE PYTHON simple.
+4. Formato esperado: ["Pregunta 1", "Pregunta 2", "Pregunta 3"]
+
+Ejemplo de respuesta válida:
+["¿Cuál es la tendencia de ventas por mes?", "¿Qué categoría tiene el mayor margen?", "¿Hay correlación entre X e Y?"]
 """
 
 # Prompt para Data Cleaning con Pandas

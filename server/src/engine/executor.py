@@ -93,6 +93,10 @@ def execute_analysis(context_obj, raw_response, var_name):
                 final_text += f"\n\n---\n{code_stdout}"
         
         return final_text, fig
+    except KeyError as e:
+        available_keys = list(context_obj.keys()) if isinstance(context_obj, dict) else "N/A"
+        logger.error(f"KeyError: {e}. Available keys: {available_keys}")
+        return f"### ⚠️ Error de Referencia\nLa IA intentó acceder a una tabla o columna llamada `{e}`, pero no existe.\n\n**Tablas disponibles:** `{available_keys}`", None
     except Exception as e:
         logger.error(f"Execution Error: {e}")
         return f"### ⚠️ Error en el Procesamiento\nHubo un problema ejecutando el análisis lógico solicitado.\n\n*Detalle técnico: {e}*", None

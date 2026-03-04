@@ -1,5 +1,4 @@
-import NextAuth from "next-auth"
-import Google from "next-auth/providers/google"
+import Credentials from "next-auth/providers/credentials"
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
   trustHost: true,
@@ -8,8 +7,21 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
     Google({
       clientId: process.env.AUTH_GOOGLE_ID || process.env.GOOGLE_CLIENT_ID,
       clientSecret: process.env.AUTH_GOOGLE_SECRET || process.env.GOOGLE_CLIENT_SECRET,
-      checks: ['none'], // Deshabilitar PKCE temporalmente para evitar error 'code verifier' en local
+      checks: ['none'],
     }),
+    Credentials({
+      name: "Invitado",
+      credentials: {},
+      async authorize() {
+        // En local, permitimos acceso como invitado
+        return { 
+          id: "guest-id", 
+          name: "Usuario Invitado", 
+          email: "invitado@agente-bi.local",
+          image: "https://ui-avatars.com/api/?name=Invitado&background=0D8ABC&color=fff"
+        }
+      }
+    })
   ],
   pages: {
     signIn: "/login",
