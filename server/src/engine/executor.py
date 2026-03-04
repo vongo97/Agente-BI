@@ -24,27 +24,31 @@ def execute_analysis(context_obj, raw_response, var_name):
     clean_code = code_match.group(1).replace(".show()", "")
 
     # --- SEGURIDAD: Sandboxing ---
-    # Bloquear palabras clave peligrosas antes de la ejecución
-    
-    # 1. Limpiar el código por si la IA añade comentarios descriptivos con palabras prohibidas
+    # Limpiamos el código para auditoría básica
     code_to_check = re.sub(r'#.*', '', clean_code)
     
-    # RELAJADO TEMPORALMENTE A PETICIÓN DEL USUARIO PARA EVITAR FALSOS POSITIVOS PERSISTENTES
-    # forbidden = ["import ", "os.", "sys.", "subprocess", "shutil", "open(", "eval(", "exec(", "getattr", "setattr", "delattr", "socket", "requests"]
-    # for word in forbidden:
-    #     if word in code_to_check:
-    #         logger.warning(f"BLOCKED CODE ATTEMPT: '{word}' found in generated code.")
-    #         # Loguear el código completo para auditoría
-    #         with open("security_blocks.log", "a", encoding="utf-8") as f:
-    #             f.write(f"\n--- BLOCKED {word} ---\n{clean_code}\n-------------------\n")
-    #             
-    #         return f"### 🛡️ Bloqueo de Seguridad\nSe detectó una operación no permitida (`{word}`) en el código generado. El análisis ha sido abortado por seguridad.", None
-
     # 2. Ejecutar código para obtener el gráfico
     old_stdout = sys.stdout
     redirected_output = sys.stdout = StringIO()
     
-    # Definir builtins restringidos (SIN __import__)
+    # --- IMPORTACIÓN RESTRINGIDA: Para evitar errores 'import not found' ---
+    def restricted_import(name, globals=None, locals=None, fromlist=(), level=0):
+        # Mapeamos nombres comunes a los objetos ya cargados
+        safe_modules = {
+            'pandas': pd,
+            'numpy': np,
+            'plotly.express': px,
+            'json': json,
+            'io': __import__('io'),
+            're': re
+        }
+        if name in safe_modules:
+            return safe_modules[name]
+        # Si intenta importar algo prohibido
+        logger.warning(f"BLOCKED IMPORT: {name}")
+        raise ImportError(f"La importación de '{name}' no está permitida en este entorno. Usa solo las herramientas pre-cargadas.")
+
+    # Definir builtins restringidos
     safe_builtins = {
         'print': print,
         'range': range,
@@ -69,7 +73,8 @@ def execute_analysis(context_obj, raw_response, var_name):
         'Exception': Exception,
         'ValueError': ValueError,
         'TypeError': TypeError,
-        'StopIteration': StopIteration
+        'StopIteration': StopIteration,
+        '__import__': restricted_import
     }
 
     exec_globals = {
@@ -82,6 +87,7 @@ def execute_analysis(context_obj, raw_response, var_name):
     }
     
     try:
+        # Ejecutamos el código con el contexto restringido
         exec(clean_code, exec_globals, exec_globals)
         
         code_stdout = redirected_output.getvalue().strip()
@@ -89,22 +95,39 @@ def execute_analysis(context_obj, raw_response, var_name):
         
         final_text = narrative
         if code_stdout:
-            if not any(x in code_stdout.lower() for x in ["<class", "dtype:", "memory usage"]):
+            # Filtramos basura técnica que pandas suele tirar al stdout
+            if not any(x in code_stdout.lower() for x in ["<class", "dtype:", "memory usage", "object at 0x"]):
                 final_text += f"\n\n---\n{code_stdout}"
         
         return final_text, fig
+
     except KeyError as e:
+        key_name = str(e).strip("'")
+        # Solo reportamos como error de tabla si el error es en el nivel superior (context_obj)
+        if isinstance(context_obj, dict) and key_name in context_obj.keys():
+            # Este caso es raro (porque si existe no debería dar KeyError), pero por completitud:
+            pass
+        
         available_keys = list(context_obj.keys()) if isinstance(context_obj, dict) else "N/A"
         logger.error(f"KeyError: {e}. Available keys: {available_keys}")
-        return f"### ⚠️ Error de Referencia\nLa IA intentó acceder a una tabla o columna llamada `{e}`, pero no existe.\n\n**Tablas disponibles:** `{available_keys}`", None
-    except TypeError as e:
-        if "unhashable type: 'list'" in str(e) and isinstance(context_obj, dict):
-            return f"### ⚠️ Error de Estructura\nLa IA intentó acceder a múltiples tablas a la vez de forma incorrecta (ej: `dfs[['tabla1', 'tabla2']]`).\n\n**Solución**: Debe acceder a una sola tabla a la vez usando `dfs['nombre_tabla']`.", None
-        logger.error(f"TypeError: {e}")
-        return f"### ⚠️ Error de Tipo\nHubo un problema de compatibilidad en el código: {e}", None
+        
+        # Si el error parece ser una tabla mal referenciada
+        if key_name in ["df", "dfs", "dataset", "table"]:
+            return f"### ⚠️ Error de Estructura\nLa IA se confundió con el nombre del objeto de datos. Debe usar `{var_name}`.\n\n**Tablas disponibles:** `{available_keys}`", None
+            
+        return f"### ⚠️ Error de Referencia\nEl nombre `{e}` no se encontró en el contexto o en las tablas.\n\n**Tablas disponibles:** `{available_keys}`", None
+
+    except ImportError as e:
+        return f"### 🛡️ Restricción de Librería\n{str(e)}", None
+
     except Exception as e:
         logger.error(f"Execution Error: {e}")
-        return f"### ⚠️ Error en el Procesamiento\nHubo un problema ejecutando el análisis lógico solicitado.\n\n*Detalle técnico: {e}*", None
+        # Mensajes más amigables para errores comunes de Pandas
+        err_str = str(e)
+        if "not found in axis" in err_str:
+             return f"### ⚠️ Columna no encontrada\nUna de las columnas mencionadas no existe en el archivo. Verifica los nombres exactos.", None
+        
+        return f"### ⚠️ Error en el Procesamiento\nHubo un problema ejecutando el análisis lógico solicitado.\n\n*Detalle técnico: {err_str}*", None
     finally:
         sys.stdout = old_stdout
 
