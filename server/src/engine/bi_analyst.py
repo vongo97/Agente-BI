@@ -183,7 +183,6 @@ def analyze_data(data_context, query, api_key, chat_history=[], mode="file", pro
             narrative_prompt = prompts.STRATEGIST_PROMPT_TEMPLATE.format(
                 query=query,
                 real_results=real_results,
-                tone_style='Estratégico, directo y sofisticado (Estilo Mistral/McKinsey)' if strategist_provider == 'mistral' else 'Analítico y claro',
                 context_str=context_str
             )
         

@@ -4,17 +4,102 @@ import plotly.express as px
 import numpy as np
 import json
 import re
-from io import StringIO
+import ast
 import logging
+from io import StringIO
 
 logger = logging.getLogger(__name__)
 
+def validate_code_safety(code):
+    """
+    Analiza el AST del código para detectar patrones maliciosos o accesos prohibidos.
+    """
+    try:
+        tree = ast.parse(code)
+    except SyntaxError as e:
+        raise ValueError(f"Error de sintaxis en el código generado: {e}")
+
+    # Palabras clave y atributos prohibidos (para evitar escapes de sandbox)
+    forbidden_attrs = {
+        '__globals__', '__subclasses__', '__mro__', '__builtins__', 
+        '__qualname__', '__module__', '__dict__', 'func_globals', 
+        'func_code', 'gi_frame', 'gi_code'
+    }
+    
+    forbidden_calls = {
+        'eval', 'exec', 'open', 'breakpoint', 'input', 'help'
+    }
+
+    for node in ast.walk(tree):
+        # 1. Bloquear acceso a atributos peligrosos (ej: obj.__globals__)
+        if isinstance(node, ast.Attribute):
+            if node.attr in forbidden_attrs:
+                raise SecurityError(f"Acceso prohibido al atributo '{node.attr}'")
+        
+        # 2. Bloquear nombres prohibidos
+        if isinstance(node, ast.Name):
+            if node.id in forbidden_calls:
+                 raise SecurityError(f"Uso prohibido de la función '{node.id}'")
+        
+        # 3. Bloquear llamadas directas a funciones prohibidas
+        if isinstance(node, ast.Call):
+            if isinstance(node.func, ast.Name):
+                if node.func.id in forbidden_calls:
+                    raise SecurityError(f"Llamada prohibida a '{node.func.id}'")
+
+    return True
+
+class SecurityError(Exception):
+    """Excepción personalizada para bloqueos de seguridad."""
+    pass
+
+def get_safe_environment(var_name=None, context_obj=None):
+    """
+    Construye un entorno de ejecución (globals) seguro y enriquecido.
+    """
+    def restricted_import(name, globals=None, locals=None, fromlist=(), level=0):
+        safe_modules = {
+            'pandas': pd, 'pd': pd,
+            'numpy': np, 'np': np,
+            'plotly.express': px, 'px': px,
+            'json': json,
+            're': re,
+            'math': __import__('math'),
+            'datetime': __import__('datetime'),
+            'collections': __import__('collections'),
+            'itertools': __import__('itertools'),
+            'io': __import__('io')
+        }
+        if name in safe_modules:
+            return safe_modules[name]
+        raise ImportError(f"La librería '{name}' no está permitida. Usa pandas, numpy, plotly, math o datetime.")
+
+    safe_builtins = {
+        'print': print, 'range': range, 'len': len, 'enumerate': enumerate,
+        'zip': zip, 'min': min, 'max': max, 'sum': sum, 'abs': abs,
+        'round': round, 'int': int, 'float': float, 'str': str, 'bool': bool,
+        'list': list, 'dict': dict, 'set': set, 'tuple': tuple,
+        'sorted': sorted, 'reversed': reversed, 'any': any, 'all': all,
+        'isinstance': isinstance, 'type': type, 'hasattr': hasattr,
+        'getattr': getattr, 'dir': dir, 'dict': dict,
+        'Exception': Exception, 'ValueError': ValueError, 'TypeError': TypeError,
+        'StopIteration': StopIteration, 'KeyError': KeyError, 'IndexError': IndexError,
+        '__import__': restricted_import
+    }
+
+    env = {
+        'pd': pd, 'px': px, 'np': np, 'json': json,
+        '__builtins__': safe_builtins
+    }
+    if var_name:
+        env[var_name] = context_obj
+    return env
+
 def execute_analysis(context_obj, raw_response, var_name):
     """
-    Ejecuta el código generado y devuelve la narrativa del asistente + el objeto gráfico.
-    Separamos el texto de la respuesta (IA) del código a ejecutar.
+    Ejecuta el código generado en un sandbox AST y devuelve resultados.
     """
-    # 1. Separar narrativa de código
+    # 1. Extraer código
     narrative = re.sub(r"```python\n(.*?)```", "", raw_response, flags=re.DOTALL).strip()
     code_match = re.search(r"```python\n(.*?)```", raw_response, re.DOTALL)
     
@@ -23,73 +108,19 @@ def execute_analysis(context_obj, raw_response, var_name):
 
     clean_code = code_match.group(1).replace(".show()", "")
 
-    # --- SEGURIDAD: Sandboxing ---
-    # Limpiamos el código para auditoría básica
-    code_to_check = re.sub(r'#.*', '', clean_code)
-    
-    # 2. Ejecutar código para obtener el gráfico
+    # 2. Validar Seguridad AST
+    try:
+        validate_code_safety(clean_code)
+    except (SecurityError, ValueError) as e:
+        logger.warning(f"SANDBOX BLOCK: {e}")
+        return f"### 🛡️ Restricción de Seguridad\n{str(e)}", None
+
+    # 3. Preparar Entorno
     old_stdout = sys.stdout
     redirected_output = sys.stdout = StringIO()
-    
-    # --- IMPORTACIÓN RESTRINGIDA: Para evitar errores 'import not found' ---
-    def restricted_import(name, globals=None, locals=None, fromlist=(), level=0):
-        # Mapeamos nombres comunes a los objetos ya cargados
-        safe_modules = {
-            'pandas': pd,
-            'numpy': np,
-            'plotly.express': px,
-            'json': json,
-            'io': __import__('io'),
-            're': re
-        }
-        if name in safe_modules:
-            return safe_modules[name]
-        # Si intenta importar algo prohibido
-        logger.warning(f"BLOCKED IMPORT: {name}")
-        raise ImportError(f"La importación de '{name}' no está permitida en este entorno. Usa solo las herramientas pre-cargadas.")
-
-    # Definir builtins restringidos
-    safe_builtins = {
-        'print': print,
-        'range': range,
-        'len': len,
-        'str': str,
-        'int': int,
-        'float': float,
-        'list': list,
-        'dict': dict,
-        'round': round,
-        'sum': sum,
-        'min': min,
-        'max': max,
-        'abs': abs,
-        'enumerate': enumerate,
-        'any': any,
-        'all': all,
-        'zip': zip,
-        'bool': bool,
-        'sorted': sorted,
-        'reversed': reversed,
-        'Exception': Exception,
-        'ValueError': ValueError,
-        'TypeError': TypeError,
-        'StopIteration': StopIteration,
-        'isinstance': isinstance,
-        'type': type,
-        '__import__': restricted_import
-    }
-
-    exec_globals = {
-        var_name: context_obj, 
-        'pd': pd, 
-        'px': px, 
-        'np': np, 
-        'json': json,
-        '__builtins__': safe_builtins
-    }
+    exec_globals = get_safe_environment(var_name, context_obj)
     
     try:
-        # Ejecutamos el código con el contexto restringido
         exec(clean_code, exec_globals, exec_globals)
         
         code_stdout = redirected_output.getvalue().strip()
@@ -97,81 +128,50 @@ def execute_analysis(context_obj, raw_response, var_name):
         
         final_text = narrative
         if code_stdout:
-            # Filtramos basura técnica que pandas suele tirar al stdout
-            if not any(x in code_stdout.lower() for x in ["<class", "dtype:", "memory usage", "object at 0x"]):
+            # Filtramos basura técnica redundante
+            if not any(x in code_stdout.lower() for x in ["<class", "memory usage", "object at 0x"]):
                 final_text += f"\n\n---\n{code_stdout}"
         
         return final_text, fig
 
     except KeyError as e:
         key_name = str(e).strip("'")
-        # Solo reportamos como error de tabla si el error es en el nivel superior (context_obj)
-        if isinstance(context_obj, dict) and key_name in context_obj.keys():
-            # Este caso es raro (porque si existe no debería dar KeyError), pero por completitud:
-            pass
-        
         available_keys = list(context_obj.keys()) if isinstance(context_obj, dict) else "N/A"
-        logger.error(f"KeyError: {e}. Available keys: {available_keys}")
-        
-        # Si el error parece ser una tabla mal referenciada
-        if key_name in ["df", "dfs", "dataset", "table"]:
-            return f"### ⚠️ Error de Estructura\nLa IA se confundió con el nombre del objeto de datos. Debe usar `{var_name}`.\n\n**Tablas disponibles:** `{available_keys}`", None
-            
-        return f"### ⚠️ Error de Referencia\nEl nombre `{e}` no se encontró en el contexto o en las tablas.\n\n**Tablas disponibles:** `{available_keys}`", None
+        if key_name in ["df", "dfs", "dataset"]:
+            return f"### ⚠️ Error de Estructura\nUsa la variable `{var_name}`. Tablas: `{available_keys}`", None
+        return f"### ⚠️ Error de Referencia\nNo existe `{e}` en las tablas: `{available_keys}`", None
 
     except ImportError as e:
         return f"### 🛡️ Restricción de Librería\n{str(e)}", None
 
     except Exception as e:
         logger.error(f"Execution Error: {e}")
-        # Mensajes más amigables para errores comunes de Pandas
-        err_str = str(e)
-        if "not found in axis" in err_str:
-             return f"### ⚠️ Columna no encontrada\nUna de las columnas mencionadas no existe en el archivo. Verifica los nombres exactos.", None
-        
-        return f"### ⚠️ Error en el Procesamiento\nHubo un problema ejecutando el análisis lógico solicitado.\n\n*Detalle técnico: {err_str}*", None
+        return f"### ⚠️ Error de Análisis\n{str(e)}", None
     finally:
         sys.stdout = old_stdout
 
 def safe_exec_cleaning(df, code):
     """
-    Ejecutor especializado para tareas de limpieza de datos con sandbox.
+    Ejecutor de limpieza con validación AST.
     """
-    # 1. Limpiar el código por si la IA añade comentarios descriptivos
-    code_to_check = re.sub(r'#.*', '', code)
-    
-    # Verificación de seguridad rápida (RELAJADA TEMPORALMENTE)
-    # forbidden = ["import ", "os.", "sys.", "subprocess", "open(", "eval(", "exec("]
-    # for word in forbidden:
-    #     if word in code_to_check:
-    #          logger.warning(f"BLOCKED CLEANING CODE ATTEMPT: '{word}'")
-    #          return df, f"Error: Código de limpieza bloqueado por seguridad (palabra '{word}' prohibida)."
+    try:
+        validate_code_safety(code)
+    except Exception as e:
+        return df, f"Bloqueo de seguridad: {e}"
 
     initial_rows = len(df)
-    
-    # Namespace restringido para limpieza
-    safe_builtins = {
-        'len': len, 'str': str, 'int': int, 'float': float,
-        'list': list, 'dict': dict, 'range': range,
-        'isinstance': isinstance, 'type': type
-    }
-    
-    namespace = {
-        "df": df.copy(), 
-        "pd": pd, 
-        "np": np,
-        "__builtins__": safe_builtins
-    }
+    namespace = get_safe_environment("df", df.copy())
     
     try:
         exec(code, namespace, namespace)
         cleaned_df = namespace.get("df")
         summary = namespace.get("clean_summary", "Limpieza completada.")
         
+        # Protección contra truncado accidental
         if len(cleaned_df) < initial_rows and len(cleaned_df) <= 5 and initial_rows > 10:
-             return df, "Error: La IA intentó truncar los datos erróneamente. Revertido por seguridad."
+             return df, "Error: Truncado de datos detectado y revertido."
              
         return cleaned_df, summary
     except Exception as e:
-        logger.error(f"Cleaning Execution Error: {e}")
+        logger.error(f"Cleaning Error: {e}")
         raise e

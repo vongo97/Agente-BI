@@ -5,23 +5,25 @@ Este módulo contiene todas las plantillas de prompts utilizadas para interactua
 
 # Prompt para el Ingeniero de Datos (Generador de Código Python)
 ENGINEER_PROMPT_TEMPLATE = """
-Eres un Ingeniero de Datos y Científico de Datos experto. Tu objetivo es escribir código Python LIMPIO y ROBUSTO para extraer insights de un dataset.
+Eres un Ingeniero de Datos y Científico de Datos experto. Tu objetivo es escribir código Python LIMPIO y PROFESIONAL para extraer insights.
 
-LIBRERÍAS PRE-CARGADAS (¡NO LAS IMPORTES!):
-- Ya tienes disponible: `pd` (Pandas), `px` (Plotly Express) y `np` (Numpy).
-- **REGLA CRÍTICA**: No uses `import`. No intentes importar ni pandas ni ninguna otra librería.
+ENTORNO DE EJECUCIÓN:
+- Librerías disponibles: `pd` (Pandas), `px` (Plotly Express), `np` (Numpy), `math`, `datetime`, `json`, `re`.
+- **Regla de Oro**: Puedes usar `import` para estas librerías si lo necesitas, pero ya están pre-cargadas en el espacio de nombres global.
+- Seguridad: El servidor valida el código vía AST. No intentes acceder a atributos internos de Python (`__globals__`, etc.).
 
 LÓGICA DE ANÁLISIS REQUERIDA:
-1. CÁLCULO DE KPIs: Calcula siempre métricas base (Totales, Promedios, Máximos, Mínimos).
-2. ANÁLISIS DE VOLATILIDAD/TENDENCIA: Si hay fechas, estima crecimientos o variaciones.
-3. DETECCIÓN DE PUNTOS EXTREMOS: Muestra los Top 3 mejores y Top 3 peores registros.
-4. BENCHMARKING: Compara los resultados vs el promedio.
+1. CÁLCULO DE KPIs: Calcula métricas base (Totales, Promedios, Máximos, Mínimos).
+2. TENDENCIAS: Si hay fechas, estima crecimientos o variaciones estacionales.
+3. EXTREMOS: Muestra los Top 3 mejores y Top 3 peores registros.
+4. BENCHMARK: Compara resultados vs el promedio.
 
 CONTEXTO TÉCNICO:
 - Los datos están en la variable: `{data_var}`. 
 - Si `{data_var}` es un diccionario, accede a las tablas como `{data_var}['nombre_tabla']`.
-- SEGURIDAD: NO uses `os`, `sys`, ni `open`. Solo lógica de Pandas/Numpy.
 - LIMPIEZA: Limpia símbolos de moneda antes de operar (ej. `df['col'].astype(str).str.replace(r'[^-0-9.]', '', regex=True).astype(float)`).
+
+SALIDA (OBLIGATORIA): Usa `print()` para mostrar CUALQUIER resultado calculado. Si no imprimes nada, el reporte saldrá vacío.
 
 DISEÑO DEL GRÁFICO:
 - Crea un objeto `fig` con Plotly Express que responda a: "{query}".
@@ -119,28 +121,22 @@ Ejemplo de respuesta válida:
 
 # Prompt para Data Cleaning con Pandas
 DATA_CLEANER_PROMPT = """
-Actúa como un Experto en Data Cleaning con Pandas.
-Analiza este perfil de dataset y genera un script de limpieza.
+Actúa como un Experto en Data Cleaning con Pandas. Genera un script de limpieza robusto.
 
-PERFIL:
+PERFIL DEL DATASET:
 {profile_str}
 
 TU MISIÓN:
-Genera código Python (Pandas) para:
 1. Estandarizar nombres de columnas (snake_case).
-2. Manejar nulos (imputar o rellenar con sentido común).
-3. Eliminar duplicados.
-4. Corregir tipos de datos (especialmente fechas y números almacenados como texto).
-5. Crea una variable 'clean_summary' (string multilínea) que explique brevemente qué se limpió.
+2. Manejar nulos y eliminar duplicados.
+3. Corregir tipos de datos (fechas y números).
+4. Crea una variable 'clean_summary' (string) con el resumen de cambios.
 
-REGLAS CRÍTICAS:
-- SEGURIDAD: NO utilices `import`. NO uses `os`, `sys`, `subprocess` o `open`. Usa solo `pd` y `np`.
-- El dataframe YA EXISTE y se llama 'df'. **NO LO RE-CREES**. No uses `pd.DataFrame(...)` con la muestra.
-- Solo aplica transformaciones al objeto 'df' existente (ej: `df['col'] = ...`).
+LÓGICA TÉCNICA:
+- El dataframe ya existe como 'df'. No lo sobrescribas con una nueva carga.
+- Solo usa Pandas (`pd`), Numpy (`np`) y builtins estándar.
+- Seguridad: El código será validado vía AST. No intentes acceder a internals de Python.
 - Devuelve SOLO el código dentro de un bloque ```python.
-- No borres columnas a menos que estén 100% vacías.
-- Si el usuario tiene 1000 filas, al final del script 'df' DEBE seguir teniendo las mismas (o menos solo si hubo duplicados).
-- No uses `df.head()` o similares para limitar el resultado.
 """
 
 # Prompt para Planificación de Dashboard Auto-Generado
