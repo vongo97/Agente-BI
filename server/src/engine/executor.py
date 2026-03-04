@@ -166,7 +166,8 @@ def execute_analysis(context_obj, raw_response, var_name):
 
     except KeyError as e:
         # El SmartDataContext ya nos da un mensaje amigable
-        return f"### ⚠️ Error de Estructura\n{str(e).strip(\"'\")}", None
+        error_msg = str(e).strip("'")
+        return f"### ⚠️ Error de Estructura\n{error_msg}", None
 
     except ImportError as e:
         return f"### 🛡️ Restricción de Librería\n{str(e)}", None
