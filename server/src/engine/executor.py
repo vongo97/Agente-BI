@@ -114,7 +114,8 @@ def get_safe_environment(var_name=None, context_obj=None):
         'list': list, 'dict': dict, 'set': set, 'tuple': tuple,
         'sorted': sorted, 'reversed': reversed, 'any': any, 'all': all,
         'isinstance': isinstance, 'type': type, 'hasattr': hasattr,
-        'getattr': getattr, 'dir': dir,
+        'getattr': getattr, 'dir': dir, 'next': next, 'iter': iter,
+        'filter': filter, 'map': map,
         'Exception': Exception, 'ValueError': ValueError, 'TypeError': TypeError,
         'StopIteration': StopIteration, 'KeyError': KeyError, 'IndexError': IndexError,
         '__import__': restricted_import
