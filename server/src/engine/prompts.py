@@ -16,10 +16,11 @@ ENTORNO DE EJECUCIÓN:
 - **Regla de Oro**: NUNCA cargues datos del disco. Usa solo las variables proporcionadas.
 
 LÓGICA DE ANÁLISIS:
-1. Identifica las columnas EXACTAS en el 'CONOCIMIENTO DE DATOS'. No inventes nombres.
-2. Limpia los datos financieros (euros, puntos, comas) si es necesario (ej. `df['col'].replace(...)`).
-3. Realiza los cálculos solicitados.
-4. SALIDA: Usa `print()` para mostrar resultados numéricos agrupados y claros.
+1. Identifica las columnas EXACTAS. Si hay columnas con "fecha" o "date", CONVIÉRTELAS a datetime (`pd.to_datetime(df['col'], errors='coerce')`).
+2. Si la consulta pide "evolución" o "mes", crea obligatoriamente un resumen por mes (ej. `df.groupby(df['fecha'].dt.to_period('M')).sum()`).
+3. Limpia los datos financieros (euros, puntos, comas) si es necesario.
+4. Realiza los cálculos de margen (Beneficio = Venta - Coste).
+5. SALIDA: Usa `print()` para mostrar los resultados numéricos. ¡No olvides el resumen por mes si se solicita!
 
 DISEÑO DEL GRÁFICO:
 - Crea un objeto `fig` con Plotly Express. Usa `template='plotly_dark'`.
