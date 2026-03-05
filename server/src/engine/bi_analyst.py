@@ -119,7 +119,7 @@ def analyze_data(data_context, query, api_key, chat_history=[], mode="file", pro
         if mode == "file":
             # Caso Multinivel / Multitabla
             if isinstance(data_context, dict):
-                context_str = "ESTRUCTURA DE DATOS DISPONIBLE (Objeto `dfs`):\n"
+                context_str = "ESTRUCTURA DE DATOS (Objeto `dfs`):\n"
                 table_names = list(data_context.keys())
                 for name, obj in data_context.items():
                     if isinstance(obj, pd.DataFrame):
@@ -129,11 +129,7 @@ def analyze_data(data_context, query, api_key, chat_history=[], mode="file", pro
                         cols = obj.get('columns', [])
                         sample = obj.get('sample', {})
                     
-                    # Proporcionamos el nombre técnico y sugerimos el alias lógico
-                    context_str += f"- Tabla: '{name}' (Variable: `dfs['{name}']`)\n"
-                    if "venta" in name.lower() or len(table_names) == 1:
-                        context_str += "  [Alias disponible: 'ventas', 'data', 'df']\n"
-                    
+                    context_str += f"- Tabla: '{name}' (Puedes usar `dfs['{name}']` o simplemente `df` o `ventas`)\n"
                     context_str += f"  Columnas: {cols}\n"
                     context_str += f"  Muestra: {sample}\n\n"
                 
@@ -141,7 +137,7 @@ def analyze_data(data_context, query, api_key, chat_history=[], mode="file", pro
                 
                 # REGLA DE ORO DE FIABILIDAD:
                 if len(table_names) == 1:
-                     context_str += f"\n¡CRÍTICO!: Solo hay un archivo cargado. Úsalo como `dfs['{table_names[0]}']`.\n"
+                     context_str += f"\n¡CRÍTICO!: Solo hay un archivo cargado. Usa directamente el nombre `df` o `ventas` para acceder a él.\n"
             else:
                 # Caso tradicional (Single DataFrame)
                 df = data_context

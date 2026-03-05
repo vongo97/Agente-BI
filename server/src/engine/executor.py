@@ -128,6 +128,19 @@ def get_safe_environment(var_name=None, context_obj=None):
     
     if var_name:
         env[var_name] = smart_context
+        
+        # INYECCIÓN DE ALIAS AUTOMÁTICOS (Invisible Aliasing)
+        # Si context_obj es un dict con una sola tabla, exponemos esa tabla directamente
+        # como 'df', 'ventas', 'data' para máxima compatibilidad con alucinaciones de la IA.
+        if isinstance(context_obj, dict) and len(context_obj) == 1:
+            main_df = list(context_obj.values())[0]
+            if isinstance(main_df, pd.DataFrame):
+                env['df'] = main_df
+                env['data'] = main_df
+                env['table'] = main_df
+                # Solo inyectar 'ventas' si parece ser de ventas (o por defecto si es la única)
+                env['ventas'] = main_df
+                
     return env
 
 def execute_analysis(context_obj, raw_response, var_name):
