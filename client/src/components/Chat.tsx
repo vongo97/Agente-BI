@@ -148,17 +148,23 @@ export function Chat() {
         try {
             const res = await generateAutoDashboard(apiKey, userId, aiProvider, mistralKey);
 
-            const chartCount = res.dashboard?.length || 0;
-            const countText = chartCount === 1 ? "este gráfico estratégico" :
-                chartCount === 2 ? "estos 2 gráficos estratégicos" :
-                    `estos ${chartCount} gráficos estratégicos`;
+            const metrics = res.metrics || [];
+            const charts = res.charts || [];
+            
+            const chartCount = charts.length;
+            const metricCount = metrics.length;
+            
+            const countText = chartCount === 1 ? "un gráfico estratégico" :
+                chartCount === 2 ? "2 gráficos estratégicos" :
+                    `${chartCount} gráficos estratégicos`;
 
-            // Mensaje del Asistente con los items del dashboard
-            const newMessage: any = { // Uso 'any' para inyectar dashboardItems
+            const metricText = metricCount > 0 ? ` y ${metricCount} métricas clave` : "";
+
+            const newMessage: any = { 
                 role: 'assistant',
-                content: `### 🚀 Auto-Dashboard Generado\n\nHe diseñado ${countText} basándome en la estructura de tus datos.`,
+                content: `### 🚀 Auto-Dashboard Generado\n\nHe diseñado ${countText}${metricText} basándome en la estructura de tus datos.`,
                 id: Date.now(),
-                dashboardItems: res.dashboard // Array de {title, fig, insight}
+                dashboardData: { metrics, charts }
             };
 
             setMessages(prev => [...prev, newMessage]);
@@ -415,8 +421,12 @@ export function Chat() {
                                         </div>
                                     </div>
                                 )}
-                                {(msg as any).dashboardItems && (
-                                    <AutoDashGrid items={(msg as any).dashboardItems} userId={userId} />
+                                {(msg as any).dashboardData && (
+                                    <AutoDashGrid 
+                                        items={(msg as any).dashboardData.charts} 
+                                        metrics={(msg as any).dashboardData.metrics}
+                                        userId={userId} 
+                                    />
                                 )}
                             </div>
                             {msg.role === 'user' && (

@@ -169,6 +169,29 @@ IMPORTANTE:
 - Solo imprime el JSON final: `print(fig_json)`
 """
 
+# Prompt para Cálculo de Métricas Globales (KPIs)
+GLOBAL_METRICS_PROMPT = """
+Eres un Analista de Negocios Senior. Tu objetivo es identificar las 3 métricas (KPIs) más importantes de este dataset y calcular sus valores.
+
+ESTRUCTURA DE DATOS:
+{info_str}
+Muestra: {head_str}
+
+INSTRUCCIONES:
+1. Identifica columnas numéricas clave (Ventas, Precio, Cantidad, Usuarios, etc.).
+2. Si hay fechas, considera métricas de tiempo (ej. "Ventas este mes").
+3. Calcula valores totales o promedios significativos.
+4. Responde ÚNICAMENTE con un JSON objeto que contenga una lista 'metrics':
+{{
+    "metrics": [
+        {{ "label": "Total [Nombre]", "value": "1,234.56", "description": "Resumen breve del impacto", "icon": "trending-up" }},
+        {{ "label": "Promedio [Nombre]", "value": "$99.00", "description": "Contexto de eficiencia", "icon": "activity" }}
+    ]
+}}
+
+REGLA DE ORO: Devuelve solo JSON. El campo 'icon' debe ser uno de: trending-up, activity, users, box, dollar-sign.
+"""
+
 # Prompt para Generar Presentaciones (Marp / PPTX)
 PRESENTATION_PROMPT = """
 Actúa como un Strategy Consultant Partner. Crea una estructura de Deck Ejecutivo de alto impacto sobre: "{query}".

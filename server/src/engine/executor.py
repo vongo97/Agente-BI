@@ -165,7 +165,23 @@ def execute_analysis(context_obj, raw_response, var_name):
     exec_globals = get_safe_environment(var_name, context_obj)
     
     try:
-        exec(clean_code, exec_globals, exec_globals)
+        import threading
+        
+        def target():
+            try:
+                exec(clean_code, exec_globals, exec_globals)
+            except Exception as e:
+                exec_globals['__exec_exception__'] = e
+
+        thread = threading.Thread(target=target)
+        thread.start()
+        thread.join(timeout=10) # 10 segundos de timeout
+        
+        if thread.is_alive():
+            return "### 🛡️ Tiempo Agotado\nEl análisis tomó demasiado tiempo (>10s) y fue abortado por seguridad.", None
+
+        if '__exec_exception__' in exec_globals:
+            raise exec_globals['__exec_exception__']
         
         code_stdout = redirected_output.getvalue().strip()
         fig = exec_globals.get('fig', None)

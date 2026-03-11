@@ -7,6 +7,7 @@ import re
 import logging
 logger = logging.getLogger(__name__)
 import os
+import json
 
 # Nuevos módulos refactorizados
 from . import prompts
@@ -279,6 +280,7 @@ def detect_anomalies_hybrid(df: pd.DataFrame, api_key: str):
         return response.text
     except Exception as e:
         return f"⚠️ Error en el detector de anomalías: {e}"
+
 def suggest_questions(data_context, api_key, mode="file", provider="gemini", mistral_key=None):
     """
     Analiza el esquema de los datos y sugiere 3 preguntas de análisis de alto valor.
@@ -392,131 +394,106 @@ def ai_data_cleaner(df: pd.DataFrame, api_key: str, model_name: str = "gemini-2.
         print(traceback.format_exc())
         return df, f"Vaya, algo salió mal en la limpieza: {str(e)}"
 
-import logging
-logger = logging.getLogger(__name__)
-
-def generate_auto_dashboard(df, api_key, provider="gemini", mistral_key=None):
+def calculate_global_metrics(df, api_key, provider="gemini", mistral_key=None):
     """
-    Genera automáticamente 4 gráficos estratégicos basados en el DataFrame.
-    Retorna una lista de diccionarios con {title, fig, insight}.
+    Usa IA para identificar y calcular KPIs clave del dataset.
     """
-    logger.info(f" Iniciando generate_auto_dashboard ({provider})...")
-    
     effective_key = mistral_key if provider == "mistral" else api_key
-    
     if not effective_key:
-        logger.error(f"No API key provided for {provider}.")
         return []
         
     try:
-        # 1. Analizar estructura
         buffer = StringIO()
         df.info(buf=buffer)
         info_str = buffer.getvalue()
         head_str = df.head(5).to_string()
         
-        logger.info(f"Data context prepared. Rows: {len(df)}")
+        prompt = prompts.GLOBAL_METRICS_PROMPT.format(
+            info_str=info_str,
+            head_str=head_str
+        )
+        
+        response = generate_ai_content(prompt, effective_key, provider)
+        # Limpieza de JSON
+        json_str = response.replace("```json", "").replace("```", "").strip()
+        data = json.loads(json_str)
+        return data.get("metrics", [])
+    except Exception as e:
+        logger.error(f"Error calculando métricas: {e}")
+        return []
 
-        # 2. Pedir ideas de gráficos (cantidad dinámica pero siempre al menos 2)
+def generate_auto_dashboard(df, api_key, provider="gemini", mistral_key=None):
+    """
+    Genera automáticamente métricas y 4 gráficos estratégicos basados en el DataFrame.
+    """
+    logger.info(f" Iniciando generate_auto_dashboard ({provider})...")
+    
+    # 1. Calcular métricas globales primero
+    metrics = calculate_global_metrics(df, api_key, provider, mistral_key)
+    
+    effective_key = mistral_key if provider == "mistral" else api_key
+    if not effective_key:
+        return {"metrics": metrics, "charts": []}
+        
+    try:
+        # Analizar estructura para planificación de gráficos
+        buffer = StringIO()
+        df.info(buf=buffer)
+        info_str = buffer.getvalue()
+        head_str = df.head(5).to_string()
+
+        # 2. Pedir ideas de gráficos
         planning_prompt = prompts.DASHBOARD_PLANNER_PROMPT.format(
             info_str=info_str,
             head_str=head_str
         )
         
-        logger.info(f"Requesting dynamic plan from {provider}...")
         plan_response = generate_ai_content(planning_prompt, effective_key, provider)
-        logger.info(f"Plan received (len={len(plan_response)})")
-        
-        # Limpieza básica del JSON
         plan_cleaned = plan_response.replace("```json", "").replace("```", "").strip()
+        
         dashboard_plan = []
-        import json
         try:
             dashboard_plan = json.loads(plan_cleaned)
-            logger.info(f"✅ Plan parsed successfully: {len(dashboard_plan)} items")
-            
-            # Limitar a máximo 4 para evitar timeout
-            if len(dashboard_plan) > 4:
-                dashboard_plan = dashboard_plan[:4]
-            # Si está vacío, usar fallback
-            elif len(dashboard_plan) == 0:
-                raise ValueError("Empty plan")
-                
-        except Exception as json_e:
-            logger.error(f"JSON Parse Error: {json_e}. Content: {plan_cleaned[:200]}...")
-            # Fallback garantizado: 2 gráficos básicos
+            if len(dashboard_plan) > 4: dashboard_plan = dashboard_plan[:4]
+        except:
             dashboard_plan = [
-                {"title": "Resumen General", "query": "Crea un gráfico de barras mostrando las principales categorías o valores del dataset"},
-                {"title": "Distribución Principal", "query": "Muestra un histograma o gráfico de la columna numérica más importante"}
+                {"title": "Distribución General", "query": "Crea un gráfico de barras del dataset"},
+                {"title": "Métricas Clave", "query": "Muestra un histograma de los valores principales"}
             ]
 
-        results = []
-        
+        charts = []
         # 3. Generar cada gráfico
-        for idx, item in enumerate(dashboard_plan):
+        for item in dashboard_plan:
             query = item["query"]
             title = item["title"]
-            logger.info(f"Generating Item {idx+1}: {title}...")
             
-            code_prompt = prompts.DASHBOARD_GRAPH_CODE_PROMPT.format(
-                query=query
-            )
-            
+            code_prompt = prompts.DASHBOARD_GRAPH_CODE_PROMPT.format(query=query)
             try:
                 code_resp = generate_ai_content(code_prompt, effective_key, provider)
                 code_match = re.search(r"```python\n(.*?)```", code_resp, re.DOTALL)
                 
                 if code_match:
                     code_to_run = code_match.group(1).replace("fig.show()", "")
-                    
-                    # Ejecutar
-                    old_stdout = sys.stdout
-                    redirected_output = sys.stdout = StringIO()
+                    old_stdout, sys.stdout = sys.stdout, StringIO()
                     namespace = {"df": df.copy(), "pd": pd, "px": px, "json": json}
                     
                     try:
                         exec(code_to_run, namespace)
-                        fig_json_str = redirected_output.getvalue().strip()
-                        
-                        if not fig_json_str:
-                             logger.warning(f"No output from exec for {title}")
-                             results.append({"title": title, "error": "No se generó salida JSON."})
-                             continue
-
-                        # Intentar parsear el output como JSON
-                        try:
+                        fig_json_str = sys.stdout.getvalue().strip()
+                        if fig_json_str:
                             fig_data = json.loads(fig_json_str)
-                            
-                            # Generar Insight breve
-                            insight_prompt = f"Analiza este gráfico ({title}) y da un insight ultra breve de 1 frase."
+                            insight_prompt = f"Basado en este gráfico ({title}), dame una conclusión de 1 frase."
                             insight = generate_ai_content(insight_prompt, effective_key, provider)
-                            
-                            results.append({
-                                "title": title,
-                                "fig": fig_data,
-                                "insight": insight
-                            })
-                            logger.info(f"Item {title} generated successfully.")
-                        except json.JSONDecodeError as je:
-                            logger.error(f"JSON Output Error for {title}: {je}. output: {fig_json_str[:50]}...")
-                            results.append({
-                                "title": title, 
-                                "error": "Error formato gráfico."
-                            })
-                            
-                    except Exception as exec_e:
-                        logger.error(f"Exec Error {title}: {exec_e}")
-                        results.append({"title": title, "error": str(exec_e)})
+                            charts.append({"title": title, "fig": fig_data, "insight": insight})
                     finally:
                         sys.stdout = old_stdout
-                else:
-                    logger.warning(f"No python code found for {title}")
-            except Exception as item_e:
-                logger.error(f"Generation Error {title}: {item_e}")
-            
-        logger.info(f"Finished. Returning {len(results)} items.")
-        return results
-    except Exception as e:
-        logger.error(f"Critical Error in generate_auto_dashboard: {e}", exc_info=True)
-        return []
+            except Exception as e:
+                logger.error(f"Error generando gráfico {title}: {e}")
 
+        return {
+            "metrics": metrics,
+            "charts": charts
+        }
+    except Exception as e:
+        logger.error(f"Critical Error in generate_auto_dashboard: {e}")
+        return {"metrics": metrics, "charts": []}
