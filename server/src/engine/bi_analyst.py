@@ -117,8 +117,31 @@ def analyze_data(data_context, query, api_key, chat_history=[], mode="file", pro
 
     try:
         # --- PASO 1: GENERACIÓN DE CÓDIGO Y DATOS REALES (EL INGENIERO) ---
-        if mode == "file":
-            # Caso Multinivel / Multitabla
+        fig_code = ""
+        real_results = "No se pudieron obtener resultados numéricos."
+        
+        if mode == "sql":
+            # Caso Base de Datos SQL
+            engine = data_context["data"]
+            schema_str = data_context["schema"]
+            
+            sql_prompt = prompts.SQL_ENGINEER_PROMPT.format(
+                query=query,
+                context_str=schema_str
+            )
+            
+            sql_response = generate_ai_content(sql_prompt, engineer_key, engineer_provider)
+            
+            # Ejecución segura en BD
+            temp_text, df_sql_result, clean_sql = executor.execute_sql_safe(engine, sql_response)
+            
+            real_results = temp_text or "Cálculo SQL ejecutado vacío."
+            if clean_sql:
+                fig_code = f"```sql\n{clean_sql}\n```"
+            context_str = f"Schema SQL:\n{schema_str}"
+            
+        else:
+            # Caso Multinivel / Multitabla (Ej. Pandas)
             if isinstance(data_context, dict):
                 context_str = "ESTRUCTURA DE DATOS (Objeto `dfs`):\n"
                 table_names = list(data_context.keys())
@@ -144,35 +167,29 @@ def analyze_data(data_context, query, api_key, chat_history=[], mode="file", pro
                 df = data_context
                 context_str = f"Columns: {df.columns.tolist()}\nTotal Rows: {df.shape[0]}\nSample Data (First 5 rows):\n{df.head(5).to_string()}"
                 data_var = "df"
-        else:
-            context_str = f"Schema: {data_context}"
-            data_var = "engine"
 
-        code_prompt = prompts.ENGINEER_PROMPT_TEMPLATE.format(
-            data_var=data_var,
-            query=query,
-            context_str=context_str
-        )
-        
-        # El Ingeniero genera el código
-        code_response = generate_ai_content(code_prompt, engineer_key, engineer_provider)
-        code_match = re.search(r"```python\n(.*?)```", code_response, re.DOTALL)
-        
-        real_results = "No se pudieron obtener resultados numéricos."
-        fig_code = ""
-        
-        if code_match:
-            code_to_run = code_match.group(1).replace(".show()", "")
-            fig_code = f"```python\n{code_to_run}\n```"
+            code_prompt = prompts.ENGINEER_PROMPT_TEMPLATE.format(
+                data_var=data_var,
+                query=query,
+                context_str=context_str
+            )
             
-            # Ejecución interna para capturar números usando el nuevo executor
-            # Nota: analyze_data captura resultados para el Estratega
-            temp_text, _ = executor.execute_analysis(data_context, code_response, data_var)
-            # Extraer solo la parte de "Detalles técnicos" (stdout) si existe
-            if "---" in temp_text:
-                real_results = temp_text.split("---")[-1].strip()
-            else:
-                real_results = temp_text or "Cálculo ejecutado."
+            # El Ingeniero genera el código
+            code_response = generate_ai_content(code_prompt, engineer_key, engineer_provider)
+            code_match = re.search(r"```python\n(.*?)```", code_response, re.DOTALL)
+            
+            if code_match:
+                code_to_run = code_match.group(1).replace(".show()", "")
+                fig_code = f"```python\n{code_to_run}\n```"
+                
+                # Ejecución interna para capturar números usando el nuevo executor
+                # Nota: analyze_data captura resultados para el Estratega
+                temp_text, _ = executor.execute_analysis(data_context, code_response, data_var)
+                # Extraer solo la parte de "Detalles técnicos" (stdout) si existe
+                if "---" in temp_text:
+                    real_results = temp_text.split("---")[-1].strip()
+                else:
+                    real_results = temp_text or "Cálculo ejecutado."
 
         # --- PASO 2: GENERACIÓN DE NARRATIVA ESTRATÉGICA (EL ESTRATEGA) ---
         history_str = ""

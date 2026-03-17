@@ -7,6 +7,7 @@ import re
 import ast
 import logging
 from io import StringIO
+from sqlalchemy import text
 
 logger = logging.getLogger(__name__)
 
@@ -235,3 +236,50 @@ def safe_exec_cleaning(df, code):
     except Exception as e:
         logger.error(f"Cleaning Error: {e}")
         raise e
+
+def validate_sql_safety(sql_query):
+    """
+    Validación rigurosa para asegurar que solo se ejecutan sentencias SELECT.
+    """
+    query_upper = sql_query.upper().strip()
+    
+    if not query_upper.startswith("SELECT") and not query_upper.startswith("WITH"):
+        raise SecurityError("La consulta debe ser de tipo SELECT o usar una cláusula WITH (CTE).")
+        
+    forbidden_keywords = [
+        r'\bDROP\b', r'\bDELETE\b', r'\bUPDATE\b', r'\bINSERT\b', 
+        r'\bALTER\b', r'\bTRUNCATE\b', r'\bEXEC\b', r'\bEXECUTE\b',
+        r'\bGRANT\b', r'\bREVOKE\b', r'\bCREATE\b'
+    ]
+    
+    for word in forbidden_keywords:
+        if re.search(word, query_upper):
+            raise SecurityError(f"Se detectó una palabra clave SQL prohibida por seguridad: {word.replace(r'\\b', '')}")
+            
+    return True
+
+def execute_sql_safe(engine, raw_sql_response):
+    """
+    Parsea, valida y ejecuta una consulta SQL de forma segura.
+    Devuelve un DataFrame de Pandas o un error seguro.
+    """
+    sql_match = re.search(r"```sql\n(.*?)```", raw_sql_response, re.DOTALL | re.IGNORECASE)
+    if sql_match:
+        clean_sql = sql_match.group(1).strip()
+    else:
+        clean_sql = raw_sql_response.strip().strip('`')
+        
+    try:
+        validate_sql_safety(clean_sql)
+    except SecurityError as e:
+         return f"### 🛡️ Restricción de Seguridad SQL\n{str(e)}", None, None
+         
+    try:
+        with engine.connect() as conn:
+            df_result = pd.read_sql(text(clean_sql), conn)
+            
+        code_stdout = f"Resultados de la consulta SQL ({len(df_result)} filas):\n{df_result.to_string()}"
+        return code_stdout, df_result, clean_sql
+    except Exception as e:
+        logger.error(f"Error ejecutando SQL: {e}")
+        return f"### ⚠️ Error de Análisis SQL\n{e}", None, None

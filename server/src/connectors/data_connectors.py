@@ -4,11 +4,53 @@ from sqlalchemy import create_engine, inspect
 # Cache en memoria para sesiones (Mantenemos simple para el MVP)
 sql_engines = {}
 
+from urllib.parse import quote_plus
+import urllib.parse
+
+def clean_sql_url(url):
+    """
+    Soluciona el problema de SQLAlchemy cuando la contraseña contiene una '@'.
+    Ejemplo problemático: postgresql://user:P@assword@host:5432/db
+    """
+    if "://" not in url or "@" not in url:
+        return url
+        
+    try:
+        # Dividir por el ÚLTIMO '@' que separa credenciales del host
+        parts = url.rsplit('@', 1)
+        if len(parts) != 2: return url
+        
+        creds_part, host_part = parts
+        
+        # Separar el esquema (postgresql://) de las credenciales (user:pass)
+        scheme_parts = creds_part.split('://', 1)
+        if len(scheme_parts) != 2: return url
+        
+        scheme, user_and_pass = scheme_parts
+        
+        # Separar usuario de contraseña
+        up_parts = user_and_pass.split(':', 1)
+        if len(up_parts) == 2:
+            user, pwd = up_parts
+            # Codificar solo la contraseña
+            pwd_encoded = quote_plus(urllib.parse.unquote_plus(pwd))
+            return f"{scheme}://{user}:{pwd_encoded}@{host_part}"
+        elif len(up_parts) == 1:
+            # Sin contraseña
+            return url
+    except Exception as e:
+        print(f"[DEBUG] Error parseando URL SQL cruda: {e}")
+        return url
+        
+    return url
+
 def get_sql_engine(url):
-    """Crea y devuelve el motor de SQLAlchemy."""
-    if url not in sql_engines:
-        sql_engines[url] = create_engine(url)
-    return sql_engines[url]
+    """Crea y devuelve el motor de SQLAlchemy asegurando una URL limpia."""
+    clean_url = clean_sql_url(url)
+    
+    if clean_url not in sql_engines:
+        sql_engines[clean_url] = create_engine(clean_url)
+    return sql_engines[clean_url]
 
 def get_db_schema(engine):
     """Obtiene el esquema de la base de datos."""
