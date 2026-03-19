@@ -45,12 +45,29 @@ def get_user_data(user_id: str, chat_id: Optional[int] = None):
     """Obtiene los datos del usuario para un contexto específico (Chat o Sesión Activa)."""
     session_key = get_session_key(user_id, chat_id)
     
-    if session_key in data_store:
+    if session_key in data_store and data_store[session_key] is not None:
         return data_store[session_key]
     
-    # Si es un chat, primero intentamos ver si hay algo en la sesión "activa" que coincida
-    # Pero para aislamiento total, es mejor forzar la carga desde disco/DS.
+    # FALLBACK: Si es un chat nuevo y no tiene datos, intentar heredar de la sesión activa
+    if chat_id:
+        active_key = get_session_key(user_id, None)
+        if active_key in data_store and data_store[active_key] is not None:
+            # "Promocionamos" los datos al chat actual
+            data_store[session_key] = data_store[active_key]
+            return data_store[session_key]
+            
     return None
+
+def promote_active_session(user_id: str, chat_id: int):
+    """Vincula los datos de la sesión activa a un chat específico recién creado."""
+    active_key = get_session_key(user_id, None)
+    chat_key = get_session_key(user_id, chat_id)
+    
+    if active_key in data_store and data_store[active_key] is not None:
+        data_store[chat_key] = data_store[active_key]
+        logger.info(f"Sesión activa promocionada al chat {chat_id} para {user_id}")
+        return True
+    return False
 
 def load_source_to_session(user_id: str, source, chat_id: Optional[int] = None) -> bool:
     """Carga una fuente de datos específica al contexto de memoria (Chat o Activo)."""

@@ -81,6 +81,9 @@ async def analyze(
             db.add(db_chat)
             db.commit()
             db.refresh(db_chat)
+            # Promocionar los datos de la sesión activa al nuevo chat ID
+            from src.utils.common import promote_active_session
+            promote_active_session(user_id, db_chat.id)
         
         user_msg = Message(chat_id=db_chat.id, role="user", content=query)
         db.add(user_msg)
