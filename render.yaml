@@ -1,12 +1,10 @@
-services:
-  # 1. Base de Datos PostgreSQL
-  - type: database
-    name: agente-bi-db
+databases:
+  - name: agente-bi-db
     databaseName: bi_agent
     user: postgres
     plan: free # Puedes cambiarlo a starter para producción
 
-  # 2. Backend (FastAPI)
+services:
   - type: web
     name: agente-bi-server
     env: python
