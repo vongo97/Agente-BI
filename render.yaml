@@ -44,3 +44,7 @@ services:
           name: agente-bi-client
           type: web
           property: host
+      - key: GOOGLE_CLIENT_ID
+        sync: false # Configurar para habilitar Login con Google
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false # Configurar para habilitar Login con Google
