@@ -563,3 +563,4 @@ Please retry in 7.0336893s. [links {
 2026-03-18 09:27:09,123 - INFO - Initializing Mistral Client with key ending in ...8P9k
 2026-03-18 09:27:16,460 - INFO - HTTP Request: POST https://api.mistral.ai/v1/chat/completions "HTTP/1.1 200 OK"
 2026-03-18 09:27:16,467 - ERROR - Error generando gráfico Distribución de Alcohol vs. Calidad: 'volatile acidity'
+2026-03-19 07:33:56,786 - INFO - Sesión activa promocionada al chat 16 para invitado@agente-bi.local
