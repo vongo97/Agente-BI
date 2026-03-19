@@ -1,7 +1,5 @@
 databases:
   - name: agente-bi-db
-    databaseName: bi_agent
-    user: postgres
     plan: free # Puedes cambiarlo a starter para producción
 
 services:
