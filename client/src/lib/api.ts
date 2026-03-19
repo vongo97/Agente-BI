@@ -8,9 +8,10 @@ async function handleResponse(response: Response) {
   return response.json();
 }
 
-export async function validateApiKey(apiKey: string) {
+export async function validateApiKey(apiKey: string, provider: string = "gemini") {
   const formData = new FormData();
   formData.append("api_key", apiKey);
+  formData.append("provider", provider);
 
   const response = await fetch(`${API_URL}/validate-key`, {
     method: "POST",
@@ -31,12 +32,13 @@ export async function uploadFile(file: File, userId: string) {
   return handleResponse(response);
 }
 
-export async function analyzeData(query: string, apiKey: string, userId: string, chatId?: number, provider?: "gemini" | "mistral" | "hybrid", mistralKey?: string) {
+export async function analyzeData(query: string, apiKey: string, userId: string, chatId?: number, dataSourceId?: number, provider?: "gemini" | "mistral" | "hybrid", mistralKey?: string) {
   const formData = new FormData();
   formData.append("query", query);
   formData.append("api_key", apiKey);
   formData.append("user_id", userId);
   if (chatId) formData.append("chat_id", chatId.toString());
+  if (dataSourceId) formData.append("data_source_id", dataSourceId.toString());
   if (provider) formData.append("provider", provider);
   if (mistralKey) formData.append("mistral_key", mistralKey);
 
@@ -130,11 +132,13 @@ export async function exportChartAsPng(figJson: any) {
   return response.blob();
 }
 
-export async function generateReportSummary(query: string, apiKey: string, userId: string) {
+export async function generateReportSummary(query: string, apiKey: string, userId: string, provider?: "gemini" | "mistral" | "hybrid", mistralKey?: string) {
   const formData = new FormData();
   formData.append("query", query);
   formData.append("api_key", apiKey);
   formData.append("user_id", userId);
+  if (provider) formData.append("provider", provider);
+  if (mistralKey) formData.append("mistral_key", mistralKey);
 
   const response = await fetch(`${API_URL}/generate-report-summary`, {
     method: "POST",
@@ -153,10 +157,12 @@ export async function exportProfessionalReport(reportData: any) {
   return response.blob();
 }
 
-export async function generateAutoDashboard(apiKey: string, userId: string, provider?: "gemini" | "mistral" | "hybrid", mistralKey?: string) {
+export async function generateAutoDashboard(apiKey: string, userId: string, dataSourceId?: number, chatId?: number, provider?: "gemini" | "mistral" | "hybrid", mistralKey?: string) {
   const formData = new FormData();
   formData.append("api_key", apiKey);
   formData.append("user_id", userId);
+  if (dataSourceId) formData.append("data_source_id", dataSourceId.toString());
+  if (chatId) formData.append("chat_id", chatId.toString());
   if (provider) formData.append("provider", provider);
   if (mistralKey) formData.append("mistral_key", mistralKey);
 
@@ -167,10 +173,12 @@ export async function generateAutoDashboard(apiKey: string, userId: string, prov
   return handleResponse(response);
 }
 
-export async function suggestQuestions(userId: string, apiKey: string, provider?: "gemini" | "mistral" | "hybrid", mistralKey?: string) {
+export async function suggestQuestions(userId: string, apiKey: string, dataSourceId?: number, chatId?: number, provider?: "gemini" | "mistral" | "hybrid", mistralKey?: string) {
   const formData = new FormData();
   formData.append("user_id", userId);
   formData.append("api_key", apiKey);
+  if (dataSourceId) formData.append("data_source_id", dataSourceId.toString());
+  if (chatId) formData.append("chat_id", chatId.toString());
   if (provider) formData.append("provider", provider);
   if (mistralKey) formData.append("mistral_key", mistralKey);
 
@@ -184,14 +192,47 @@ export async function suggestQuestions(userId: string, apiKey: string, provider?
 export const getPdfExportUrl = (chatId: number, userId: string) => 
   `${API_URL}/export/pdf/${chatId}?user_id=${userId}`;
 
-export async function cleanData(userId: string, apiKey: string) {
+export async function cleanData(userId: string, apiKey: string, dataSourceId?: number, chatId?: number, provider?: "gemini" | "mistral" | "hybrid", mistralKey?: string) {
   const formData = new FormData();
   formData.append("user_id", userId);
   formData.append("api_key", apiKey);
+  if (dataSourceId) formData.append("data_source_id", dataSourceId.toString());
+  if (chatId) formData.append("chat_id", chatId.toString());
+  if (provider) formData.append("provider", provider);
+  if (mistralKey) formData.append("mistral_key", mistralKey);
 
   const response = await fetch(`${API_URL}/clean-data`, {
     method: "POST",
     body: formData,
+  });
+  return handleResponse(response);
+}
+
+// --- DATA SOURCES (Fase 3.2) ---
+
+export async function getDataSources(userId: string) {
+  const response = await fetch(`${API_URL}/data-sources?user_id=${userId}`);
+  return handleResponse(response);
+}
+
+export async function saveDataSource(userId: string, name: string, type: 'sql' | 'gsheets' | 'file', url: string, columns?: string[]) {
+  const formData = new FormData();
+  formData.append("user_id", userId);
+  formData.append("name", name);
+  formData.append("type", type);
+  formData.append("url", url);
+  if (columns) formData.append("columns", JSON.stringify(columns));
+
+  const response = await fetch(`${API_URL}/data-sources`, {
+    method: "POST",
+    body: formData,
+  });
+  return handleResponse(response);
+}
+
+export async function deleteDataSource(sourceId: number, userId: string) {
+  const response = await fetch(`${API_URL}/data-sources/${sourceId}?user_id=${userId}`, {
+    method: "DELETE",
   });
   return handleResponse(response);
 }

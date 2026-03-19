@@ -62,14 +62,14 @@ export function Chat() {
         } else if (!dataSource) {
             if (suggestions.length > 0) setSuggestions([]);
         }
-    }, [dataSource?.filename, messages.length === 0, apiKey]);
+    }, [dataSource?.filename, messages.length === 0, apiKey, activeChatId]);
 
     const fetchSuggestions = async () => {
         if (!apiKey || !dataSource) return;
         setLoadingSuggestions(true);
         try {
-            console.log("[DEBUG] Fetching suggestions for:", dataSource.filename);
-            const res = await suggestQuestions(userId, apiKey, aiProvider, mistralKey);
+            console.log("[DEBUG] Fetching suggestions for:", dataSource.filename, "Chat:", activeChatId);
+            const res = await suggestQuestions(userId, apiKey, dataSource?.id, activeChatId || undefined, aiProvider, mistralKey);
             setSuggestions(res.suggestions || []);
         } catch (error) {
             console.error("Error cargando sugerencias:", error);
@@ -97,22 +97,22 @@ export function Chat() {
 
         // Mensajes de progreso según el provider
         if (aiProvider === 'hybrid') {
-            setLoadingMessage("🔵 Gemini está generando el código...");
+            setLoadingMessage("🔄 Extrayendo inteligencia estratégica...");
         } else if (aiProvider === 'mistral') {
-            setLoadingMessage("🟣 Mistral está analizando tus datos...");
+            setLoadingMessage("✍️ Redactando diagnóstico de negocio...");
         } else {
-            setLoadingMessage("🔵 Procesando tu consulta...");
+            setLoadingMessage("🧩 Orquestando hallazgos...");
         }
 
         try {
             // Simular delay para segundo mensaje en modo híbrido
             if (aiProvider === 'hybrid') {
                 setTimeout(() => {
-                    if (loading) setLoadingMessage("🟣 Mistral está escribiendo el análisis estratégico...");
+                    if (loading) setLoadingMessage("🌿 Refinando conclusiones del Partner...");
                 }, 3000);
             }
 
-            const res = await analyzeData(queryText, apiKey, userId, activeChatId || undefined, aiProvider, mistralKey);
+            const res = await analyzeData(queryText, apiKey, userId, activeChatId || undefined, dataSource?.id, aiProvider, mistralKey);
 
             const assistantMsg: Message = {
                 id: res.message_id,
@@ -146,7 +146,7 @@ export function Chat() {
         }, 2000);
 
         try {
-            const res = await generateAutoDashboard(apiKey, userId, aiProvider, mistralKey);
+            const res = await generateAutoDashboard(apiKey, userId, dataSource?.id, activeChatId || undefined, aiProvider, mistralKey);
 
             const metrics = res.metrics || [];
             const charts = res.charts || [];
@@ -183,7 +183,7 @@ export function Chat() {
         }
         setCleaningData(true);
         try {
-            const res = await cleanData(userId, apiKey);
+            const res = await cleanData(userId, apiKey, dataSource?.id, activeChatId || undefined, aiProvider, mistralKey);
 
             // Notificar éxito y actualizar columnas si es necesario (el backend ya las actualizó en la sesión)
             const newMessage: Message = {

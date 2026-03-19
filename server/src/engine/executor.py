@@ -142,6 +142,11 @@ def get_safe_environment(var_name=None, context_obj=None):
                 # Solo inyectar 'ventas' si parece ser de ventas (o por defecto si es la única)
                 env['ventas'] = main_df
                 
+    # PARCHE DE COMPATIBILIDAD PANDAS 2.1+
+    # En versiones nuevas applymap se renombró a map.
+    if not hasattr(pd.DataFrame, 'applymap'):
+        pd.DataFrame.applymap = pd.DataFrame.map
+        
     return env
 
 def execute_analysis(context_obj, raw_response, var_name):

@@ -69,12 +69,12 @@ class TestBIEngine(unittest.TestCase):
         # Intento de importar OS (Debe fallar porque __import__ no está)
         attack_code = "```python\nimport os\nos.system('echo hack')\n```"
         narrative, fig = executor.execute_analysis(self.df, attack_code, "df")
-        self.assertIn("Restricción de Seguridad", narrative)
+        self.assertIn("Bloqueo de Seguridad", narrative)
         
         # Intento de usar open() (Debe fallar porque no está en builtins y está en el bloqueador)
         attack_code_2 = "```python\nf = open('test.txt', 'w')\n```"
         narrative, fig = executor.execute_analysis(self.df, attack_code_2, "df")
-        self.assertIn("Restricción de Seguridad", narrative)
+        self.assertIn("Bloqueo de Seguridad", narrative)
 
 if __name__ == '__main__':
     unittest.main()

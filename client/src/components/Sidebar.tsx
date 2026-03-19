@@ -3,7 +3,7 @@
 import { useSession, signOut } from "next-auth/react";
 import { Upload, Settings, Database, LogOut, ChevronDown, Activity, CheckCircle2, AlertCircle, FileText, X, Menu } from "lucide-react";
 import { useState, useEffect } from "react";
-import { validateApiKey, uploadFile, connectSql, connectGoogleSheets, getHistory, getChatDetails, getPdfExportUrl } from "@/lib/api";
+import { validateApiKey, uploadFile, connectSql, connectGoogleSheets, getHistory, getChatDetails, getPdfExportUrl, getDataSources, saveDataSource, deleteDataSource } from "@/lib/api";
 import { useDashboard } from "@/context/DashboardContext";
 import { History, MessageSquare, Clock } from "lucide-react";
 import { ThemeToggle } from "./ThemeToggle";
@@ -19,14 +19,27 @@ export function Sidebar() {
     const [sqlUrl, setSqlUrl] = useState("");
     const [gsheetsUrl, setGsheetsUrl] = useState("");
     const [history, setHistory] = useState<any[]>([]);
+    const [savedSources, setSavedSources] = useState<any[]>([]);
+    const [saveConnection, setSaveConnection] = useState(false);
+    const [sourceName, setSourceName] = useState("");
 
     const userId = session?.user?.email || "default_user";
 
     useEffect(() => {
         if (userId) {
             fetchHistory();
+            fetchSources();
         }
     }, [userId, activeChatId]);
+
+    const fetchSources = async () => {
+        try {
+            const data = await getDataSources(userId);
+            setSavedSources(data);
+        } catch (err) {
+            console.error("Error fetching sources:", err);
+        }
+    };
 
     const fetchHistory = async () => {
         try {
@@ -42,6 +55,16 @@ export function Sidebar() {
             const res = await getChatDetails(id, userId);
             setMessages(res.messages);
             setActiveChatId(id);
+            
+            // Restaurar fuente de datos si el chat la tiene vinculada
+            if (res.data_source) {
+                setDataSource({
+                    id: res.data_source.id,
+                    filename: res.data_source.name,
+                    columns: res.data_source.columns || []
+                });
+            }
+
             setView('chat');
             if (window.innerWidth < 1024) setSidebarOpen(false);
         } catch (err) {
@@ -54,7 +77,7 @@ export function Sidebar() {
         setApiKey(val);
         if (val.length > 20) {
             try {
-                const res = await validateApiKey(val);
+                const res = await validateApiKey(val, "gemini");
                 if (res.valid) {
                     setApiKeyStatus("success");
                 } else {
@@ -70,6 +93,27 @@ export function Sidebar() {
         }
     };
 
+    const [mistralKeyStatus, setMistralKeyStatus] = useState<"idle" | "success" | "error">("idle");
+
+    const handleMistralKeyChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const val = e.target.value;
+        setMistralKey(val);
+        if (val.length > 10) {
+            try {
+                const res = await validateApiKey(val, "mistral");
+                if (res.valid) {
+                    setMistralKeyStatus("success");
+                } else {
+                    setMistralKeyStatus("error");
+                }
+            } catch (err) {
+                setMistralKeyStatus("error");
+            }
+        } else {
+            setMistralKeyStatus("idle");
+        }
+    };
+
     const onFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         if (!e.target.files?.[0]) return;
         setUploading(true);
@@ -77,7 +121,12 @@ export function Sidebar() {
             const res = await uploadFile(e.target.files[0], userId);
             setMessages([]); // Limpiar chat anterior para nueva fuente
             setActiveChatId(null);
-            setDataSource({ filename: res.filename, columns: res.columns });
+            setDataSource({ 
+                id: (res as any).id, 
+                filename: res.filename, 
+                columns: res.columns 
+            });
+            fetchSources(); // Actualizar la lista de fuentes guardadas
         } catch (err: any) {
             console.error(err);
             alert("Error al subir archivo: " + (err.message || "Error desconocido"));
@@ -86,15 +135,26 @@ export function Sidebar() {
         }
     };
 
-    const handleSqlConnect = async () => {
-        if (!sqlUrl) return;
+    const handleSqlConnect = async (url?: string) => {
+        if (!sqlUrl && !url) return;
         setUploading(true);
         try {
-            const res = await connectSql(sqlUrl, userId);
+            const res = await connectSql(url || sqlUrl, userId);
             setMessages([]); // Limpiar chat anterior
             setActiveChatId(null);
             setDataSource({ filename: "Base de Datos SQL", columns: ["SQL Engine Active"] });
+            if (saveConnection && sourceName && !url) {
+                const saved = await saveDataSource(userId, sourceName, 'sql', sqlUrl);
+                setDataSource({ 
+                    filename: "Base de Datos SQL", 
+                    columns: ["SQL Engine Active"],
+                    id: (saved as any).id 
+                });
+                fetchSources();
+            }
             setShowSqlInput(false);
+            setSqlUrl("");
+            setSourceName("");
         } catch (err: any) {
             console.error(err);
             alert("Error SQL: " + (err.message || "Error de conexión"));
@@ -103,20 +163,41 @@ export function Sidebar() {
         }
     };
 
-    const handleGSheetsConnect = async () => {
-        if (!gsheetsUrl) return;
+    const handleGSheetsConnect = async (url?: string) => {
+        if (!gsheetsUrl && !url) return;
         setUploading(true);
         try {
-            const res = await connectGoogleSheets(gsheetsUrl, userId);
+            const res = await connectGoogleSheets(url || gsheetsUrl, userId);
             setMessages([]); // Limpiar chat anterior
             setActiveChatId(null);
             setDataSource({ filename: "Google Sheet", columns: res.columns });
+            if (saveConnection && sourceName && !url) {
+                const saved = await saveDataSource(userId, sourceName, 'gsheets', gsheetsUrl);
+                setDataSource({ 
+                    filename: "Google Sheet", 
+                    columns: res.columns,
+                    id: (saved as any).id 
+                });
+                fetchSources();
+            }
             setShowGSheetsInput(false);
+            setGsheetsUrl("");
+            setSourceName("");
         } catch (err: any) {
             console.error(err);
             alert("Error Google Sheets: " + (err.message || "Verifica que la hoja sea pública"));
         } finally {
             setUploading(false);
+        }
+    };
+
+    const handleDeleteSource = async (id: number) => {
+        if (!confirm("¿Eliminar esta fuente?")) return;
+        try {
+            await deleteDataSource(id, userId);
+            fetchSources();
+        } catch (err) {
+            alert("Error al eliminar fuente");
         }
     };
 
@@ -149,7 +230,7 @@ export function Sidebar() {
                         <div className="p-2.5 bg-blue-600 rounded-xl shadow-lg shadow-blue-600/20 group-hover:scale-110 transition-transform">
                             <Activity className="w-6 h-6 text-white" />
                         </div>
-                        <h1 className="text-xl font-bold text-[var(--text-primary)] tracking-tight">Agente BI <span className="text-[10px] bg-blue-600/20 text-blue-400 py-0.5 px-1.5 rounded ml-1 uppercase">v2.5</span></h1>
+                        <h1 className="text-xl font-bold text-[var(--text-primary)] tracking-tight">Estrategia BI <span className="text-[10px] bg-blue-600/20 text-blue-400 py-0.5 px-1.5 rounded ml-1 uppercase">v2.5</span></h1>
                     </div>
 
                     <div className="grid grid-cols-2 gap-2 mb-6">
@@ -173,7 +254,7 @@ export function Sidebar() {
                         <img src={session?.user?.image || ""} className="w-10 h-10 rounded-full border-2 border-blue-600/30" alt="Profile" />
                         <div className="overflow-hidden">
                             <p className="text-sm font-semibold text-[var(--text-primary)] truncate">{session?.user?.name}</p>
-                            <p className="text-[10px] text-[var(--text-tertiary)] font-medium truncate italic uppercase tracking-tighter">Sesión de Análisis Activa</p>
+                            <p className="text-[10px] text-[var(--text-tertiary)] font-medium truncate italic uppercase tracking-tighter">Socio Consultor • 2026</p>
                         </div>
                     </div>
                 </div>
@@ -231,10 +312,14 @@ export function Sidebar() {
                                     <input
                                         type="password"
                                         value={mistralKey}
-                                        onChange={(e) => setMistralKey(e.target.value)}
+                                        onChange={handleMistralKeyChange}
                                         placeholder="Mistral API Key (Mistral)..."
                                         className="w-full bg-[var(--bg-tertiary)] border border-purple-500/50 focus:border-purple-500 focus:ring-4 focus:ring-purple-500/5 rounded-xl px-4 py-3 text-sm text-[var(--text-primary)] placeholder-[var(--text-tertiary)] focus:outline-none transition-all"
                                     />
+                                    <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                                        {mistralKeyStatus === "success" && <CheckCircle2 className="w-4 h-4 text-green-500" />}
+                                        {mistralKeyStatus === "error" && <AlertCircle className="w-4 h-4 text-red-500" />}
+                                    </div>
                                 </div>
                             )}
                         </div>
@@ -291,11 +376,18 @@ export function Sidebar() {
                                             onClick={() => setShowGSheetsInput(!showGSheetsInput)}
                                             className="w-full flex items-center justify-between px-5 py-4 bg-white/[0.02] border border-white/5 rounded-2xl text-gray-500 hover:text-white hover:bg-white/[0.05] hover:border-white/10 transition-all group"
                                         >
-                                            <span className="text-xs font-bold uppercase tracking-widest">Google Sheets</span>
+                                            <span className="text-xs font-bold uppercase tracking-widest text-emerald-500/80">Google Sheets</span>
                                             <ChevronDown className={`w-4 h-4 transition-transform ${showGSheetsInput ? 'rotate-180' : ''}`} />
                                         </button>
                                         {showGSheetsInput && (
                                             <div className="p-4 bg-white/[0.02] border border-white/5 rounded-2xl space-y-3 animate-in fade-in slide-in-from-top-2">
+                                                <input
+                                                    type="text"
+                                                    value={sourceName}
+                                                    onChange={(e) => setSourceName(e.target.value)}
+                                                    placeholder="Nombre de la fuente (ej. Ventas 2024)..."
+                                                    className="w-full bg-black border border-white/10 rounded-xl px-4 py-2.5 text-xs text-white focus:outline-none focus:border-blue-500/50"
+                                                />
                                                 <input
                                                     type="text"
                                                     value={gsheetsUrl}
@@ -303,8 +395,18 @@ export function Sidebar() {
                                                     placeholder="Pegar URL de la hoja..."
                                                     className="w-full bg-black border border-white/10 rounded-xl px-4 py-2.5 text-xs text-white focus:outline-none focus:border-blue-500/50"
                                                 />
+                                                <div className="flex items-center gap-2 px-1">
+                                                    <input 
+                                                        type="checkbox" 
+                                                        id="save-gsheets" 
+                                                        checked={saveConnection} 
+                                                        onChange={(e) => setSaveConnection(e.target.checked)}
+                                                        className="w-3.5 h-3.5 rounded border-white/10 bg-black text-blue-600 focus:ring-blue-500/20"
+                                                    />
+                                                    <label htmlFor="save-gsheets" className="text-[10px] text-gray-500 font-bold uppercase tracking-tighter cursor-pointer">Guardar conexión</label>
+                                                </div>
                                                 <button
-                                                    onClick={handleGSheetsConnect}
+                                                    onClick={() => handleGSheetsConnect()}
                                                     className="w-full py-2.5 bg-blue-600 hover:bg-blue-500 text-white text-[10px] font-black uppercase tracking-widest rounded-xl transition-all"
                                                 >
                                                     Conectar Hoja
@@ -319,11 +421,18 @@ export function Sidebar() {
                                             onClick={() => setShowSqlInput(!showSqlInput)}
                                             className="w-full flex items-center justify-between px-5 py-4 bg-white/[0.02] border border-white/5 rounded-2xl text-gray-500 hover:text-white hover:bg-white/[0.05] hover:border-white/10 transition-all group"
                                         >
-                                            <span className="text-xs font-bold uppercase tracking-widest">Base de Datos SQL</span>
+                                            <span className="text-xs font-bold uppercase tracking-widest text-blue-500/80">Base de Datos SQL</span>
                                             <ChevronDown className={`w-4 h-4 transition-transform ${showSqlInput ? 'rotate-180' : ''}`} />
                                         </button>
                                         {showSqlInput && (
                                             <div className="p-4 bg-white/[0.02] border border-white/5 rounded-2xl space-y-3 animate-in fade-in slide-in-from-top-2">
+                                                <input
+                                                    type="text"
+                                                    value={sourceName}
+                                                    onChange={(e) => setSourceName(e.target.value)}
+                                                    placeholder="Nombre de la fuente (ej. Supabase Prod)..."
+                                                    className="w-full bg-black border border-white/10 rounded-xl px-4 py-2.5 text-xs text-white focus:outline-none focus:border-blue-500/50"
+                                                />
                                                 <input
                                                     type="text"
                                                     value={sqlUrl}
@@ -331,8 +440,18 @@ export function Sidebar() {
                                                     placeholder="postgresql://user:pass@host/db"
                                                     className="w-full bg-black border border-white/10 rounded-xl px-4 py-2.5 text-xs text-white focus:outline-none focus:border-blue-500/50"
                                                 />
+                                                <div className="flex items-center gap-2 px-1">
+                                                    <input 
+                                                        type="checkbox" 
+                                                        id="save-sql" 
+                                                        checked={saveConnection} 
+                                                        onChange={(e) => setSaveConnection(e.target.checked)}
+                                                        className="w-3.5 h-3.5 rounded border-white/10 bg-black text-blue-600 focus:ring-blue-500/20"
+                                                    />
+                                                    <label htmlFor="save-sql" className="text-[10px] text-gray-500 font-bold uppercase tracking-tighter cursor-pointer">Guardar conexión</label>
+                                                </div>
                                                 <button
-                                                    onClick={handleSqlConnect}
+                                                    onClick={() => handleSqlConnect()}
                                                     className="w-full py-2.5 bg-blue-600 hover:bg-blue-500 text-white text-[10px] font-black uppercase tracking-widest rounded-xl transition-all"
                                                 >
                                                     Conectar SQL
@@ -340,6 +459,67 @@ export function Sidebar() {
                                             </div>
                                         )}
                                     </div>
+
+                                    {/* Fuentes Guardadas (Nueva Persistencia) */}
+                                    {savedSources.length > 0 && (
+                                        <div className="space-y-4 pt-4 border-t border-white/5">
+                                            <div className="flex items-center justify-between px-1">
+                                                <label className="text-[10px] font-black text-gray-700 uppercase tracking-widest">Mis Fuentes de Datos</label>
+                                                <span className="text-[10px] font-bold text-blue-500/50">{savedSources.length}</span>
+                                            </div>
+                                            <div className="grid grid-cols-1 gap-2">
+                                                {savedSources.map((source: any) => (
+                                                    <div 
+                                                        key={source.id}
+                                                        className="group flex items-center justify-between p-3 bg-white/[0.03] border border-white/5 rounded-xl hover:bg-white/[0.06] hover:border-blue-500/20 transition-all"
+                                                    >
+                                                        <button 
+                                                            onClick={() => {
+                                                                if (source.type === 'sql') handleSqlConnect(source.url);
+                                                                else if (source.type === 'gsheets') handleGSheetsConnect(source.url);
+                                                                else {
+                                                                    // Restaurar fuente de archivo
+                                                                    const cols = typeof source.columns === 'string' ? JSON.parse(source.columns || "[]") : (source.columns || []);
+                                                                    setDataSource({
+                                                                        id: source.id,
+                                                                        filename: source.name,
+                                                                        columns: cols
+                                                                    });
+                                                                    setMessages([]);
+                                                                    setActiveChatId(null);
+                                                                }
+                                                            }}
+                                                            className="flex-1 flex items-center gap-3 text-left overflow-hidden"
+                                                        >
+                                                            <div className={`p-1.5 rounded-lg ${
+                                                                source.type === 'sql' ? 'bg-blue-500/10 text-blue-400' : 
+                                                                source.type === 'gsheets' ? 'bg-emerald-500/10 text-emerald-400' :
+                                                                'bg-purple-500/10 text-purple-400'
+                                                            }`}>
+                                                                {source.type === 'sql' ? <Database className="w-3.5 h-3.5" /> : 
+                                                                 source.type === 'gsheets' ? <Database className="w-3.5 h-3.5" /> : 
+                                                                 <FileText className="w-3.5 h-3.5" />}
+                                                            </div>
+                                                            <div className="overflow-hidden">
+                                                                <p className="text-[11px] font-bold text-gray-300 truncate">{source.name}</p>
+                                                                <p className="text-[8px] font-black text-gray-600 uppercase tracking-tighter">
+                                                                    {source.type === 'sql' ? 'SQL Database' : 
+                                                                     source.type === 'gsheets' ? 'Google Sheets' : 
+                                                                     'Archivo Persistente'}
+                                                                </p>
+                                                            </div>
+                                                        </button>
+                                                        <button 
+                                                            onClick={() => handleDeleteSource(source.id)}
+                                                            className="p-1.5 opacity-0 group-hover:opacity-100 text-gray-600 hover:text-red-500 transition-all"
+                                                        >
+                                                            <X className="w-3.5 h-3.5" />
+                                                        </button>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
                                 </>
                             )}
                         </div>

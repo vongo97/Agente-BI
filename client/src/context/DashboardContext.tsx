@@ -16,8 +16,8 @@ interface DashboardContextType {
     setMistralKey: (key: string) => void;
     aiProvider: "gemini" | "mistral" | "hybrid";
     setAiProvider: (provider: "gemini" | "mistral" | "hybrid") => void;
-    dataSource: { filename: string; columns: string[] } | null;
-    setDataSource: (source: { filename: string; columns: string[] } | null) => void;
+    dataSource: { id?: number; filename: string; columns: string[] } | null;
+    setDataSource: (source: { id?: number; filename: string; columns: string[] } | null) => void;
     isSidebarOpen: boolean;
     setSidebarOpen: (open: boolean) => void;
     messages: Message[];
@@ -40,7 +40,7 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
     const [apiKey, setApiKey] = useState("");
     const [mistralKey, setMistralKey] = useState("");
     const [aiProvider, setAiProvider] = useState<"gemini" | "mistral" | "hybrid">("gemini");
-    const [dataSource, setDataSource] = useState<{ filename: string; columns: string[] } | null>(null);
+    const [dataSource, setDataSource] = useState<{ id?: number; filename: string; columns: string[] } | null>(null);
     const [isSidebarOpen, setSidebarOpen] = useState(false);
     const [messages, setMessages] = useState<Message[]>([]);
     const [activeChatId, setActiveChatId] = useState<number | null>(null);

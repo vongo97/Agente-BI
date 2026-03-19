@@ -118,14 +118,23 @@ def generate_pro_report(title: str, summary: str, user_name: str, items: list):
     pdf.ln(10)
 
     for i, item in enumerate(items):
-        # Título del hallazgo
+        # Título del hallazgo (usar título si existe, o extraer primera línea)
         pdf.set_font("helvetica", 'B', 14)
-        pdf.set_text_color(50, 50, 50)
-        pdf.cell(0, 10, txt=f"Hallazgo {i+1}", ln=True)
+        pdf.set_text_color(20, 80, 160)
+        
+        item_title = item.get('title')
+        if not item_title:
+            # Extraer primera frase o línea como título
+            first_line = item['content'].split('\n')[0].strip('# ').strip()
+            item_title = first_line if len(first_line) > 5 else f"Análisis de Datos {i+1}"
+            
+        pdf.multi_cell(0, 10, txt=item_title.upper())
+        pdf.ln(2)
         
         # Explicación
         pdf.set_font("helvetica", '', 10)
         pdf.set_text_color(30, 30, 30)
+        # Limpieza de caracteres para Latin-1 (FPDF estándar)
         content = item['content'].encode('latin-1', 'replace').decode('latin-1')
         pdf.multi_cell(0, 6, txt=content)
         pdf.ln(5)
@@ -138,8 +147,9 @@ def generate_pro_report(title: str, summary: str, user_name: str, items: list):
                     tmp.write(img_bytes)
                     tmp_path = tmp.name
                 try:
-                    # Ajustar imagen al ancho de página
-                    pdf.image(tmp_path, x=pdf.l_margin + 5, w=pdf.w - (pdf.l_margin * 2) - 10)
+                    # Centrar y ajustar imagen
+                    avail_width = pdf.w - (pdf.l_margin * 2)
+                    pdf.image(tmp_path, x=pdf.l_margin, w=avail_width)
                     pdf.ln(10)
                 finally:
                     if os.path.exists(tmp_path):

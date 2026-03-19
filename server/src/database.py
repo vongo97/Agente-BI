@@ -49,9 +49,12 @@ class Chat(Base):
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(String, index=True)  # Email del usuario de NextAuth
     title = Column(String)
+    data_source_id = Column(Integer, ForeignKey("data_sources.id"), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
+    
     messages = relationship("Message", back_populates="chat", cascade="all, delete-orphan")
     dashboard_items = relationship("DashboardItem", back_populates="chat")
+    data_source = relationship("DataSource", back_populates="chats")
 
 class Message(Base):
     __tablename__ = "messages"
@@ -82,6 +85,18 @@ class DashboardItem(Base):
     
     chat = relationship("Chat", back_populates="dashboard_items")
     message = relationship("Message", back_populates="dashboard_item")
+
+class DataSource(Base):
+    __tablename__ = "data_sources"
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(String, index=True)
+    name = Column(String)
+    type = Column(String) # 'sql', 'gsheets' o 'file'
+    url = Column(Text) # URL o Path del archivo
+    columns = Column(Text, nullable=True) # JSON con nombres de columnas
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    chats = relationship("Chat", back_populates="data_source")
 
 # Crear tablas
 def init_db():

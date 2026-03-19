@@ -182,10 +182,45 @@ def analyze_data(data_context, query, api_key, chat_history=[], mode="file", pro
                 code_to_run = code_match.group(1).replace(".show()", "")
                 fig_code = f"```python\n{code_to_run}\n```"
                 
-                # Ejecución interna para capturar números usando el nuevo executor
-                # Nota: analyze_data captura resultados para el Estratega
+                # Ejecución interna para capturar números
                 temp_text, _ = executor.execute_analysis(data_context, code_response, data_var)
-                # Extraer solo la parte de "Detalles técnicos" (stdout) si existe
+                
+                # --- AUTOCORRECCIÓN (SELF-HEALING) ---
+                if "### ⚠️ Error" in temp_text or "### 🛡️" in temp_text:
+                    print(f"[DEBUG] Autocorrección activada por error: {temp_text}")
+                    # Re-intentar una vez con el error
+                    # Enriquecer el error con las columnas reales si es posible
+                    actual_columns = ""
+                    if isinstance(data_context, pd.DataFrame):
+                        actual_columns = f"\nCOLUMNAS REALES DISPONIBLES: {data_context.columns.tolist()}"
+                    elif isinstance(data_context, dict):
+                        cols_dict = {k: v.columns.tolist() for k, v in data_context.items() if isinstance(v, pd.DataFrame)}
+                        actual_columns = f"\nCOLUMNAS REALES POR DATAFRAME: {cols_dict}"
+
+                    retry_prompt = f"""
+                    TU CÓDIGO ANTERIOR FALLÓ:
+                    {code_to_run}
+
+                    ERROR OBTENIDO:
+                    {temp_text}
+                    {actual_columns}
+
+                    TU MISIÓN:
+                    Corrige el código Python por favor. Asegúrate de:
+                    1. Usar nombres de columnas EXACTOS (respeta mayúsculas/minúsculas de la lista de COLUMNAS REALES).
+                    2. No usar funciones deprecadas como `applymap`. Use `.map()` en su lugar.
+                    3. No llames a `.values()` como función, usa `.values` como propiedad.
+                    4. Devolver SOLO el bloque ```python corregido.
+                    """
+                    code_response = generate_ai_content(retry_prompt, engineer_key, engineer_provider)
+                    code_match = re.search(r"```python\n(.*?)```", code_response, re.DOTALL)
+                    if code_match:
+                        code_to_run = code_match.group(1).replace(".show()", "")
+                        fig_code = f"```python\n{code_to_run}\n```"
+                        # Re-ejecutar el código corregido
+                        temp_text, _ = executor.execute_analysis(data_context, code_response, data_var)
+
+                # Extraer resultados para el estratega
                 if "---" in temp_text:
                     real_results = temp_text.split("---")[-1].strip()
                 else:
@@ -249,17 +284,49 @@ def generate_report_narrative(data_context, query, api_key, mode="file", model_n
     except Exception as e:
         return f"Error en narrativa: {e}"
 
+def generate_report_summary(query, api_key, context_data=None, provider="gemini", mistral_key=None):
+    """
+    Genera un resumen estratégico para el Reporte Profesional (Executive Summary).
+    """
+    effective_key = mistral_key if provider == "mistral" else api_key
+    if not effective_key:
+        return "Error: API Key no configurada para el resumen."
+
+    try:
+        context_str = "No hay contexto adicional disponible."
+        if context_data is not None:
+            if isinstance(context_data, pd.DataFrame):
+                context_str = f"Columnas: {context_data.columns.tolist()}"
+            elif isinstance(context_data, dict):
+                context_str = f"Tablas: {list(context_data.keys())}"
+            else:
+                context_str = str(context_data)[:500]
+
+        prompt = prompts.REPORT_SUMMARY_PROMPT.format(
+            query=query,
+            context_str=context_str
+        )
+        
+        return generate_ai_content(prompt, effective_key, provider, mistral_key)
+    except Exception as e:
+        logger.error(f"Error en generate_report_summary: {e}")
+        return f"Error generando resumen ejecutivo: {str(e)}"
+
 def execute_analysis(context_obj, raw_response, var_name):
     """
     Proxy para el nuevo módulo executor.
     """
     return executor.execute_analysis(context_obj, raw_response, var_name)
 
-def detect_anomalies_hybrid(df: pd.DataFrame, api_key: str):
+def detect_anomalies_hybrid(df: pd.DataFrame, api_key: str, provider="gemini", mistral_key=None):
     """
     Sistema Híbrido: Detecta anomalías matemáticas con Pandas (Z-score) 
-    y las interpreta estratégicamente con Gemini.
+    y las interpreta estratégicamente con el LLM seleccionado.
     """
+    effective_key = mistral_key if provider == "mistral" else api_key
+    if not effective_key:
+        return "⚠️ Error: Configura tu API Key para detectar anomalías."
+
     try:
         numeric_cols = df.select_dtypes(include=['number']).columns
         findings = []
@@ -283,18 +350,15 @@ def detect_anomalies_hybrid(df: pd.DataFrame, api_key: str):
         else:
             findings_str = "\n".join(findings)
 
-        # 2. Interpretación con Gemini
-        genai.configure(api_key=api_key)
-        model = genai.GenerativeModel("gemini-2.5-flash")
-        
+        # 2. Interpretación con IA
         prompt = prompts.ANOMALY_AUDITOR_PROMPT.format(
             findings_str=findings_str,
             columns=df.columns.tolist(),
             sample=df.head(5).to_dict()
         )
         
-        response = model.generate_content(prompt)
-        return response.text
+        response = generate_ai_content(prompt, effective_key, provider, mistral_key)
+        return response
     except Exception as e:
         return f"⚠️ Error en el detector de anomalías: {e}"
 
@@ -361,17 +425,18 @@ def suggest_questions(data_context, api_key, mode="file", provider="gemini", mis
         except:
             pass
 
-        return ["¿Cuál es el resumen general de mis datos?", "¿Cuáles son las métricas clave?", "¿Hay alguna anomalía importante?"]
+        return ["¿Cuál es la situación estratégica actual según estos datos?", "¿Qué factores están impulsando el rendimiento principal?", "¿Existen riesgos operativos o anomalías que deba abordar?"]
         
     except Exception as e:
         print(f"[DEBUG] Error en suggest_questions: {e}")
         return ["Error al generar sugerencias"]
 
-def ai_data_cleaner(df: pd.DataFrame, api_key: str, model_name: str = "gemini-2.5-flash"):
+def ai_data_cleaner(df: pd.DataFrame, api_key: str, provider="gemini", mistral_key=None):
     """
-    Analiza y limpia el DataFrame usando IA.
+    Analiza y limpia el DataFrame usando la IA seleccionada.
     """
-    if not api_key:
+    effective_key = mistral_key if provider == "mistral" else api_key
+    if not effective_key:
         return df, "Error: No se proporcionó API Key"
 
     try:
@@ -385,19 +450,16 @@ def ai_data_cleaner(df: pd.DataFrame, api_key: str, model_name: str = "gemini-2.
 
         profile_str = f"Columnas: {cols}\nTipos: {dtypes}\nNulos: {nulls}\nDuplicados: {duplicates}\nMuestra: {sample}"
 
-        # 2. Consultar a Gemini
-        genai.configure(api_key=api_key)
-        model = genai.GenerativeModel(model_name)
-
+        # 2. Consultar a la IA
         prompt = prompts.DATA_CLEANER_PROMPT.format(
             profile_str=profile_str
         )
 
-        response = model.generate_content(prompt)
-        code_match = re.search(r"```python\n(.*?)\n```", response.text, re.DOTALL)
+        response_text = generate_ai_content(prompt, effective_key, provider, mistral_key)
+        code_match = re.search(r"```python\n(.*?)\n```", response_text, re.DOTALL)
         if not code_match:
             # Fallback a búsqueda de texto si no hay bloques
-            code = response.text
+            code = response_text
         else:
             code = code_match.group(1)
 

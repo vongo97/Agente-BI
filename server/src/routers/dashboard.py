@@ -27,11 +27,28 @@ async def get_chat_details(chat_id: int, user_id: str, db: Session = Depends(get
     messages = []
     for m in chat.messages:
         messages.append({
+            "id": m.id,
             "role": m.role,
             "content": m.content,
             "fig": json.loads(m.figure_json) if m.figure_json else None
         })
-    return {"id": chat.id, "title": chat.title, "messages": messages}
+    
+    source_info = None
+    if chat.data_source:
+        source_info = {
+            "id": chat.data_source.id,
+            "name": chat.data_source.name,
+            "type": chat.data_source.type,
+            "url": chat.data_source.url,
+            "columns": json.loads(chat.data_source.columns) if chat.data_source.columns else []
+        }
+
+    return {
+        "id": chat.id, 
+        "title": chat.title, 
+        "messages": messages,
+        "data_source": source_info
+    }
 
 @router.post("/dashboard/pin")
 async def pin_to_dashboard(
@@ -88,13 +105,23 @@ async def unpin_from_dashboard(item_id: int, user_id: str, db: Session = Depends
 async def auto_dashboard(
     user_id: str = Form(...), 
     api_key: str = Form(...),
+    data_source_id: Optional[int] = Form(None),
     provider: str = Form("gemini"),
-    mistral_key: Optional[str] = Form(None)
+    mistral_key: Optional[str] = Form(None),
+    db: Session = Depends(get_db)
 ):
     check_authorization(user_id)
     session_data = get_user_data(user_id)
+    
+    if not session_data and data_source_id:
+        from src.database import DataSource
+        from src.utils.common import load_source_to_session
+        source = db.query(DataSource).filter(DataSource.id == data_source_id, DataSource.user_id == user_id).first()
+        if source and load_source_to_session(user_id, source):
+            session_data = get_user_data(user_id)
+
     if not session_data or session_data["type"] != "file":
-         raise HTTPException(status_code=400, detail="Se requieren datos de archivo.")
+         raise HTTPException(status_code=400, detail="Se requieren datos de archivo para generar un Auto-Dashboard.")
          
     df = next(iter(session_data["data"].values()))
     results = generate_auto_dashboard(df, api_key, provider, mistral_key)

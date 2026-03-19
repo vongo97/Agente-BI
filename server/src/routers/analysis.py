@@ -14,6 +14,7 @@ async def analyze(
     api_key: str = Form(...),
     user_id: str = Form(...),
     chat_id: Optional[int] = Form(None),
+    data_source_id: Optional[int] = Form(None),
     provider: str = Form("gemini"),
     mistral_key: Optional[str] = Form(None),
     db: Session = Depends(get_db)
@@ -30,15 +31,38 @@ async def analyze(
             "code": "# Saludo"
         }
 
-    session_data = get_user_data(user_id)
+    # Si no hay data_source_id pero hay chat_id, intentar recuperarlo del chat
+    if chat_id and not data_source_id:
+        db_chat = db.query(Chat).filter(Chat.id == chat_id, Chat.user_id == user_id).first()
+        if db_chat and db_chat.data_source_id:
+            data_source_id = db_chat.data_source_id
+
+    session_data = get_user_data(user_id, chat_id)
+    
+    # VALIDACIÓN DE FUENTE: Si el ID solicitado no coincide con lo cargado, forzar recarga
+    if session_data and data_source_id and session_data.get("source_id") != data_source_id:
+        session_data = None
+        
     if not session_data:
-        raise HTTPException(status_code=400, detail="No hay datos cargados para analizar.")
+        # Intentar auto-cargar desde DataSource si tenemos el ID
+        if data_source_id:
+            from src.database import DataSource
+            from src.utils.common import load_source_to_session
+            source = db.query(DataSource).filter(DataSource.id == data_source_id, DataSource.user_id == user_id).first()
+            if source:
+                if load_source_to_session(user_id, source, chat_id):
+                    session_data = get_user_data(user_id, chat_id)
+        
+        if not session_data:
+            raise HTTPException(status_code=400, detail="No hay datos cargados para analizar. Por favor selecciona una fuente de datos.")
     
     try:
-        data_var = "dfs" if session_data["type"] == "file" else "engine"
+        # Determinar el tipo de dato y la variable
+        data_type = session_data["type"]
+        data_var = "dfs" if data_type == "file" else "engine"
         
         # 1. Obtener código de la IA
-        raw_response = analyze_data(session_data["data"], query, api_key, mode=session_data["type"], provider=provider, mistral_key=mistral_key)
+        raw_response = analyze_data(session_data["data"], query, api_key, mode=data_type, provider=provider, mistral_key=mistral_key)
         
         # 2. Ejecutar análisis final
         output_text, fig = execute_analysis(session_data["data"], raw_response, data_var)
@@ -49,7 +73,11 @@ async def analyze(
         if chat_id:
             db_chat = db.query(Chat).filter(Chat.id == chat_id, Chat.user_id == user_id).first()
         else:
-            db_chat = Chat(user_id=user_id, title=query[:50] + "...")
+            db_chat = Chat(
+                user_id=user_id, 
+                title=query[:50] + "...",
+                data_source_id=data_source_id
+            )
             db.add(db_chat)
             db.commit()
             db.refresh(db_chat)
@@ -80,12 +108,27 @@ async def analyze(
 async def get_suggestions(
     user_id: str = Form(...), 
     api_key: str = Form(...),
+    chat_id: Optional[int] = Form(None), # AÑADIDO
+    data_source_id: Optional[int] = Form(None),
     provider: str = Form("gemini"),
-    mistral_key: Optional[str] = Form(None)
+    mistral_key: Optional[str] = Form(None),
+    db: Session = Depends(get_db)
 ):
-    session_data = get_user_data(user_id)
+    session_data = get_user_data(user_id, chat_id)
+    
+    # VALIDACIÓN DE FUENTE: Si el ID solicitado no coincide con lo cargado, forzar recarga
+    if session_data and data_source_id and session_data.get("source_id") != data_source_id:
+        session_data = None
+
+    if not session_data and data_source_id:
+        from src.database import DataSource
+        from src.utils.common import load_source_to_session
+        source = db.query(DataSource).filter(DataSource.id == data_source_id, DataSource.user_id == user_id).first()
+        if source and load_source_to_session(user_id, source, chat_id):
+            session_data = get_user_data(user_id, chat_id)
+
     if not session_data:
-        raise HTTPException(status_code=404, detail="No hay datos cargados.")
+        raise HTTPException(status_code=404, detail="No hay datos cargados para generar sugerencias.")
     
     context = session_data["data"]
     if session_data["type"] == "sql":
@@ -100,3 +143,29 @@ async def detect_anomalies():
     return {
         "analysis": "### 🚀 Detective de Datos: Próximamente\nEstamos refinando el motor de auditoría proactiva."
     }
+
+@router.post("/generate-report-summary")
+async def get_report_summary(
+    query: str = Form(...),
+    api_key: str = Form(...),
+    user_id: str = Form(...),
+    provider: str = Form("gemini"),
+    mistral_key: Optional[str] = Form(None),
+    db: Session = Depends(get_db)
+):
+    check_authorization(user_id)
+    session_data = get_user_data(user_id)
+    
+    # Generar el resumen usando el motor de IA
+    from src.engine.bi_analyst import generate_report_summary
+    
+    context_data = session_data["data"] if session_data else None
+    summary = generate_report_summary(
+        query=query,
+        api_key=api_key,
+        context_data=context_data,
+        provider=provider,
+        mistral_key=mistral_key
+    )
+    
+    return {"summary": summary}

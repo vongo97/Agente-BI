@@ -44,6 +44,30 @@ async def export_pdf_report(chat_id: int, user_id: str, db: Session = Depends(ge
         headers={"Content-Disposition": f"attachment; filename=reporte_bi_{chat_id}.pdf"}
     )
 
+@router.post("/export/report")
+async def export_pro_report(data: dict):
+    """
+    Genera un Reporte PDF Profesional basado en los datos curados por el usuario.
+    """
+    user_id = data.get("user_id", "Invitado")
+    title = data.get("title", "Informe de Análisis BI")
+    summary = data.get("summary", "")
+    items = data.get("items", []) # Lista de {content, fig}
+
+    from src.utils.exporter import generate_pro_report
+    
+    try:
+        pdf_bytes = generate_pro_report(title, summary, user_id, items)
+        return Response(
+            content=bytes(pdf_bytes),
+            media_type="application/pdf",
+            headers={"Content-Disposition": f"attachment; filename=informe_ejecutivo_{user_id}.pdf"}
+        )
+    except Exception as e:
+        import traceback
+        print(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=f"Error generando reporte pro: {str(e)}")
+
 @router.post("/export-pptx")
 async def export_pptx(data: dict):
     content = data.get("content")

@@ -364,3 +364,202 @@ Please retry in 4.886423736s. [links {
 ]
 2026-01-06 22:50:58,622 - WARNING - No python code found for Análisis Principal
 2026-01-06 22:50:58,622 - INFO - Finished. Returning 0 items.
+2026-03-17 17:20:11,717 - INFO - HTTP Request: GET https://api.mistral.ai/v1/models "HTTP/1.1 200 OK"
+2026-03-17 17:20:58,401 - INFO - Initializing Mistral Client with key ending in ...8P9k
+2026-03-17 17:21:29,942 - INFO - HTTP Request: POST https://api.mistral.ai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-03-17 18:17:50,197 - INFO - Initializing Mistral Client with key ending in ...8P9k
+2026-03-17 18:17:55,771 - INFO - HTTP Request: POST https://api.mistral.ai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-03-17 18:17:57,778 - INFO - Initializing Mistral Client with key ending in ...8P9k
+2026-03-17 18:18:09,163 - INFO - HTTP Request: POST https://api.mistral.ai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-03-17 18:18:09,283 - INFO - Initializing Mistral Client with key ending in ...8P9k
+2026-03-17 18:18:52,165 - INFO - HTTP Request: POST https://api.mistral.ai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-03-18 07:30:46,090 - INFO - Chromium init'ed with kwargs {}
+2026-03-18 07:30:46,108 - INFO - Found chromium path: C:\Program Files\Google\Chrome\Application\chrome.exe
+2026-03-18 07:30:46,112 - INFO - Temp directory created: C:\Users\vongo\AppData\Local\Temp\tmp48pgqvvk.
+2026-03-18 07:30:46,116 - INFO - Opening browser.
+2026-03-18 07:30:46,118 - INFO - Temp directory created: C:\Users\vongo\AppData\Local\Temp\tmp77lfw32x.
+2026-03-18 07:30:46,119 - INFO - Temporary directory at: C:\Users\vongo\AppData\Local\Temp\tmp77lfw32x
+2026-03-18 07:30:46,968 - INFO - Conforming 1 to file:///C:/Users/vongo/AppData/Local/Temp/tmp48pgqvvk/index.html
+2026-03-18 07:30:46,969 - INFO - Waiting on all navigates
+2026-03-18 07:30:48,851 - INFO - All navigates done, putting them all in queue.
+2026-03-18 07:30:48,854 - INFO - Getting tab from queue (has 1)
+2026-03-18 07:30:48,855 - INFO - Got 5C4D
+2026-03-18 07:30:48,856 - INFO - Processing Beneficio_Total_por_Zona_Geogrfica.png
+2026-03-18 07:30:48,856 - INFO - Sending big command for Beneficio_Total_por_Zona_Geogrfica.png.
+2026-03-18 07:30:49,064 - INFO - Sent big command for Beneficio_Total_por_Zona_Geogrfica.png.
+2026-03-18 07:30:49,065 - INFO - Reloading tab 5C4D before return.
+2026-03-18 07:30:49,169 - INFO - Putting tab 5C4D back (queue size: 0).
+2026-03-18 07:30:49,169 - INFO - Waiting for all cleanups to finish.
+2026-03-18 07:30:49,170 - INFO - Exiting Kaleido
+2026-03-18 07:30:49,170 - INFO - Closing browser.
+2026-03-18 07:30:49,210 - INFO - Closing browser.
+2026-03-18 07:30:49,212 - INFO - TemporaryDirectory.cleanup() worked.
+2026-03-18 07:30:49,214 - INFO - shutil.rmtree worked.
+2026-03-18 07:30:49,215 - INFO - Cancelling tasks.
+2026-03-18 07:30:49,216 - INFO - Exiting Kaleido/Choreo
+2026-03-18 07:30:49,550 - INFO - TemporaryDirectory.cleanup() worked.
+2026-03-18 07:30:49,551 - INFO - shutil.rmtree worked.
+2026-03-18 07:30:49,552 - INFO - TemporaryDirectory.cleanup() worked.
+2026-03-18 07:30:49,554 - INFO - shutil.rmtree worked.
+2026-03-18 07:30:49,555 - INFO - Cancelling tasks.
+2026-03-18 07:30:49,556 - INFO - Exiting Kaleido/Choreo
+2026-03-18 07:36:10,872 - INFO - TemporaryDirectory.cleanup() worked.
+2026-03-18 07:36:10,873 - INFO - shutil.rmtree worked.
+2026-03-18 07:40:14,143 - ERROR - Execution Error: 'DataFrame' object has no attribute 'applymap'
+2026-03-18 07:40:30,551 - ERROR - Execution Error: 'DataFrame' object has no attribute 'applymap'
+2026-03-18 07:41:50,495 - INFO - Initializing Mistral Client with key ending in ...8P9k
+2026-03-18 07:42:01,248 - INFO - HTTP Request: POST https://api.mistral.ai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-03-18 07:42:01,657 - INFO - Initializing Mistral Client with key ending in ...8P9k
+2026-03-18 07:42:37,419 - INFO - HTTP Request: POST https://api.mistral.ai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-03-18 07:44:27,694 - INFO - Chromium init'ed with kwargs {}
+2026-03-18 07:44:27,696 - INFO - Found chromium path: C:\Program Files\Google\Chrome\Application\chrome.exe
+2026-03-18 07:44:27,697 - INFO - Temp directory created: C:\Users\vongo\AppData\Local\Temp\tmp4n9mjd88.
+2026-03-18 07:44:27,699 - INFO - Opening browser.
+2026-03-18 07:44:27,702 - INFO - Temp directory created: C:\Users\vongo\AppData\Local\Temp\tmpkmuccgls.
+2026-03-18 07:44:27,703 - INFO - Temporary directory at: C:\Users\vongo\AppData\Local\Temp\tmpkmuccgls
+2026-03-18 07:44:28,169 - INFO - Conforming 1 to file:///C:/Users/vongo/AppData/Local/Temp/tmp4n9mjd88/index.html
+2026-03-18 07:44:28,170 - INFO - Waiting on all navigates
+2026-03-18 07:44:29,416 - INFO - All navigates done, putting them all in queue.
+2026-03-18 07:44:29,419 - INFO - Getting tab from queue (has 1)
+2026-03-18 07:44:29,419 - INFO - Got 16F8
+2026-03-18 07:44:29,420 - INFO - Processing Evolucin_mensual_de_ingresos_por_zona_y_tipo_de_producto.png
+2026-03-18 07:44:29,420 - INFO - Sending big command for Evolucin_mensual_de_ingresos_por_zona_y_tipo_de_producto.png.
+2026-03-18 07:44:29,736 - INFO - Sent big command for Evolucin_mensual_de_ingresos_por_zona_y_tipo_de_producto.png.
+2026-03-18 07:44:29,738 - INFO - Reloading tab 16F8 before return.
+2026-03-18 07:44:29,827 - INFO - Putting tab 16F8 back (queue size: 0).
+2026-03-18 07:44:29,828 - INFO - Waiting for all cleanups to finish.
+2026-03-18 07:44:29,829 - INFO - Exiting Kaleido
+2026-03-18 07:44:29,830 - INFO - Closing browser.
+2026-03-18 07:44:29,862 - INFO - Closing browser.
+2026-03-18 07:44:29,865 - INFO - TemporaryDirectory.cleanup() worked.
+2026-03-18 07:44:29,866 - INFO - shutil.rmtree worked.
+2026-03-18 07:44:29,867 - INFO - Cancelling tasks.
+2026-03-18 07:44:29,868 - INFO - Exiting Kaleido/Choreo
+2026-03-18 07:44:30,090 - INFO - TemporaryDirectory.cleanup() worked.
+2026-03-18 07:44:30,091 - INFO - shutil.rmtree worked.
+2026-03-18 07:44:30,092 - INFO - TemporaryDirectory.cleanup() worked.
+2026-03-18 07:44:30,093 - INFO - shutil.rmtree worked.
+2026-03-18 07:44:30,093 - INFO - Cancelling tasks.
+2026-03-18 07:44:30,094 - INFO - Exiting Kaleido/Choreo
+2026-03-18 07:58:05,227 - INFO - Initializing Mistral Client with key ending in ...8P9k
+2026-03-18 07:58:09,537 - INFO - HTTP Request: POST https://api.mistral.ai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-03-18 07:58:34,937 - INFO - Initializing Mistral Client with key ending in ...8P9k
+2026-03-18 07:58:49,588 - INFO - HTTP Request: POST https://api.mistral.ai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-03-18 07:58:49,594 - INFO - TemporaryDirectory.cleanup() worked.
+2026-03-18 07:58:49,595 - INFO - shutil.rmtree worked.
+2026-03-18 07:58:49,718 - INFO - Initializing Mistral Client with key ending in ...8P9k
+2026-03-18 07:59:25,297 - INFO - HTTP Request: POST https://api.mistral.ai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-03-18 08:00:10,987 - INFO - Initializing Mistral Client with key ending in ...8P9k
+2026-03-18 08:00:15,197 - INFO - HTTP Request: POST https://api.mistral.ai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-03-18 08:00:23,088 - INFO - Initializing Mistral Client with key ending in ...8P9k
+2026-03-18 08:00:27,662 - INFO - HTTP Request: POST https://api.mistral.ai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-03-18 08:00:59,430 - INFO - Initializing Mistral Client with key ending in ...8P9k
+2026-03-18 08:01:04,808 - INFO - HTTP Request: POST https://api.mistral.ai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-03-18 08:57:16,328 - ERROR - Gemini Error: 429 You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To monitor your current usage, head to: https://ai.dev/rate-limit. 
+* Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_requests, limit: 20, model: gemini-2.5-flash
+Please retry in 40.610228047s. [links {
+  description: "Learn more about Gemini API quotas"
+  url: "https://ai.google.dev/gemini-api/docs/rate-limits"
+}
+, violations {
+  quota_metric: "generativelanguage.googleapis.com/generate_content_free_tier_requests"
+  quota_id: "GenerateRequestsPerDayPerProjectPerModel-FreeTier"
+  quota_dimensions {
+    key: "model"
+    value: "gemini-2.5-flash"
+  }
+  quota_dimensions {
+    key: "location"
+    value: "global"
+  }
+  quota_value: 20
+}
+, retry_delay {
+  seconds: 40
+}
+]
+2026-03-18 08:57:49,908 - ERROR - Gemini Error: 429 You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To monitor your current usage, head to: https://ai.dev/rate-limit. 
+* Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_requests, limit: 20, model: gemini-2.5-flash
+Please retry in 7.0336893s. [links {
+  description: "Learn more about Gemini API quotas"
+  url: "https://ai.google.dev/gemini-api/docs/rate-limits"
+}
+, violations {
+  quota_metric: "generativelanguage.googleapis.com/generate_content_free_tier_requests"
+  quota_id: "GenerateRequestsPerDayPerProjectPerModel-FreeTier"
+  quota_dimensions {
+    key: "model"
+    value: "gemini-2.5-flash"
+  }
+  quota_dimensions {
+    key: "location"
+    value: "global"
+  }
+  quota_value: 20
+}
+, retry_delay {
+  seconds: 7
+}
+]
+2026-03-18 08:58:26,810 - INFO - Initializing Mistral Client with key ending in ...8P9k
+2026-03-18 08:58:47,748 - INFO - HTTP Request: POST https://api.mistral.ai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-03-18 08:59:43,536 - INFO - Initializing Mistral Client with key ending in ...8P9k
+2026-03-18 09:00:12,618 - INFO - HTTP Request: POST https://api.mistral.ai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-03-18 09:00:13,704 - INFO - Initializing Mistral Client with key ending in ...8P9k
+2026-03-18 09:00:46,281 - INFO - HTTP Request: POST https://api.mistral.ai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-03-18 09:02:28,629 - INFO - Initializing Mistral Client with key ending in ...8P9k
+2026-03-18 09:02:34,269 - INFO - HTTP Request: POST https://api.mistral.ai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-03-18 09:03:12,931 - INFO - Initializing Mistral Client with key ending in ...8P9k
+2026-03-18 09:03:32,641 - INFO - HTTP Request: POST https://api.mistral.ai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-03-18 09:03:32,647 - ERROR - Execution Error: module 'pandas.compat' has no attribute 'StringIO'
+2026-03-18 09:03:32,648 - INFO - Initializing Mistral Client with key ending in ...8P9k
+2026-03-18 09:03:55,652 - INFO - HTTP Request: POST https://api.mistral.ai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-03-18 09:03:55,660 - ERROR - Execution Error: 'numpy.ndarray' object is not callable
+2026-03-18 09:03:55,661 - INFO - Initializing Mistral Client with key ending in ...8P9k
+2026-03-18 09:04:22,878 - INFO - HTTP Request: POST https://api.mistral.ai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-03-18 09:04:22,919 - ERROR - Execution Error: 'numpy.ndarray' object is not callable
+2026-03-18 09:05:43,605 - INFO - Initializing Mistral Client with key ending in ...8P9k
+2026-03-18 09:06:03,901 - INFO - HTTP Request: POST https://api.mistral.ai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-03-18 09:06:13,923 - INFO - Initializing Mistral Client with key ending in ...8P9k
+2026-03-18 09:06:43,139 - INFO - HTTP Request: POST https://api.mistral.ai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-03-18 09:06:43,239 - INFO - Initializing Mistral Client with key ending in ...8P9k
+2026-03-18 09:07:12,239 - INFO - HTTP Request: POST https://api.mistral.ai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-03-18 09:09:55,347 - INFO - Initializing Mistral Client with key ending in ...8P9k
+2026-03-18 09:10:08,991 - INFO - HTTP Request: POST https://api.mistral.ai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-03-18 09:10:09,036 - INFO - Initializing Mistral Client with key ending in ...8P9k
+2026-03-18 09:10:20,924 - INFO - HTTP Request: POST https://api.mistral.ai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-03-18 09:10:20,969 - INFO - Initializing Mistral Client with key ending in ...8P9k
+2026-03-18 09:10:52,421 - INFO - HTTP Request: POST https://api.mistral.ai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-03-18 09:11:29,806 - INFO - Initializing Mistral Client with key ending in ...8P9k
+2026-03-18 09:11:45,970 - INFO - HTTP Request: POST https://api.mistral.ai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-03-18 09:11:45,980 - INFO - Initializing Mistral Client with key ending in ...8P9k
+2026-03-18 09:11:59,681 - INFO - HTTP Request: POST https://api.mistral.ai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-03-18 09:11:59,700 - INFO - Initializing Mistral Client with key ending in ...8P9k
+2026-03-18 09:12:22,325 - INFO - HTTP Request: POST https://api.mistral.ai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-03-18 09:14:11,729 - INFO - Initializing Mistral Client with key ending in ...8P9k
+2026-03-18 09:14:17,023 - INFO - HTTP Request: POST https://api.mistral.ai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-03-18 09:14:25,480 - INFO - Initializing Mistral Client with key ending in ...8P9k
+2026-03-18 09:14:32,556 - INFO - HTTP Request: POST https://api.mistral.ai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-03-18 09:19:43,338 - INFO - Initializing Mistral Client with key ending in ...8P9k
+2026-03-18 09:19:59,891 - INFO - HTTP Request: POST https://api.mistral.ai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-03-18 09:23:10,253 - INFO - Initializing Mistral Client with key ending in ...8P9k
+2026-03-18 09:23:31,472 - INFO - HTTP Request: POST https://api.mistral.ai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-03-18 09:23:31,853 - INFO - Initializing Mistral Client with key ending in ...8P9k
+2026-03-18 09:24:09,487 - INFO - HTTP Request: POST https://api.mistral.ai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-03-18 09:26:28,772 - INFO -  Iniciando generate_auto_dashboard (mistral)...
+2026-03-18 09:26:28,782 - INFO - Initializing Mistral Client with key ending in ...8P9k
+2026-03-18 09:26:33,656 - INFO - HTTP Request: POST https://api.mistral.ai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-03-18 09:26:33,665 - INFO - Initializing Mistral Client with key ending in ...8P9k
+2026-03-18 09:26:42,783 - INFO - HTTP Request: POST https://api.mistral.ai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-03-18 09:26:42,786 - INFO - Initializing Mistral Client with key ending in ...8P9k
+2026-03-18 09:26:52,491 - INFO - HTTP Request: POST https://api.mistral.ai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-03-18 09:26:52,495 - ERROR - Error generando gráfico Tendencia de Calidad del Vino por Año (Simulado): 'date'
+2026-03-18 09:26:52,495 - INFO - Initializing Mistral Client with key ending in ...8P9k
+2026-03-18 09:27:01,706 - INFO - HTTP Request: POST https://api.mistral.ai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-03-18 09:27:01,710 - ERROR - Error generando gráfico Composición de Ácidos por Calidad del Vino: 'quality'
+2026-03-18 09:27:01,711 - INFO - Initializing Mistral Client with key ending in ...8P9k
+2026-03-18 09:27:09,118 - INFO - HTTP Request: POST https://api.mistral.ai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-03-18 09:27:09,122 - ERROR - Error generando gráfico Top 3 Factores que Impactan la Calidad: 'quality'
+2026-03-18 09:27:09,123 - INFO - Initializing Mistral Client with key ending in ...8P9k
+2026-03-18 09:27:16,460 - INFO - HTTP Request: POST https://api.mistral.ai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-03-18 09:27:16,467 - ERROR - Error generando gráfico Distribución de Alcohol vs. Calidad: 'volatile acidity'
