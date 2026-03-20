@@ -1,0 +1,1 @@
+Esta es una prueba de persistencia en la nube para Agente BI.

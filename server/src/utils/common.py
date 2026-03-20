@@ -4,6 +4,7 @@ import hashlib
 import logging
 from typing import Optional
 from fastapi import HTTPException
+from src.utils.supabase_storage import sync_cloud_to_local, upload_file_to_cloud
 
 # Configuración de Logs
 logger = logging.getLogger(__name__)
@@ -33,8 +34,13 @@ def check_authorization(email: str):
 def get_session_file(user_id: str, source_id: Optional[int] = None):
     safe_user = hashlib.md5(user_id.encode()).hexdigest()
     if source_id:
-        return os.path.join(SESSIONS_DIR, f"{safe_user}_{source_id}.pkl")
-    return os.path.join(SESSIONS_DIR, f"{safe_user}.pkl")
+        file_path = os.path.join(SESSIONS_DIR, f"{safe_user}_{source_id}.pkl")
+    else:
+        file_path = os.path.join(SESSIONS_DIR, f"{safe_user}.pkl")
+    
+    # Intentar traer de la nube si no está
+    sync_cloud_to_local(file_path)
+    return file_path
 
 def get_session_key(user_id: str, chat_id: Optional[int] = None):
     if chat_id:
@@ -73,6 +79,10 @@ def load_source_to_session(user_id: str, source, chat_id: Optional[int] = None) 
     """Carga una fuente de datos específica al contexto de memoria (Chat o Activo)."""
     session_key = get_session_key(user_id, chat_id)
     try:
+        # Asegurar sincronización con la nube
+        if hasattr(source, 'url') and source.url:
+            sync_cloud_to_local(source.url)
+
         # Limpiar contexto previo del chat para evitar mezclas
         data_store[session_key] = None
         

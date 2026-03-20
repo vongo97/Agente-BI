@@ -8,7 +8,7 @@ from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Depends
 from sqlalchemy.orm import Session
 from src.database import get_db, DataSource
 from src.connectors.data_connectors import load_file_data, load_gsheets_data, get_sql_engine, get_db_schema
-from src.utils.common import check_authorization, get_user_data, get_session_file, data_store, DATA_SOURCES_DIR
+from src.utils.common import check_authorization, get_user_data, get_session_file, data_store, DATA_SOURCES_DIR, upload_file_to_cloud
 from src.engine.bi_analyst import ai_data_cleaner
 
 router = APIRouter(tags=["Data Management"])
@@ -41,6 +41,10 @@ async def upload_file(user_id: str = Form(...), file: UploadFile = File(...), db
             unique_pkl = get_session_file(user_id, new_source.id)
             session_data = {"type": "file", "data": {safe_filename: df}, "source_id": new_source.id}
             pd.to_pickle(session_data, unique_pkl)
+            
+            # Sincronizar con la nube (Supabase)
+            remote_path = f"sessions/{os.path.basename(unique_pkl)}"
+            upload_file_to_cloud(unique_pkl, remote_path)
             
             # 3. Actualizar URL y sesión activa
             new_source.url = unique_pkl
