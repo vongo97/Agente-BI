@@ -105,23 +105,24 @@ def init_db():
         Base.metadata.create_all(bind=engine)
         
         # 2. Migración: Añadir columnas faltantes por evolución del modelo
-        with engine.connect() as conn:
+        # Usamos una nueva conexión con AUTOCOMMIT para migraciones de esquema
+        with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
             # Columna 'columns' en 'data_sources'
             try:
                 conn.execute(text("ALTER TABLE data_sources ADD COLUMN columns TEXT"))
-                conn.commit()
                 print("✅ Columna 'columns' añadida a 'data_sources'")
-            except Exception:
-                pass # Probablemente ya existe
+            except Exception as e:
+                if "already exists" not in str(e).lower() and "duplicate column" not in str(e).lower():
+                    print(f"⚠️ Error migracion data_sources (columns): {e}")
 
             # Columna 'data_source_id' en 'chats'
             try:
-                # Nota: El tipo depende de si es SQLite o Postgres, pero INTEGER funciona en ambos
                 conn.execute(text("ALTER TABLE chats ADD COLUMN data_source_id INTEGER"))
-                conn.commit()
                 print("✅ Columna 'data_source_id' añadida a 'chats'")
-            except Exception:
-                pass # Probablemente ya existe
+            except Exception as e:
+                # Silenciamos solo errores de "ya existe"
+                if "already exists" not in str(e).lower() and "duplicate column" not in str(e).lower():
+                    print(f"⚠️ Error migracion chats (data_source_id): {e}")
                 
     except Exception as e:
         print(f"ERROR en init_db: {str(e)}")
