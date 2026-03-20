@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine, Column, Integer, String, Text, ForeignKey, DateTime
+from sqlalchemy import create_engine, Column, Integer, String, Text, ForeignKey, DateTime, text
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, relationship
 from datetime import datetime
@@ -98,10 +98,31 @@ class DataSource(Base):
 
     chats = relationship("Chat", back_populates="data_source")
 
-# Crear tablas
+# Crear tablas y aplicar migraciones manuales de columnas
 def init_db():
     try:
+        # 1. Crear tablas base si no existen
         Base.metadata.create_all(bind=engine)
+        
+        # 2. Migración: Añadir columnas faltantes por evolución del modelo
+        with engine.connect() as conn:
+            # Columna 'columns' en 'data_sources'
+            try:
+                conn.execute(text("ALTER TABLE data_sources ADD COLUMN columns TEXT"))
+                conn.commit()
+                print("✅ Columna 'columns' añadida a 'data_sources'")
+            except Exception:
+                pass # Probablemente ya existe
+
+            # Columna 'data_source_id' en 'chats'
+            try:
+                # Nota: El tipo depende de si es SQLite o Postgres, pero INTEGER funciona en ambos
+                conn.execute(text("ALTER TABLE chats ADD COLUMN data_source_id INTEGER"))
+                conn.commit()
+                print("✅ Columna 'data_source_id' añadida a 'chats'")
+            except Exception:
+                pass # Probablemente ya existe
+                
     except Exception as e:
         print(f"ERROR en init_db: {str(e)}")
         print("El servidor continuará pero la base de datos podría no estar lista.")
