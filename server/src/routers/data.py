@@ -112,7 +112,12 @@ async def connect_gsheets(user_id: str = Form(...), url: str = Form(...), db: Se
         # 3. Crear sesión LIMPIA para esta fuente de GSheet
         session_data = {"type": "file", "data": {sheet_key: df}, "source_id": new_source.id}
         data_store[user_id] = session_data
-        pd.to_pickle(session_data, get_session_file(user_id, new_source.id))
+        session_file = get_session_file(user_id, new_source.id)
+        pd.to_pickle(session_data, session_file)
+        
+        # Sincronizar con la nube (Supabase)
+        remote_path = f"sessions/{os.path.basename(session_file)}"
+        upload_file_to_cloud(session_file, remote_path)
         
         # 4. Actualizar URL de la fuente (usamos el mismo pkl para consistencia)
         new_source.url = get_session_file(user_id, new_source.id)
