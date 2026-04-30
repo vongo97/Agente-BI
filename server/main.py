@@ -9,7 +9,7 @@ load_dotenv()
 
 # Importar routers y utilidades
 from src.database import init_db
-from src.routers import auth, data, analysis, dashboard, exports
+from src.routers import auth, data, analysis, dashboard, exports, simulation
 
 # Configuración de Logs
 logging.basicConfig(
@@ -20,7 +20,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="Agente BI API (Modular)")
+app = FastAPI(title="Vektra BI API (Modular)")
 
 # Configurar CORS
 app.add_middleware(
@@ -37,6 +37,7 @@ app.include_router(data.router)
 app.include_router(analysis.router)
 app.include_router(dashboard.router)
 app.include_router(exports.router)
+app.include_router(simulation.router)
 
 # Inicializar Base de Datos
 init_db()
@@ -52,4 +53,4 @@ async def root():
 if __name__ == "__main__":
     import os
     port = int(os.environ.get("PORT", 8000))
-    uvicorn.run(app, host="0.0.0.0", port=port)
+    uvicorn.run("main:app", host="0.0.0.0", port=port, reload=True)

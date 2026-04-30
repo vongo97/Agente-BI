@@ -14,6 +14,11 @@ const geistMono = Geist_Mono({
 
 import { Providers } from "@/components/Providers";
 
+export const metadata: Metadata = {
+  title: "Vektra BI - Inteligencia de Negocios Pro",
+  description: "Análisis de datos avanzado con IA",
+};
+
 export default function RootLayout({
   children,
 }: Readonly<{

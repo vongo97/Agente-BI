@@ -102,9 +102,10 @@ def load_source_to_session(user_id: str, source, chat_id: Optional[int] = None) 
             return True
         elif source.type == 'gsheets':
             from src.connectors.data_connectors import load_gsheets_data
-            df, _ = load_gsheets_data(source.url)
-            data_store[session_key] = {"type": "gsheets", "data": {"sheet_1": df}, "source_id": source.id}
-            return True
+            df = load_gsheets_data(source.url)
+            if df is not None:
+                data_store[session_key] = {"type": "gsheets", "data": {"sheet_1": df}, "source_id": source.id}
+                return True
     except Exception as e:
         logger.error(f"Error en load_source_to_session ({session_key}): {e}")
     return False

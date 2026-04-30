@@ -1,7 +1,7 @@
 'use client';
 
 import { useSession, signOut } from "next-auth/react";
-import { Upload, Settings, Database, LogOut, ChevronDown, Activity, CheckCircle2, AlertCircle, FileText, X, Menu } from "lucide-react";
+import { Upload, Settings, Database, LogOut, ChevronDown, Activity, CheckCircle2, AlertCircle, FileText, X, Menu, Brain, Sparkles, Zap } from "lucide-react";
 import { useState, useEffect } from "react";
 import { validateApiKey, uploadFile, connectSql, connectGoogleSheets, getHistory, getChatDetails, getPdfExportUrl, getDataSources, saveDataSource, deleteDataSource } from "@/lib/api";
 import { useDashboard } from "@/context/DashboardContext";
@@ -23,7 +23,7 @@ export function Sidebar() {
     const [saveConnection, setSaveConnection] = useState(false);
     const [sourceName, setSourceName] = useState("");
 
-    const userId = session?.user?.email || "default_user";
+    const userId = session?.user?.email || "invitado@agente-bi.local";
 
     useEffect(() => {
         if (userId) {
@@ -230,7 +230,7 @@ export function Sidebar() {
                         <div className="p-2.5 bg-blue-600 rounded-xl shadow-lg shadow-blue-600/20 group-hover:scale-110 transition-transform">
                             <Activity className="w-6 h-6 text-white" />
                         </div>
-                        <h1 className="text-xl font-bold text-[var(--text-primary)] tracking-tight">Estrategia BI <span className="text-[10px] bg-blue-600/20 text-blue-400 py-0.5 px-1.5 rounded ml-1 uppercase">v2.5</span></h1>
+                        <h1 className="text-xl font-bold text-[var(--text-primary)] tracking-tight">Vektra BI <span className="text-[10px] bg-blue-600/20 text-blue-400 py-0.5 px-1.5 rounded ml-1 uppercase">v2.5</span></h1>
                     </div>
 
                     <div className="grid grid-cols-2 gap-2 mb-6">
@@ -239,14 +239,28 @@ export function Sidebar() {
                             className={`flex flex-col items-center justify-center p-3 rounded-xl border transition-all ${view === 'chat' ? 'bg-blue-600/10 border-blue-500/30 text-blue-400' : 'bg-[var(--bg-tertiary)] border-[var(--border-color)] text-[var(--text-secondary)] hover:bg-gray-100 dark:hover:bg-white/[0.05]'}`}
                         >
                             <MessageSquare className="w-5 h-5 mb-1" />
-                            <span className="text-[10px] font-black uppercase tracking-tighter">Chat</span>
+                            <span className="text-[9px] font-black uppercase tracking-tighter">Chat</span>
                         </button>
                         <button
                             onClick={() => setView('dashboard')}
                             className={`flex flex-col items-center justify-center p-3 rounded-xl border transition-all ${view === 'dashboard' ? 'bg-blue-600/10 border-blue-500/30 text-blue-400' : 'bg-[var(--bg-tertiary)] border-[var(--border-color)] text-[var(--text-secondary)] hover:bg-gray-100 dark:hover:bg-white/[0.05]'}`}
                         >
                             <Activity className="w-5 h-5 mb-1" />
-                            <span className="text-[10px] font-black uppercase tracking-tighter">Panel</span>
+                            <span className="text-[9px] font-black uppercase tracking-tighter">Panel</span>
+                        </button>
+                        <button
+                            onClick={() => setView('simulation')}
+                            className={`flex flex-col items-center justify-center p-3 rounded-xl border transition-all ${view === 'simulation' ? 'bg-blue-600/10 border-blue-500/30 text-blue-400' : 'bg-[var(--bg-tertiary)] border-[var(--border-color)] text-[var(--text-secondary)] hover:bg-gray-100 dark:hover:bg-white/[0.05]'}`}
+                        >
+                            <Brain className="w-5 h-5 mb-1" />
+                            <span className="text-[9px] font-black uppercase tracking-tighter">Simulador</span>
+                        </button>
+                        <button
+                            onClick={() => setView('settings')}
+                            className={`flex flex-col items-center justify-center p-3 rounded-xl border transition-all ${view === 'settings' ? 'bg-blue-600/10 border-blue-500/30 text-blue-400' : 'bg-[var(--bg-tertiary)] border-[var(--border-color)] text-[var(--text-secondary)] hover:bg-gray-100 dark:hover:bg-white/[0.05]'}`}
+                        >
+                            <Settings className="w-5 h-5 mb-1" />
+                            <span className="text-[9px] font-black uppercase tracking-tighter">Config</span>
                         </button>
                     </div>
 

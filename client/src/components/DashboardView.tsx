@@ -3,8 +3,8 @@
 import { useState, useEffect, useRef } from "react";
 import { useSession } from "next-auth/react";
 import { useDashboard } from "@/context/DashboardContext";
-import { getDashboard, deleteDashboardItem, exportChartAsPng } from "@/lib/api";
-import { Activity, Trash2, Download, Box, Sparkles, GripVertical } from "lucide-react";
+import { getDashboard, deleteDashboardItem, exportChartAsPng, filterDashboard } from "@/lib/api";
+import { Activity, Trash2, Download, Box, Sparkles, Filter, X, GripVertical } from "lucide-react";
 import dynamic from "next/dynamic";
 import { Responsive } from "react-grid-layout";
 
@@ -19,9 +19,11 @@ const Plot = dynamic(() => import("react-plotly.js"), {
 
 export function DashboardView() {
     const { data: session } = useSession();
-    const { setView } = useDashboard();
+    const { setView, filters, setFilters } = useDashboard();
     const [items, setItems] = useState<any[]>([]);
+    const [originalItems, setOriginalItems] = useState<any[]>([]); // Para resetear sin re-cargar
     const [loading, setLoading] = useState(true);
+    const [isFiltering, setIsFiltering] = useState(false);
     const [layouts, setLayouts] = useState<any>({});
     const [width, setWidth] = useState(1200);
     const containerRef = useRef<HTMLDivElement>(null);
@@ -49,11 +51,40 @@ export function DashboardView() {
         fetchDashboard();
     }, [userId]);
 
+    // EFECTO DE FILTRADO DINÁMICO
+    useEffect(() => {
+        if (Object.keys(filters).length > 0) {
+            applyRemoteFilters();
+        } else if (originalItems.length > 0) {
+            setItems(originalItems);
+        }
+    }, [filters]);
+
+    const applyRemoteFilters = async () => {
+        setIsFiltering(true);
+        try {
+            const data = await filterDashboard(userId, filters);
+            if (data.status === "success") {
+                // Actualizar solo las figuras de los ítems existentes
+                const updatedItems = items.map(item => {
+                    const update = data.updated_items.find((ui: any) => ui.id === item.id);
+                    return update ? { ...item, fig: update.fig } : item;
+                });
+                setItems(updatedItems);
+            }
+        } catch (error) {
+            console.error("Error applying filters:", error);
+        } finally {
+            setIsFiltering(false);
+        }
+    };
+
     const fetchDashboard = async () => {
         setLoading(true);
         try {
             const data = await getDashboard(userId);
             setItems(data);
+            setOriginalItems(data);
 
             // Generar layout inicial
             const initialLayout = data.map((item: any, i: number) => ({
@@ -120,6 +151,35 @@ export function DashboardView() {
         }
     };
 
+    const handlePlotClick = (event: any) => {
+        if (!event || !event.points || event.points.length === 0) return;
+        
+        const point = event.points[0];
+        // Intentar deducir la columna y el valor del clic
+        // Plotly suele poner el nombre de la columna en 'label' o 'axis'
+        const label = point.label || point.x || point.y;
+        
+        // Buscamos si hay un mapeo de columna. 
+        // Por ahora, asumimos que estamos filtrando por una dimensión categórica
+        // que detectamos en el eje X o en el label (típico en barras/pie)
+        const possibleColumn = point.fullData.name || point.data.name || "categoria";
+        
+        if (label) {
+            setFilters((prev: any) => ({
+                ...prev,
+                [possibleColumn]: label
+            }));
+        }
+    };
+
+    const clearFilter = (key: string) => {
+        setFilters((prev: any) => {
+            const newFilters = { ...prev };
+            delete newFilters[key];
+            return newFilters;
+        });
+    };
+
     if (loading) {
         return (
             <div className="flex-1 bg-black flex flex-col items-center justify-center">
@@ -142,9 +202,30 @@ export function DashboardView() {
                 </div>
 
                 <div className="flex items-center gap-4">
-                    <div className="flex items-center gap-2 bg-blue-600/10 px-3 py-1.5 rounded-full border border-blue-600/20">
-                        <Sparkles className="w-3 h-3 text-blue-500" />
-                        <span className="text-[10px] font-bold text-blue-400 uppercase tracking-tighter">Arrastra para reordenar</span>
+                    {/* Filtros Activos UI */}
+                    <div className="flex items-center gap-2 overflow-x-auto max-w-[400px]">
+                        {Object.entries(filters).map(([key, val]) => (
+                            <div key={key} className="flex items-center gap-2 bg-blue-600/20 px-3 py-1.5 rounded-full border border-blue-600/30">
+                                <span className="text-[10px] font-bold text-blue-400 uppercase tracking-tighter">{key}: {val}</span>
+                                <button onClick={() => clearFilter(key)} className="text-blue-400 hover:text-white transition-colors">
+                                    <X className="w-3 h-3" />
+                                </button>
+                            </div>
+                        ))}
+                    </div>
+
+                    <div className="flex items-center gap-2 bg-white/5 px-4 py-2 rounded-2xl border border-white/5">
+                        {isFiltering ? (
+                            <div className="flex items-center gap-2">
+                                <Activity className="w-3 h-3 text-blue-500 animate-pulse" />
+                                <span className="text-[10px] font-bold text-blue-400 uppercase tracking-widest">Filtrando...</span>
+                            </div>
+                        ) : (
+                            <div className="flex items-center gap-2">
+                                <Filter className="w-3 h-3 text-gray-500" />
+                                <span className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Dashboard Vivo</span>
+                            </div>
+                        )}
                     </div>
                 </div>
             </header>
@@ -230,6 +311,7 @@ export function DashboardView() {
                                                         useResizeHandler={true}
                                                         style={{ width: "100%", height: "100%" }}
                                                         config={{ responsive: true, displayModeBar: false }}
+                                                        onClick={handlePlotClick}
                                                     />
                                                 </div>
                                             ) : (

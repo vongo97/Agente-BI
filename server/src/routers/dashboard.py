@@ -6,7 +6,9 @@ import json
 import logging
 from src.database import get_db, Chat, Message, DashboardItem
 from src.engine.bi_analyst import generate_auto_dashboard
+from src.engine.executor import execute_analysis
 from src.utils.common import check_authorization, get_user_data
+import pandas as pd
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["Dashboard"])
@@ -120,9 +122,73 @@ async def auto_dashboard(
         if source and load_source_to_session(user_id, source):
             session_data = get_user_data(user_id)
 
-    if not session_data or session_data["type"] != "file":
-         raise HTTPException(status_code=400, detail="Se requieren datos de archivo para generar un Auto-Dashboard.")
+    if not session_data:
+         raise HTTPException(status_code=400, detail="Se requieren datos activos (SQL o Archivo) para generar un Auto-Dashboard.")
          
-    df = next(iter(session_data["data"].values()))
-    results = generate_auto_dashboard(df, api_key, provider, mistral_key)
+    # El origen puede ser un motor SQL o un diccionario de DataFrames
+    data_source_obj = session_data["data"]
+    if session_data["type"] == "file":
+        # Usamos el primer DataFrame si hay varios para el dashboard base
+        data_source_obj = next(iter(session_data["data"].values()))
+    
+    results = generate_auto_dashboard(data_source_obj, api_key, provider, mistral_key)
     return {"status": "success", "dashboard": results}
+
+@router.post("/dashboard/filter")
+async def filter_dashboard(
+    user_id: str = Form(...),
+    filters_json: str = Form(...), # JSON string: {"col": "val"}
+    db: Session = Depends(get_db)
+):
+    check_authorization(user_id)
+    try:
+        filters = json.loads(filters_json)
+    except:
+        raise HTTPException(status_code=400, detail="JSON de filtros inválido")
+
+    session_data = get_user_data(user_id)
+    if not session_data:
+        raise HTTPException(status_code=404, detail="No hay datos cargados en la sesión")
+
+    context = session_data["data"]
+    data_type = session_data["type"]
+    var_name = "dfs" if data_type == "file" else "engine"
+
+    # Aplicar filtros al contexto (solo para modo file por ahora)
+    if data_type == "file":
+        filtered_context = {}
+        for name, df in context.items():
+            if isinstance(df, pd.DataFrame):
+                new_df = df.copy()
+                for col, val in filters.items():
+                    if col in new_df.columns and val is not None and val != "":
+                        # Soporte para filtrado simple
+                        new_df = new_df[new_df[col] == val]
+                filtered_context[name] = new_df
+            else:
+                filtered_context[name] = df
+    else:
+        # TODO: Implementar filtrado SQL dinámico inyectando cláusulas WHERE
+        filtered_context = context
+
+    items = db.query(DashboardItem).filter(DashboardItem.user_id == user_id).all()
+    results = []
+    
+    for item in items:
+        if not item.message or not item.message.analysis_code:
+            continue
+        
+        try:
+            # Re-ejecutar el código original sobre los datos filtrados
+            # execute_analysis espera el raw_response con bloques de código
+            _, fig = execute_analysis(filtered_context, item.message.analysis_code, var_name)
+            
+            results.append({
+                "id": item.id,
+                "fig": json.loads(fig.to_json()) if fig else None
+            })
+        except Exception as e:
+            logger.error(f"Error re-filtrando item {item.id}: {e}")
+            continue
+
+    return {"status": "success", "updated_items": results}

@@ -37,23 +37,32 @@ async def analyze(
         if db_chat and db_chat.data_source_id:
             data_source_id = db_chat.data_source_id
 
+    # DIAGNÓSTICO
+    print(f"[DEBUG] Analyze Request: user={user_id}, chat={chat_id}, source={data_source_id}, provider={provider}")
+    
     session_data = get_user_data(user_id, chat_id)
+    print(f"[DEBUG] Session Data found: {True if session_data else False}")
     
     # VALIDACIÓN DE FUENTE: Si el ID solicitado no coincide con lo cargado, forzar recarga
     if session_data and data_source_id and session_data.get("source_id") != data_source_id:
+        print(f"[DEBUG] Source Mismatch: session={session_data.get('source_id')} vs request={data_source_id}")
         session_data = None
         
     if not session_data:
         # Intentar auto-cargar desde DataSource si tenemos el ID
         if data_source_id:
+            print(f"[DEBUG] Attempting auto-load for source {data_source_id}")
             from src.database import DataSource
             from src.utils.common import load_source_to_session
             source = db.query(DataSource).filter(DataSource.id == data_source_id, DataSource.user_id == user_id).first()
             if source:
-                if load_source_to_session(user_id, source, chat_id):
+                success = load_source_to_session(user_id, source, chat_id)
+                print(f"[DEBUG] Auto-load success: {success}")
+                if success:
                     session_data = get_user_data(user_id, chat_id)
         
         if not session_data:
+            print("[DEBUG] CRITICAL: No session data could be found or loaded.")
             raise HTTPException(status_code=400, detail="No hay datos cargados para analizar. Por favor selecciona una fuente de datos.")
     
     try:
@@ -92,7 +101,8 @@ async def analyze(
             chat_id=db_chat.id, 
             role="assistant", 
             content=output_text,
-            figure_json=json.dumps(fig_json) if fig_json else None
+            figure_json=json.dumps(fig_json) if fig_json else None,
+            analysis_code=raw_response
         )
         db.add(assistant_msg)
         db.commit()

@@ -37,7 +37,8 @@ export function Chat() {
         suggestions,
         setSuggestions,
         loadingSuggestions,
-        setLoadingSuggestions
+        setLoadingSuggestions,
+        showAiSuggestions
     } = useDashboard();
     const [input, setInput] = useState("");
     const [loading, setLoading] = useState(false);
@@ -57,12 +58,12 @@ export function Chat() {
 
     // Cargar sugerencias cuando se conecta una fuente
     useEffect(() => {
-        if (dataSource && apiKey && messages.length === 0) {
+        if (dataSource && apiKey && messages.length === 0 && showAiSuggestions) {
             fetchSuggestions();
-        } else if (!dataSource) {
+        } else if (!dataSource || !showAiSuggestions) {
             if (suggestions.length > 0) setSuggestions([]);
         }
-    }, [dataSource?.filename, messages.length === 0, apiKey, activeChatId]);
+    }, [dataSource?.filename, messages.length === 0, apiKey, activeChatId, showAiSuggestions]);
 
     const fetchSuggestions = async () => {
         if (!apiKey || !dataSource) return;
@@ -318,7 +319,7 @@ export function Chat() {
                             <p className="text-gray-500 text-sm leading-relaxed max-w-sm mx-auto">Transforma datos fríos en decisiones estratégicas.</p>
                         </div>
 
-                        {dataSource && (
+                        {dataSource && showAiSuggestions && (
                             <div className="grid grid-cols-1 gap-3 w-full max-w-md animate-in fade-in slide-in-from-bottom-8 duration-1000 delay-300">
                                 <p className="text-[10px] font-black text-gray-700 uppercase tracking-widest mb-2">Sugerencias de la IA</p>
                                 {loadingSuggestions ? (

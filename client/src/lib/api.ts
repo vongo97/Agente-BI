@@ -1,4 +1,4 @@
-const API_URL = typeof window !== 'undefined' ? '/backend' : (process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000");
+const API_URL = typeof window !== 'undefined' ? '/backend' : (process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000");
 
 async function handleResponse(response: Response) {
   if (!response.ok) {
@@ -115,6 +115,18 @@ export async function getDashboard(userId: string) {
   return handleResponse(response);
 }
 
+export async function filterDashboard(userId: string, filters: object) {
+  const formData = new FormData();
+  formData.append("user_id", userId);
+  formData.append("filters_json", JSON.stringify(filters));
+
+  const response = await fetch(`${API_URL}/dashboard/filter`, {
+    method: "POST",
+    body: formData,
+  });
+  return handleResponse(response);
+}
+
 export async function deleteDashboardItem(itemId: number, userId: string) {
   const response = await fetch(`${API_URL}/dashboard/${itemId}?user_id=${userId}`, {
     method: "DELETE",
@@ -192,6 +204,9 @@ export async function suggestQuestions(userId: string, apiKey: string, dataSourc
 export const getPdfExportUrl = (chatId: number, userId: string) => 
   `${API_URL}/export/pdf/${chatId}?user_id=${userId}`;
 
+export const getSimulationPdfUrl = (simId: number, userId: string) =>
+  `${API_URL}/export/simulation/${simId}?user_id=${userId}`;
+
 export async function cleanData(userId: string, apiKey: string, dataSourceId?: number, chatId?: number, provider?: "gemini" | "mistral" | "hybrid", mistralKey?: string) {
   const formData = new FormData();
   formData.append("user_id", userId);
@@ -233,6 +248,45 @@ export async function saveDataSource(userId: string, name: string, type: 'sql' |
 export async function deleteDataSource(sourceId: number, userId: string) {
   const response = await fetch(`${API_URL}/data-sources/${sourceId}?user_id=${userId}`, {
     method: "DELETE",
+  });
+  return handleResponse(response);
+}
+
+// --- SIMULATION (MIROFISH LITE) ---
+
+export async function createSimulation(userId: string, title: string, hypothesis: string, dataSourceId?: number, apiKey?: string) {
+  const response = await fetch(`${API_URL}/simulation`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      user_id: userId,
+      title,
+      hypothesis,
+      data_source_id: dataSourceId,
+      api_key: apiKey
+    }),
+  });
+  return handleResponse(response);
+}
+
+export async function getSimulations(userId: string) {
+  const response = await fetch(`${API_URL}/simulation/user/${userId}`);
+  return handleResponse(response);
+}
+
+export async function getSimulationDetails(simId: number) {
+  const response = await fetch(`${API_URL}/simulation/${simId}`);
+  return handleResponse(response);
+}
+
+export async function getSimulationMessages(simId: number) {
+  const response = await fetch(`${API_URL}/simulation/${simId}/messages`);
+  return handleResponse(response);
+}
+
+export async function retrySimulation(simId: number) {
+  const response = await fetch(`${API_URL}/simulation/${simId}/retry`, {
+    method: "POST",
   });
   return handleResponse(response);
 }

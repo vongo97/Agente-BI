@@ -63,6 +63,7 @@ class Message(Base):
     role = Column(String)  # 'user' o 'assistant'
     content = Column(Text)
     figure_json = Column(Text, nullable=True) # Plotly JSON string
+    analysis_code = Column(Text, nullable=True) # Código real generado por la IA
     created_at = Column(DateTime, default=datetime.utcnow)
     chat = relationship("Chat", back_populates="messages")
     dashboard_item = relationship("DashboardItem", back_populates="message", uselist=False)
@@ -73,6 +74,7 @@ class UserConfig(Base):
     gemini_key = Column(String, nullable=True)
     mistral_key = Column(String, nullable=True)
     gamma_key = Column(String, nullable=True)
+    preferred_provider = Column(String, default="gemini")
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 class DashboardItem(Base):
@@ -98,6 +100,47 @@ class DataSource(Base):
 
     chats = relationship("Chat", back_populates="data_source")
 
+class Simulation(Base):
+    __tablename__ = "simulations"
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(String, index=True)
+    title = Column(String)
+    hypothesis = Column(Text)
+    data_source_id = Column(Integer, ForeignKey("data_sources.id"), nullable=True)
+    result_report = Column(Text, nullable=True)
+    status = Column(String, default="pending") # pending, running, completed, error
+    provider = Column(String, default="gemini")
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    agents = relationship("SimulationAgent", back_populates="simulation", cascade="all, delete-orphan")
+    messages = relationship("SimulationMessage", back_populates="simulation", cascade="all, delete-orphan")
+
+class SimulationAgent(Base):
+    __tablename__ = "simulation_agents"
+    id = Column(Integer, primary_key=True, index=True)
+    simulation_id = Column(Integer, ForeignKey("simulations.id"))
+    name = Column(String)
+    role = Column(String)
+    description = Column(Text)
+    personality = Column(Text)
+    stance = Column(String, nullable=True) # Posición inicial ante la hipótesis
+
+    simulation = relationship("Simulation", back_populates="agents")
+    messages = relationship("SimulationMessage", back_populates="agent")
+
+class SimulationMessage(Base):
+    __tablename__ = "simulation_messages"
+    id = Column(Integer, primary_key=True, index=True)
+    simulation_id = Column(Integer, ForeignKey("simulations.id"))
+    agent_id = Column(Integer, ForeignKey("simulation_agents.id"), nullable=True) # Null si es el narrador/sistema
+    round_number = Column(Integer)
+    content = Column(Text)
+    sentiment = Column(String, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    simulation = relationship("Simulation", back_populates="messages")
+    agent = relationship("SimulationAgent", back_populates="messages")
+
 # Crear tablas y aplicar migraciones manuales de columnas
 def init_db():
     try:
@@ -105,24 +148,21 @@ def init_db():
         Base.metadata.create_all(bind=engine)
         
         # 2. Migración: Añadir columnas faltantes por evolución del modelo
-        # Usamos una nueva conexión con AUTOCOMMIT para migraciones de esquema
         with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
             # Columna 'columns' en 'data_sources'
-            try:
-                conn.execute(text("ALTER TABLE data_sources ADD COLUMN columns TEXT"))
-                print("✅ Columna 'columns' añadida a 'data_sources'")
-            except Exception as e:
-                if "already exists" not in str(e).lower() and "duplicate column" not in str(e).lower():
-                    print(f"⚠️ Error migracion data_sources (columns): {e}")
-
-            # Columna 'data_source_id' en 'chats'
-            try:
-                conn.execute(text("ALTER TABLE chats ADD COLUMN data_source_id INTEGER"))
-                print("✅ Columna 'data_source_id' añadida a 'chats'")
-            except Exception as e:
-                # Silenciamos solo errores de "ya existe"
-                if "already exists" not in str(e).lower() and "duplicate column" not in str(e).lower():
-                    print(f"⚠️ Error migracion chats (data_source_id): {e}")
+            for table, col, col_type in [
+                ("data_sources", "columns", "TEXT"),
+                ("chats", "data_source_id", "INTEGER"),
+                ("messages", "analysis_code", "TEXT"),
+                ("user_configs", "preferred_provider", "TEXT"),
+                ("simulations", "provider", "TEXT")
+            ]:
+                try:
+                    conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {col} {col_type}"))
+                    print(f"COLUMNA OK: '{col}' añadida a '{table}'")
+                except Exception as e:
+                    if "already exists" not in str(e).lower() and "duplicate column" not in str(e).lower():
+                        print(f"AVISO: Error migración {table} ({col}): {e}")
                 
     except Exception as e:
         print(f"ERROR en init_db: {str(e)}")

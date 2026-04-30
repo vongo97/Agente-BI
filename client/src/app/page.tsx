@@ -6,11 +6,14 @@ import { useEffect } from "react";
 import { Sidebar } from "@/components/Sidebar";
 import { Chat } from "@/components/Chat";
 import { DashboardView } from "@/components/DashboardView";
+import { SettingsView } from "@/components/SettingsView";
+import { SimulationSandbox } from "@/components/SimulationSandbox";
 import { useDashboard } from "@/context/DashboardContext";
 import { Loader2 } from "lucide-react";
 
 export default function Home() {
   const { data: session, status } = useSession();
+  const { view } = useDashboard();
   const router = useRouter();
 
   useEffect(() => {
@@ -27,15 +30,23 @@ export default function Home() {
     );
   }
 
-  const { view } = useDashboard();
-
   if (!session) return null;
+
+  const renderView = () => {
+    switch (view) {
+      case 'chat': return <Chat />;
+      case 'dashboard': return <DashboardView />;
+      case 'settings': return <SettingsView />;
+      case 'simulation': return <SimulationSandbox />;
+      default: return <Chat />;
+    }
+  };
 
   return (
     <main className="flex min-h-screen bg-[var(--bg-primary)] text-[var(--text-primary)]">
       <Sidebar />
       <div className="flex-1 flex flex-col h-screen overflow-hidden">
-        {view === 'chat' ? <Chat /> : <DashboardView />}
+        {renderView()}
       </div>
     </main>
   );

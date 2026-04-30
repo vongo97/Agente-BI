@@ -63,40 +63,38 @@ def get_db_schema(engine):
     return schema_info
 
 def _clean_dataframe(df):
-    """Limpia los nombres de las columnas y prepara los datos numéricos de forma robusta."""
-    df.columns = [c.strip() for c in df.columns]
+    """
+    Limpieza agresiva para datos dispersos y Excel mal formateados.
+    """
+    # 1. Eliminar filas y columnas que están completamente vacías
+    df = df.dropna(how='all').dropna(axis=1, how='all')
     
+    # 2. Si la primera fila parece ser basura (muchos nulos) y la segunda no, re-asignar headers
+    if df.shape[0] > 1:
+        first_row_nans = df.iloc[0].isnull().sum()
+        second_row_nans = df.iloc[1].isnull().sum()
+        if first_row_nans > (df.shape[1] / 2) and second_row_nans < first_row_nans:
+            # La segunda fila parece mejor candidata a header
+            df.columns = [str(c).strip() if pd.notnull(c) else f"Col_{i}" for i, c in enumerate(df.iloc[0])]
+            df = df.iloc[1:].reset_index(drop=True)
+
+    # 3. Limpiar nombres de columnas
+    df.columns = [str(c).strip().replace("\n", " ") for c in df.columns]
+    
+    # 4. Limpieza de tipos de datos numéricos
     for col in df.columns:
         if df[col].dtype == 'object':
-            # Muestra para detectar si es una columna numérica "sucia"
             sample = df[col].dropna().head(10).astype(str)
-            
-            # Si contiene dígitos y caracteres no numéricos sospechosos (moneda, mojibake, espacios)
             if sample.str.contains(r'\d').any() and sample.str.contains(r'[€\$â\x82\xac\x80 \xa0,]').any():
-                cleaned = df[col].astype(str)
-                
-                # 1. Eliminar símbolos de moneda y basura de encoding (â\x82¬ etc)
-                cleaned = cleaned.str.replace(r'[€\$â\x82\xac\x80 \xa0]', '', regex=True)
-                
-                # 2. Normalizar separadores (Manejo de , y .)
-                # Caso: 1.234,56 -> 1234.56
-                # Caso: 1,234.56 -> 1234.56
-                # Si tiene ambos, el último suele ser el decimal.
-                # Pero la mayoría de CSVs de negocios locales usan coma para decimal.
+                cleaned = df[col].astype(str).str.replace(r'[€\$â\x82\xac\x80 \xa0]', '', regex=True)
                 if cleaned.str.contains(r',').any() and cleaned.str.contains(r'\.').any():
-                    # Borramos comas (asumiendo miles)
                     cleaned = cleaned.str.replace(',', '')
                 elif cleaned.str.contains(r',').any():
-                    # Solo comas -> Decimal europeo
                     cleaned = cleaned.str.replace(',', '.')
-                
-                # 3. Limpieza final: solo números, punto y signo menos
                 cleaned = cleaned.str.replace(r'[^-0-9.]', '', regex=True)
-                
                 try:
                     df[col] = pd.to_numeric(cleaned, errors='coerce')
-                except:
-                    pass
+                except: pass
     return df
 
 def load_file_data(file_path):

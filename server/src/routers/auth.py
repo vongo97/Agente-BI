@@ -17,11 +17,12 @@ async def get_user_config(user_id: str, db: Session = Depends(get_db)):
     check_authorization(user_id)
     config = db.query(UserConfig).filter(UserConfig.user_id == user_id).first()
     if not config:
-        return {"gemini_key": "", "mistral_key": "", "gamma_key": ""}
+        return {"gemini_key": "", "mistral_key": "", "gamma_key": "", "preferred_provider": "gemini"}
     return {
         "gemini_key": config.gemini_key,
         "mistral_key": config.mistral_key,
-        "gamma_key": config.gamma_key
+        "gamma_key": config.gamma_key,
+        "preferred_provider": config.preferred_provider or "gemini"
     }
 
 @router.post("/user-config")
@@ -30,6 +31,7 @@ async def set_user_config(
     gemini_key: Optional[str] = Form(None),
     mistral_key: Optional[str] = Form(None),
     gamma_key: Optional[str] = Form(None),
+    preferred_provider: Optional[str] = Form(None),
     db: Session = Depends(get_db)
 ):
     check_authorization(user_id)
@@ -41,6 +43,7 @@ async def set_user_config(
     if gemini_key is not None: config.gemini_key = gemini_key
     if mistral_key is not None: config.mistral_key = mistral_key
     if gamma_key is not None: config.gamma_key = gamma_key
+    if preferred_provider is not None: config.preferred_provider = preferred_provider
     
     db.commit()
     return {"message": "Configuración guardada correctamente"}

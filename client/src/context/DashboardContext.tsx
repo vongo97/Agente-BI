@@ -1,6 +1,7 @@
 'use client';
 
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import { useSession } from "next-auth/react";
 
 export type Message = {
     id?: number;
@@ -24,19 +25,24 @@ interface DashboardContextType {
     setMessages: (messages: Message[] | ((prev: Message[]) => Message[])) => void;
     activeChatId: number | null;
     setActiveChatId: (id: number | null) => void;
-    view: 'chat' | 'dashboard';
-    setView: (view: 'chat' | 'dashboard') => void;
+    view: 'chat' | 'dashboard' | 'settings' | 'simulation';
+    setView: (view: 'chat' | 'dashboard' | 'settings' | 'simulation') => void;
+    showAiSuggestions: boolean;
+    setShowAiSuggestions: (show: boolean) => void;
     isServerHealthy: boolean | null;
     isWakingUp: boolean;
     suggestions: string[];
     setSuggestions: (suggestions: string[]) => void;
     loadingSuggestions: boolean;
     setLoadingSuggestions: (loading: boolean) => void;
+    filters: Record<string, string | number | null>;
+    setFilters: (filters: Record<string, string | number | null> | ((prev: any) => any)) => void;
 }
 
 const DashboardContext = createContext<DashboardContextType | undefined>(undefined);
 
 export function DashboardProvider({ children }: { children: React.ReactNode }) {
+    const { data: session } = useSession();
     const [apiKey, setApiKey] = useState("");
     const [mistralKey, setMistralKey] = useState("");
     const [aiProvider, setAiProvider] = useState<"gemini" | "mistral" | "hybrid">("gemini");
@@ -44,34 +50,73 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
     const [isSidebarOpen, setSidebarOpen] = useState(false);
     const [messages, setMessages] = useState<Message[]>([]);
     const [activeChatId, setActiveChatId] = useState<number | null>(null);
-    const [view, setView] = useState<'chat' | 'dashboard'>('chat');
+    const [view, setView] = useState<'chat' | 'dashboard' | 'settings' | 'simulation'>('chat');
+    const [showAiSuggestions, setShowAiSuggestions] = useState(true);
     const [isServerHealthy, setIsServerHealthy] = useState<boolean | null>(null);
     const [isWakingUp, setIsWakingUp] = useState(false);
     const [suggestions, setSuggestions] = useState<string[]>([]);
     const [loadingSuggestions, setLoadingSuggestions] = useState(false);
+    const [filters, setFilters] = useState<Record<string, string | number | null>>({});
 
-    // Cargar API Keys y preferencias
+    // Cargar API Keys y preferencias desde el Backend y LocalStorage
     useEffect(() => {
+        const fetchConfig = async () => {
+            const userEmail = session?.user?.email || "invitado@agente-bi.local";
+            try {
+                const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+                const res = await fetch(`${API_URL}/user-config?user_id=${userEmail}`);
+                if (res.ok) {
+                    const data = await res.json();
+                    if (data.gemini_key) setApiKey(data.gemini_key);
+                    if (data.mistral_key) setMistralKey(data.mistral_key);
+                    if (data.preferred_provider) setAiProvider(data.preferred_provider as any);
+                }
+            } catch (err) {
+                console.error("Error cargando config del server:", err);
+            }
+        };
+
+        fetchConfig();
+
+        // Fallback local
         const savedGemini = localStorage.getItem("gemini_api_key");
         if (savedGemini) setApiKey(savedGemini);
-
         const savedMistral = localStorage.getItem("mistral_api_key");
         if (savedMistral) setMistralKey(savedMistral);
-
-        const savedProvider = localStorage.getItem("ai_provider") as "gemini" | "mistral" | "hybrid";
+        const savedProvider = localStorage.getItem("ai_provider") as any;
         if (savedProvider) setAiProvider(savedProvider);
-    }, []);
+    }, [session]);
+
+    // Guardar en Backend y LocalStorage automáticamente
+    const syncConfig = async (key: string, value: string, field: string) => {
+        const userEmail = session?.user?.email || "invitado@agente-bi.local";
+        localStorage.setItem(key, value);
+        
+        try {
+            const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+            const formData = new FormData();
+            formData.append("user_id", userEmail);
+            formData.append(field, value);
+            
+            await fetch(`${API_URL}/user-config`, {
+                method: "POST",
+                body: formData
+            });
+        } catch (err) {
+            console.error(`Error sincronizando ${field}:`, err);
+        }
+    };
 
     useEffect(() => {
-        if (apiKey) localStorage.setItem("gemini_api_key", apiKey);
+        if (apiKey) syncConfig("gemini_api_key", apiKey, "gemini_key");
     }, [apiKey]);
 
     useEffect(() => {
-        if (mistralKey) localStorage.setItem("mistral_api_key", mistralKey);
+        if (mistralKey) syncConfig("mistral_api_key", mistralKey, "mistral_key");
     }, [mistralKey]);
 
     useEffect(() => {
-        localStorage.setItem("ai_provider", aiProvider);
+        syncConfig("ai_provider", aiProvider, "preferred_provider");
     }, [aiProvider]);
 
     // Verificar salud del servidor (Render Wake-up)
@@ -115,7 +160,9 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
             view, setView,
             isServerHealthy, isWakingUp,
             suggestions, setSuggestions,
-            loadingSuggestions, setLoadingSuggestions
+            loadingSuggestions, setLoadingSuggestions,
+            filters, setFilters,
+            showAiSuggestions, setShowAiSuggestions
         }}>
             {children}
         </DashboardContext.Provider>

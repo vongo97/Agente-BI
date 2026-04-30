@@ -95,3 +95,39 @@ async def export_pptx(data: dict):
         media_type="application/vnd.openxmlformats-officedocument.presentationml.presentation",
         headers={"Content-Disposition": f"attachment; filename={filename}"}
     )
+
+@router.get("/export/simulation/{sim_id}")
+async def export_simulation_pdf(sim_id: int, user_id: str, db: Session = Depends(get_db)):
+    from src.database import Simulation, SimulationMessage
+    from src.utils.exporter import generate_simulation_pdf
+    
+    # Limpiar posibles espacios o caracteres raros en el user_id
+    clean_user_id = user_id.strip()
+    
+    sim = db.query(Simulation).filter(Simulation.id == sim_id, Simulation.user_id == clean_user_id).first()
+    if not sim:
+        raise HTTPException(status_code=404, detail=f"Simulación {sim_id} no encontrada para el usuario {clean_user_id}")
+    
+    if not sim.result_report:
+        raise HTTPException(status_code=400, detail="La simulación aún no tiene un informe final consolidado.")
+
+    # Obtener el debate para el apéndice
+    messages = db.query(SimulationMessage).filter(SimulationMessage.simulation_id == sim_id).order_by(SimulationMessage.created_at).all()
+    debate_list = []
+    for m in messages:
+        debate_list.append({
+            "agent_name": m.agent.name if m.agent else "Narrador",
+            "agent_role": m.agent.role if m.agent else "Sistema",
+            "content": m.content
+        })
+
+    pdf_bytes = generate_simulation_pdf(sim.title, sim.hypothesis, sim.result_report, debate_list)
+    
+    return Response(
+        content=bytes(pdf_bytes),
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'attachment; filename="ensayo_futuro_{sim_id}.pdf"',
+            "Access-Control-Expose-Headers": "Content-Disposition"
+        }
+    )

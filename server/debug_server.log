@@ -564,3 +564,383 @@ Please retry in 7.0336893s. [links {
 2026-03-18 09:27:16,460 - INFO - HTTP Request: POST https://api.mistral.ai/v1/chat/completions "HTTP/1.1 200 OK"
 2026-03-18 09:27:16,467 - ERROR - Error generando gráfico Distribución de Alcohol vs. Calidad: 'volatile acidity'
 2026-03-19 07:33:56,786 - INFO - Sesión activa promocionada al chat 16 para invitado@agente-bi.local
+2026-04-25 20:54:58,536 - ERROR - Error inicializando cliente Supabase: Invalid API key
+2026-04-25 20:54:58,541 - ERROR - Error inicializando cliente Supabase: Invalid API key
+2026-04-25 20:54:58,542 - WARNING - No se pudo subir sessions/b7ae43a700824eacae609c78d2cb7b1e_21.pkl: Cliente no inicializado (revisa .env)
+2026-04-25 20:56:33,438 - INFO - Sesión activa promocionada al chat 17 para invitado@agente-bi.local
+2026-04-25 21:06:51,772 - ERROR - Error inicializando cliente Supabase: Invalid API key
+2026-04-25 21:06:51,777 - ERROR - Error inicializando cliente Supabase: Invalid API key
+2026-04-25 21:06:51,777 - WARNING - No se pudo subir sessions/b7ae43a700824eacae609c78d2cb7b1e_22.pkl: Cliente no inicializado (revisa .env)
+2026-04-25 21:08:11,447 - INFO - Sesión activa promocionada al chat 18 para invitado@agente-bi.local
+2026-04-29 17:57:52,934 - ERROR - Error en simulación 10: get_user_data() got an unexpected keyword argument 'source_id'
+2026-04-29 18:07:02,289 - ERROR - Error en simulación 11: get_user_data() got an unexpected keyword argument 'source_id'
+2026-04-29 18:14:02,573 - ERROR - Error en simulación 12: get_user_data() got an unexpected keyword argument 'source_id'
+2026-04-29 21:20:06,705 - INFO - Generando agentes para simulación 13
+2026-04-29 21:20:07,894 - ERROR - Error en simulación 13: 404 models/gemini-3-flash is not found for API version v1beta, or is not supported for generateContent. Call ListModels to see the list of available models and their supported methods.
+2026-04-29 21:32:46,362 - INFO - Generando agentes para simulación 14
+2026-04-29 21:33:08,702 - INFO - Iniciando Ronda 1 para simulación 14
+2026-04-29 21:33:37,925 - ERROR - Error en simulación 14: 429 You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To monitor your current usage, head to: https://ai.dev/rate-limit. 
+* Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_requests, limit: 5, model: gemini-2.5-flash
+Please retry in 22.552953735s. [links {
+  description: "Learn more about Gemini API quotas"
+  url: "https://ai.google.dev/gemini-api/docs/rate-limits"
+}
+, violations {
+  quota_metric: "generativelanguage.googleapis.com/generate_content_free_tier_requests"
+  quota_id: "GenerateRequestsPerMinutePerProjectPerModel-FreeTier"
+  quota_dimensions {
+    key: "model"
+    value: "gemini-2.5-flash"
+  }
+  quota_dimensions {
+    key: "location"
+    value: "global"
+  }
+  quota_value: 5
+}
+, retry_delay {
+  seconds: 22
+}
+]
+2026-04-29 21:55:37,761 - INFO - Generando agentes para simulación 15
+2026-04-29 21:56:11,556 - INFO - Creados 3 agentes para simulación 15
+2026-04-29 21:56:11,557 - INFO - Iniciando Ronda 1 para simulación 15
+2026-04-29 21:56:29,418 - INFO - [Sim 15] Ronda 1 - Elena Rojas respondió.
+2026-04-29 21:56:47,831 - INFO - [Sim 15] Ronda 1 - Marco Silva respondió.
+2026-04-29 21:57:07,965 - INFO - [Sim 15] Ronda 1 - Sofia Vargas respondió.
+2026-04-29 21:57:07,966 - INFO - Iniciando Ronda 2 para simulación 15
+2026-04-29 21:57:27,095 - INFO - [Sim 15] Ronda 2 - Elena Rojas respondió.
+2026-04-29 21:57:46,823 - INFO - [Sim 15] Ronda 2 - Marco Silva respondió.
+2026-04-29 21:58:08,899 - INFO - [Sim 15] Ronda 2 - Sofia Vargas respondió.
+2026-04-29 21:58:08,902 - INFO - Generando reporte estratégico para 15
+2026-04-29 21:58:09,105 - WARNING - Rate limit alcanzado (intento 1/3). Esperando 30s...
+2026-04-29 21:58:39,299 - WARNING - Rate limit alcanzado (intento 2/3). Esperando 60s...
+2026-04-29 21:59:39,490 - WARNING - Rate limit alcanzado (intento 3/3). Esperando 90s...
+2026-04-29 22:01:09,497 - ERROR - Error en simulación 15: Se agotaron los reintentos por rate limit. Intenta de nuevo en unos minutos.
+2026-04-30 07:59:44,380 - INFO - Generando agentes para simulación 16
+2026-04-30 08:00:16,651 - WARNING - Rate limit alcanzado (intento 1/3). Esperando 30s...
+2026-04-30 08:01:43,064 - WARNING - Rate limit alcanzado (intento 2/3). Esperando 60s...
+2026-04-30 08:03:07,855 - WARNING - Rate limit alcanzado (intento 3/3). Esperando 90s...
+2026-04-30 08:04:37,859 - ERROR - Error en simulación 16: Se agotaron los reintentos por rate limit. Intenta de nuevo en unos minutos.
+2026-04-30 08:08:34,434 - ERROR - Error en simulación 17: 404 models/gemini-1.5-flash is not found for API version v1beta, or is not supported for generateContent. Call ListModels to see the list of available models and their supported methods.
+2026-04-30 08:15:24,127 - INFO - AFC is enabled with max remote calls: 10.
+2026-04-30 08:15:24,959 - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash:generateContent "HTTP/1.1 404 Not Found"
+2026-04-30 08:15:24,961 - ERROR - Error inesperado en Google GenAI: 404 NOT_FOUND. {'error': {'code': 404, 'message': 'models/gemini-3-flash is not found for API version v1beta, or is not supported for generateContent. Call ListModels to see the list of available models and their supported methods.', 'status': 'NOT_FOUND'}}
+2026-04-30 08:15:24,961 - ERROR - Fallo crítico en motor GenAI: 404 NOT_FOUND. {'error': {'code': 404, 'message': 'models/gemini-3-flash is not found for API version v1beta, or is not supported for generateContent. Call ListModels to see the list of available models and their supported methods.', 'status': 'NOT_FOUND'}}
+2026-04-30 08:19:13,012 - INFO - AFC is enabled with max remote calls: 10.
+2026-04-30 08:19:13,745 - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash:generateContent "HTTP/1.1 404 Not Found"
+2026-04-30 08:19:13,749 - ERROR - Error inesperado en Google GenAI: 404 NOT_FOUND. {'error': {'code': 404, 'message': 'models/gemini-3.1-flash is not found for API version v1beta, or is not supported for generateContent. Call ListModels to see the list of available models and their supported methods.', 'status': 'NOT_FOUND'}}
+2026-04-30 08:19:13,749 - ERROR - Fallo crítico en motor GenAI: 404 NOT_FOUND. {'error': {'code': 404, 'message': 'models/gemini-3.1-flash is not found for API version v1beta, or is not supported for generateContent. Call ListModels to see the list of available models and their supported methods.', 'status': 'NOT_FOUND'}}
+2026-04-30 08:21:14,918 - INFO - AFC is enabled with max remote calls: 10.
+2026-04-30 08:21:15,701 - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash:generateContent "HTTP/1.1 404 Not Found"
+2026-04-30 08:21:15,703 - ERROR - Error inesperado en Google GenAI: 404 NOT_FOUND. {'error': {'code': 404, 'message': 'models/gemini-3.1-flash is not found for API version v1beta, or is not supported for generateContent. Call ListModels to see the list of available models and their supported methods.', 'status': 'NOT_FOUND'}}
+2026-04-30 08:21:15,704 - ERROR - Fallo crítico en motor GenAI: 404 NOT_FOUND. {'error': {'code': 404, 'message': 'models/gemini-3.1-flash is not found for API version v1beta, or is not supported for generateContent. Call ListModels to see the list of available models and their supported methods.', 'status': 'NOT_FOUND'}}
+2026-04-30 08:25:23,353 - INFO - HTTP Request: GET https://generativelanguage.googleapis.com/v1beta/models "HTTP/1.1 200 OK"
+2026-04-30 08:25:23,527 - INFO - HTTP Request: GET https://generativelanguage.googleapis.com/v1beta/models?pageToken=CiRtb2RlbHMvdmVvLTMuMS1mYXN0LWdlbmVyYXRlLXByZXZpZXc%3D "HTTP/1.1 200 OK"
+2026-04-30 08:25:23,532 - INFO - Modelos detectados en esta cuenta: ['models/gemini-2.5-flash', 'models/gemini-2.5-pro', 'models/gemini-2.0-flash', 'models/gemini-2.0-flash-001', 'models/gemini-2.0-flash-lite-001', 'models/gemini-2.0-flash-lite', 'models/gemini-2.5-flash-preview-tts', 'models/gemini-2.5-pro-preview-tts', 'models/gemma-3-1b-it', 'models/gemma-3-4b-it', 'models/gemma-3-12b-it', 'models/gemma-3-27b-it', 'models/gemma-3n-e4b-it', 'models/gemma-3n-e2b-it', 'models/gemma-4-26b-a4b-it', 'models/gemma-4-31b-it', 'models/gemini-flash-latest', 'models/gemini-flash-lite-latest', 'models/gemini-pro-latest', 'models/gemini-2.5-flash-lite', 'models/gemini-2.5-flash-image', 'models/gemini-3-pro-preview', 'models/gemini-3-flash-preview', 'models/gemini-3.1-pro-preview', 'models/gemini-3.1-pro-preview-customtools', 'models/gemini-3.1-flash-lite-preview', 'models/gemini-3-pro-image-preview', 'models/nano-banana-pro-preview', 'models/gemini-3.1-flash-image-preview', 'models/lyria-3-clip-preview', 'models/lyria-3-pro-preview', 'models/gemini-3.1-flash-tts-preview', 'models/gemini-robotics-er-1.5-preview', 'models/gemini-robotics-er-1.6-preview', 'models/gemini-2.5-computer-use-preview-10-2025', 'models/deep-research-max-preview-04-2026', 'models/deep-research-preview-04-2026', 'models/deep-research-pro-preview-12-2025', 'models/gemini-embedding-001', 'models/gemini-embedding-2-preview', 'models/gemini-embedding-2', 'models/aqa', 'models/imagen-4.0-generate-001', 'models/imagen-4.0-ultra-generate-001', 'models/imagen-4.0-fast-generate-001', 'models/veo-2.0-generate-001', 'models/veo-3.0-generate-001', 'models/veo-3.0-fast-generate-001', 'models/veo-3.1-generate-preview', 'models/veo-3.1-fast-generate-preview', 'models/veo-3.1-lite-generate-preview', 'models/gemini-2.5-flash-native-audio-latest', 'models/gemini-2.5-flash-native-audio-preview-09-2025', 'models/gemini-2.5-flash-native-audio-preview-12-2025', 'models/gemini-3.1-flash-live-preview']
+2026-04-30 08:25:23,533 - INFO - Usando modelos detectados: {'SIMULATION': 'gemini-3.1-flash', 'ANALYTICS': 'gemini-3.1-flash', 'STRATEGY': 'gemini-3.1-pro'}
+2026-04-30 08:25:23,579 - INFO - AFC is enabled with max remote calls: 10.
+2026-04-30 08:25:23,948 - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash:generateContent "HTTP/1.1 404 Not Found"
+2026-04-30 08:25:23,950 - ERROR - Fallo en motor: 404 NOT_FOUND. {'error': {'code': 404, 'message': 'models/gemini-3.1-flash is not found for API version v1beta, or is not supported for generateContent. Call ListModels to see the list of available models and their supported methods.', 'status': 'NOT_FOUND'}}
+2026-04-30 08:31:16,045 - INFO - AFC is enabled with max remote calls: 10.
+2026-04-30 08:31:16,793 - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-pro:generateContent "HTTP/1.1 404 Not Found"
+2026-04-30 08:31:16,796 - ERROR - Error en gemini-3.1-pro: 404 NOT_FOUND. {'error': {'code': 404, 'message': 'models/gemini-3.1-pro is not found for API version v1beta, or is not supported for generateContent. Call ListModels to see the list of available models and their supported methods.', 'status': 'NOT_FOUND'}}
+2026-04-30 08:31:16,797 - ERROR - Error crítico: 404 NOT_FOUND. {'error': {'code': 404, 'message': 'models/gemini-3.1-pro is not found for API version v1beta, or is not supported for generateContent. Call ListModels to see the list of available models and their supported methods.', 'status': 'NOT_FOUND'}}
+2026-04-30 08:36:28,516 - INFO - AFC is enabled with max remote calls: 10.
+2026-04-30 08:36:29,340 - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-pro-preview:generateContent "HTTP/1.1 429 Too Many Requests"
+2026-04-30 08:36:29,343 - WARNING - Rate limit. Reintentando en 30s...
+2026-04-30 08:36:59,349 - INFO - AFC is enabled with max remote calls: 10.
+2026-04-30 08:37:00,022 - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-pro-preview:generateContent "HTTP/1.1 429 Too Many Requests"
+2026-04-30 08:37:00,025 - WARNING - Rate limit. Reintentando en 60s...
+2026-04-30 08:38:00,032 - INFO - AFC is enabled with max remote calls: 10.
+2026-04-30 08:38:00,394 - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-pro-preview:generateContent "HTTP/1.1 429 Too Many Requests"
+2026-04-30 08:38:00,396 - WARNING - Rate limit. Reintentando en 90s...
+2026-04-30 08:39:30,411 - ERROR - Error crítico: No se pudo conectar con el modelo gemini-3.1-pro-preview tras varios reintentos.
+2026-04-30 08:44:54,198 - INFO - AFC is enabled with max remote calls: 10.
+2026-04-30 08:45:05,856 - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent "HTTP/1.1 200 OK"
+2026-04-30 08:45:15,900 - INFO - AFC is enabled with max remote calls: 10.
+2026-04-30 08:45:20,900 - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent "HTTP/1.1 200 OK"
+2026-04-30 08:45:30,926 - INFO - AFC is enabled with max remote calls: 10.
+2026-04-30 08:45:35,613 - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent "HTTP/1.1 200 OK"
+2026-04-30 08:45:45,643 - INFO - AFC is enabled with max remote calls: 10.
+2026-04-30 08:45:51,638 - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent "HTTP/1.1 200 OK"
+2026-04-30 08:46:01,671 - INFO - AFC is enabled with max remote calls: 10.
+2026-04-30 08:46:08,046 - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent "HTTP/1.1 200 OK"
+2026-04-30 08:46:18,074 - INFO - AFC is enabled with max remote calls: 10.
+2026-04-30 08:46:24,367 - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent "HTTP/1.1 200 OK"
+2026-04-30 08:46:34,406 - INFO - AFC is enabled with max remote calls: 10.
+2026-04-30 08:46:39,475 - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent "HTTP/1.1 200 OK"
+2026-04-30 08:46:49,517 - INFO - AFC is enabled with max remote calls: 10.
+2026-04-30 08:46:55,359 - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent "HTTP/1.1 200 OK"
+2026-04-30 08:47:05,399 - INFO - AFC is enabled with max remote calls: 10.
+2026-04-30 08:47:09,597 - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent "HTTP/1.1 200 OK"
+2026-04-30 08:47:19,648 - INFO - AFC is enabled with max remote calls: 10.
+2026-04-30 08:47:25,284 - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent "HTTP/1.1 200 OK"
+2026-04-30 08:47:35,312 - INFO - AFC is enabled with max remote calls: 10.
+2026-04-30 08:47:40,731 - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent "HTTP/1.1 200 OK"
+2026-04-30 08:47:50,755 - INFO - AFC is enabled with max remote calls: 10.
+2026-04-30 08:47:56,952 - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent "HTTP/1.1 200 OK"
+2026-04-30 08:48:06,991 - INFO - AFC is enabled with max remote calls: 10.
+2026-04-30 08:48:13,798 - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent "HTTP/1.1 200 OK"
+2026-04-30 08:48:23,836 - INFO - AFC is enabled with max remote calls: 10.
+2026-04-30 08:48:28,992 - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent "HTTP/1.1 200 OK"
+2026-04-30 08:48:39,033 - INFO - AFC is enabled with max remote calls: 10.
+2026-04-30 08:48:45,835 - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent "HTTP/1.1 200 OK"
+2026-04-30 08:48:55,870 - INFO - AFC is enabled with max remote calls: 10.
+2026-04-30 08:49:01,602 - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent "HTTP/1.1 200 OK"
+2026-04-30 08:49:11,649 - INFO - AFC is enabled with max remote calls: 10.
+2026-04-30 08:49:23,877 - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent "HTTP/1.1 200 OK"
+2026-04-30 08:49:33,917 - INFO - Simulación 24 COMPLETADA con configuración de usuario.
+2026-04-30 09:38:07,795 - ERROR - Error inicializando cliente Supabase: Invalid API key
+2026-04-30 09:38:07,810 - ERROR - Error inicializando cliente Supabase: Invalid API key
+2026-04-30 09:38:07,810 - WARNING - No se pudo subir sessions/b7ae43a700824eacae609c78d2cb7b1e_23.pkl: Cliente no inicializado (revisa .env)
+2026-04-30 09:38:12,978 - ERROR - Error inicializando cliente Supabase: Invalid API key
+2026-04-30 09:38:12,991 - ERROR - Error inicializando cliente Supabase: Invalid API key
+2026-04-30 09:38:12,992 - WARNING - No se pudo subir sessions/b7ae43a700824eacae609c78d2cb7b1e_24.pkl: Cliente no inicializado (revisa .env)
+2026-04-30 09:38:50,935 - ERROR - Error inicializando cliente Supabase: Invalid API key
+2026-04-30 09:38:56,269 - ERROR - Error en load_source_to_session (invitado@agente-bi.local_active): too many values to unpack (expected 2)
+2026-04-30 09:39:18,276 - ERROR - Error inicializando cliente Supabase: Invalid API key
+2026-04-30 09:39:18,283 - ERROR - Error inicializando cliente Supabase: Invalid API key
+2026-04-30 09:39:18,284 - WARNING - No se pudo subir sessions/b7ae43a700824eacae609c78d2cb7b1e_27.pkl: Cliente no inicializado (revisa .env)
+2026-04-30 09:39:20,345 - INFO - AFC is enabled with max remote calls: 10.
+2026-04-30 09:39:27,161 - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent "HTTP/1.1 200 OK"
+2026-04-30 09:39:36,984 - INFO - AFC is enabled with max remote calls: 10.
+2026-04-30 09:39:37,670 - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-pro-preview:generateContent "HTTP/1.1 429 Too Many Requests"
+2026-04-30 09:39:37,673 - ERROR - Error en Generación AI (CODE_GEN): 429 RESOURCE_EXHAUSTED. {'error': {'code': 429, 'message': 'You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To monitor your current usage, head to: https://ai.dev/rate-limit. \n* Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_input_token_count, limit: 0, model: gemini-3.1-pro\n* Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_requests, limit: 0, model: gemini-3.1-pro\n* Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_requests, limit: 0, model: gemini-3.1-pro\n* Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_input_token_count, limit: 0, model: gemini-3.1-pro\nPlease retry in 24.547677786s.', 'status': 'RESOURCE_EXHAUSTED', 'details': [{'@type': 'type.googleapis.com/google.rpc.Help', 'links': [{'description': 'Learn more about Gemini API quotas', 'url': 'https://ai.google.dev/gemini-api/docs/rate-limits'}]}, {'@type': 'type.googleapis.com/google.rpc.QuotaFailure', 'violations': [{'quotaMetric': 'generativelanguage.googleapis.com/generate_content_free_tier_input_token_count', 'quotaId': 'GenerateContentInputTokensPerModelPerDay-FreeTier', 'quotaDimensions': {'location': 'global', 'model': 'gemini-3.1-pro'}}, {'quotaMetric': 'generativelanguage.googleapis.com/generate_content_free_tier_requests', 'quotaId': 'GenerateRequestsPerDayPerProjectPerModel-FreeTier', 'quotaDimensions': {'location': 'global', 'model': 'gemini-3.1-pro'}}, {'quotaMetric': 'generativelanguage.googleapis.com/generate_content_free_tier_requests', 'quotaId': 'GenerateRequestsPerMinutePerProjectPerModel-FreeTier', 'quotaDimensions': {'location': 'global', 'model': 'gemini-3.1-pro'}}, {'quotaMetric': 'generativelanguage.googleapis.com/generate_content_free_tier_input_token_count', 'quotaId': 'GenerateContentInputTokensPerModelPerMinute-FreeTier', 'quotaDimensions': {'location': 'global', 'model': 'gemini-3.1-pro'}}]}, {'@type': 'type.googleapis.com/google.rpc.RetryInfo', 'retryDelay': '24s'}]}}
+2026-04-30 09:39:39,487 - INFO - AFC is enabled with max remote calls: 10.
+2026-04-30 09:39:39,814 - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-pro-preview:generateContent "HTTP/1.1 429 Too Many Requests"
+2026-04-30 09:39:39,816 - ERROR - Error en Generación AI (ANALYST): 429 RESOURCE_EXHAUSTED. {'error': {'code': 429, 'message': 'You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To monitor your current usage, head to: https://ai.dev/rate-limit. \n* Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_input_token_count, limit: 0, model: gemini-3.1-pro\n* Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_requests, limit: 0, model: gemini-3.1-pro\n* Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_requests, limit: 0, model: gemini-3.1-pro\n* Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_input_token_count, limit: 0, model: gemini-3.1-pro\nPlease retry in 22.40387831s.', 'status': 'RESOURCE_EXHAUSTED', 'details': [{'@type': 'type.googleapis.com/google.rpc.Help', 'links': [{'description': 'Learn more about Gemini API quotas', 'url': 'https://ai.google.dev/gemini-api/docs/rate-limits'}]}, {'@type': 'type.googleapis.com/google.rpc.QuotaFailure', 'violations': [{'quotaMetric': 'generativelanguage.googleapis.com/generate_content_free_tier_input_token_count', 'quotaId': 'GenerateContentInputTokensPerModelPerMinute-FreeTier', 'quotaDimensions': {'location': 'global', 'model': 'gemini-3.1-pro'}}, {'quotaMetric': 'generativelanguage.googleapis.com/generate_content_free_tier_requests', 'quotaId': 'GenerateRequestsPerMinutePerProjectPerModel-FreeTier', 'quotaDimensions': {'model': 'gemini-3.1-pro', 'location': 'global'}}, {'quotaMetric': 'generativelanguage.googleapis.com/generate_content_free_tier_requests', 'quotaId': 'GenerateRequestsPerDayPerProjectPerModel-FreeTier', 'quotaDimensions': {'location': 'global', 'model': 'gemini-3.1-pro'}}, {'quotaMetric': 'generativelanguage.googleapis.com/generate_content_free_tier_input_token_count', 'quotaId': 'GenerateContentInputTokensPerModelPerDay-FreeTier', 'quotaDimensions': {'model': 'gemini-3.1-pro', 'location': 'global'}}]}, {'@type': 'type.googleapis.com/google.rpc.RetryInfo', 'retryDelay': '22s'}]}}
+2026-04-30 09:39:39,851 - INFO - Sesión activa promocionada al chat 19 para invitado@agente-bi.local
+2026-04-30 09:41:17,877 - INFO - AFC is enabled with max remote calls: 10.
+2026-04-30 09:41:18,683 - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-pro-preview:generateContent "HTTP/1.1 429 Too Many Requests"
+2026-04-30 09:41:18,685 - ERROR - Error en Generación AI (CODE_GEN): 429 RESOURCE_EXHAUSTED. {'error': {'code': 429, 'message': 'You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To monitor your current usage, head to: https://ai.dev/rate-limit. \n* Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_input_token_count, limit: 0, model: gemini-3.1-pro\n* Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_requests, limit: 0, model: gemini-3.1-pro\n* Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_requests, limit: 0, model: gemini-3.1-pro\n* Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_input_token_count, limit: 0, model: gemini-3.1-pro\nPlease retry in 43.553444915s.', 'status': 'RESOURCE_EXHAUSTED', 'details': [{'@type': 'type.googleapis.com/google.rpc.Help', 'links': [{'description': 'Learn more about Gemini API quotas', 'url': 'https://ai.google.dev/gemini-api/docs/rate-limits'}]}, {'@type': 'type.googleapis.com/google.rpc.QuotaFailure', 'violations': [{'quotaMetric': 'generativelanguage.googleapis.com/generate_content_free_tier_input_token_count', 'quotaId': 'GenerateContentInputTokensPerModelPerDay-FreeTier', 'quotaDimensions': {'model': 'gemini-3.1-pro', 'location': 'global'}}, {'quotaMetric': 'generativelanguage.googleapis.com/generate_content_free_tier_requests', 'quotaId': 'GenerateRequestsPerDayPerProjectPerModel-FreeTier', 'quotaDimensions': {'location': 'global', 'model': 'gemini-3.1-pro'}}, {'quotaMetric': 'generativelanguage.googleapis.com/generate_content_free_tier_requests', 'quotaId': 'GenerateRequestsPerMinutePerProjectPerModel-FreeTier', 'quotaDimensions': {'model': 'gemini-3.1-pro', 'location': 'global'}}, {'quotaMetric': 'generativelanguage.googleapis.com/generate_content_free_tier_input_token_count', 'quotaId': 'GenerateContentInputTokensPerModelPerMinute-FreeTier', 'quotaDimensions': {'model': 'gemini-3.1-pro', 'location': 'global'}}]}, {'@type': 'type.googleapis.com/google.rpc.RetryInfo', 'retryDelay': '43s'}]}}
+2026-04-30 09:41:20,210 - INFO - AFC is enabled with max remote calls: 10.
+2026-04-30 09:41:20,515 - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-pro-preview:generateContent "HTTP/1.1 429 Too Many Requests"
+2026-04-30 09:41:20,517 - ERROR - Error en Generación AI (ANALYST): 429 RESOURCE_EXHAUSTED. {'error': {'code': 429, 'message': 'You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To monitor your current usage, head to: https://ai.dev/rate-limit. \n* Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_requests, limit: 0, model: gemini-3.1-pro\n* Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_requests, limit: 0, model: gemini-3.1-pro\n* Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_input_token_count, limit: 0, model: gemini-3.1-pro\n* Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_input_token_count, limit: 0, model: gemini-3.1-pro\nPlease retry in 41.726210684s.', 'status': 'RESOURCE_EXHAUSTED', 'details': [{'@type': 'type.googleapis.com/google.rpc.Help', 'links': [{'description': 'Learn more about Gemini API quotas', 'url': 'https://ai.google.dev/gemini-api/docs/rate-limits'}]}, {'@type': 'type.googleapis.com/google.rpc.QuotaFailure', 'violations': [{'quotaMetric': 'generativelanguage.googleapis.com/generate_content_free_tier_requests', 'quotaId': 'GenerateRequestsPerDayPerProjectPerModel-FreeTier', 'quotaDimensions': {'location': 'global', 'model': 'gemini-3.1-pro'}}, {'quotaMetric': 'generativelanguage.googleapis.com/generate_content_free_tier_requests', 'quotaId': 'GenerateRequestsPerMinutePerProjectPerModel-FreeTier', 'quotaDimensions': {'model': 'gemini-3.1-pro', 'location': 'global'}}, {'quotaMetric': 'generativelanguage.googleapis.com/generate_content_free_tier_input_token_count', 'quotaId': 'GenerateContentInputTokensPerModelPerMinute-FreeTier', 'quotaDimensions': {'location': 'global', 'model': 'gemini-3.1-pro'}}, {'quotaMetric': 'generativelanguage.googleapis.com/generate_content_free_tier_input_token_count', 'quotaId': 'GenerateContentInputTokensPerModelPerDay-FreeTier', 'quotaDimensions': {'location': 'global', 'model': 'gemini-3.1-pro'}}]}, {'@type': 'type.googleapis.com/google.rpc.RetryInfo', 'retryDelay': '41s'}]}}
+2026-04-30 09:42:22,763 - ERROR - Error inicializando cliente Supabase: Invalid API key
+2026-04-30 09:42:22,771 - ERROR - Error inicializando cliente Supabase: Invalid API key
+2026-04-30 09:42:22,772 - WARNING - No se pudo subir sessions/b7ae43a700824eacae609c78d2cb7b1e_28.pkl: Cliente no inicializado (revisa .env)
+2026-04-30 09:42:25,860 - INFO - AFC is enabled with max remote calls: 10.
+2026-04-30 09:42:28,509 - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent "HTTP/1.1 503 Service Unavailable"
+2026-04-30 09:42:28,511 - ERROR - Error en Generación AI (NARRATIVE): 503 UNAVAILABLE. {'error': {'code': 503, 'message': 'This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later.', 'status': 'UNAVAILABLE'}}
+2026-04-30 09:42:52,389 - INFO - AFC is enabled with max remote calls: 10.
+2026-04-30 09:43:07,624 - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent "HTTP/1.1 200 OK"
+2026-04-30 09:43:17,443 - INFO - AFC is enabled with max remote calls: 10.
+2026-04-30 09:43:17,733 - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent "HTTP/1.1 429 Too Many Requests"
+2026-04-30 09:43:17,735 - ERROR - Error en Generación AI (ANALYST): 429 RESOURCE_EXHAUSTED. {'error': {'code': 429, 'message': 'You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To monitor your current usage, head to: https://ai.dev/rate-limit. \n* Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_requests, limit: 20, model: gemini-3-flash\nPlease retry in 44.529665793s.', 'status': 'RESOURCE_EXHAUSTED', 'details': [{'@type': 'type.googleapis.com/google.rpc.Help', 'links': [{'description': 'Learn more about Gemini API quotas', 'url': 'https://ai.google.dev/gemini-api/docs/rate-limits'}]}, {'@type': 'type.googleapis.com/google.rpc.QuotaFailure', 'violations': [{'quotaMetric': 'generativelanguage.googleapis.com/generate_content_free_tier_requests', 'quotaId': 'GenerateRequestsPerDayPerProjectPerModel-FreeTier', 'quotaDimensions': {'location': 'global', 'model': 'gemini-3-flash'}, 'quotaValue': '20'}]}, {'@type': 'type.googleapis.com/google.rpc.RetryInfo', 'retryDelay': '44s'}]}}
+2026-04-30 09:43:18,200 - INFO - Sesión activa promocionada al chat 20 para invitado@agente-bi.local
+2026-04-30 09:45:47,978 - INFO - HTTP Request: GET https://generativelanguage.googleapis.com/v1beta/models "HTTP/1.1 200 OK"
+2026-04-30 09:45:53,253 - INFO - AFC is enabled with max remote calls: 10.
+2026-04-30 09:46:02,825 - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent "HTTP/1.1 503 Service Unavailable"
+2026-04-30 09:46:02,827 - ERROR - Error en Generación AI (CODE_GEN): 503 UNAVAILABLE. {'error': {'code': 503, 'message': 'This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later.', 'status': 'UNAVAILABLE'}}
+2026-04-30 09:46:04,375 - INFO - AFC is enabled with max remote calls: 10.
+2026-04-30 09:46:15,629 - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent "HTTP/1.1 200 OK"
+2026-04-30 09:58:53,377 - ERROR - Error inicializando cliente Supabase: Invalid API key
+2026-04-30 09:58:53,389 - ERROR - Error inicializando cliente Supabase: Invalid API key
+2026-04-30 09:58:53,389 - WARNING - No se pudo subir sessions/b7ae43a700824eacae609c78d2cb7b1e_29.pkl: Cliente no inicializado (revisa .env)
+2026-04-30 10:03:54,725 - ERROR - Error inicializando cliente Supabase: Invalid API key
+2026-04-30 10:03:54,732 - ERROR - Error inicializando cliente Supabase: Invalid API key
+2026-04-30 10:03:54,733 - WARNING - No se pudo subir sessions/b7ae43a700824eacae609c78d2cb7b1e_30.pkl: Cliente no inicializado (revisa .env)
+2026-04-30 10:03:59,717 - ERROR - Error inicializando cliente Supabase: Invalid API key
+2026-04-30 10:04:04,428 - ERROR - Error en load_source_to_session (invitado@agente-bi.local_active): too many values to unpack (expected 2)
+2026-04-30 10:04:04,431 - ERROR - Error inicializando cliente Supabase: Invalid API key
+2026-04-30 10:04:09,556 - ERROR - Error en load_source_to_session (invitado@agente-bi.local_active): too many values to unpack (expected 2)
+2026-04-30 10:04:14,646 - ERROR - Error inicializando cliente Supabase: Invalid API key
+2026-04-30 10:04:19,174 - ERROR - Error en load_source_to_session (invitado@agente-bi.local_active): too many values to unpack (expected 2)
+2026-04-30 10:05:21,543 - ERROR - Error inicializando cliente Supabase: Invalid API key
+2026-04-30 10:05:21,548 - ERROR - Error inicializando cliente Supabase: Invalid API key
+2026-04-30 10:05:21,549 - WARNING - No se pudo subir sessions/b7ae43a700824eacae609c78d2cb7b1e_32.pkl: Cliente no inicializado (revisa .env)
+2026-04-30 10:05:24,341 - INFO - AFC is enabled with max remote calls: 10.
+2026-04-30 10:05:42,644 - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent "HTTP/1.1 200 OK"
+2026-04-30 10:06:26,929 - INFO - HTTP Request: POST https://api.mistral.ai/v1/chat/completions "HTTP/1.1 401 Unauthorized"
+2026-04-30 10:06:26,931 - ERROR - Error AI (mistral): API error occurred: Status 401 Content-Type "application/json; charset=utf-8". Body: {"detail":"Unauthorized"}
+2026-04-30 10:06:28,644 - INFO - HTTP Request: POST https://api.mistral.ai/v1/chat/completions "HTTP/1.1 401 Unauthorized"
+2026-04-30 10:06:28,645 - ERROR - Error AI (mistral): API error occurred: Status 401 Content-Type "application/json; charset=utf-8". Body: {"detail":"Unauthorized"}
+2026-04-30 10:06:28,671 - INFO - Sesión activa promocionada al chat 21 para invitado@agente-bi.local
+2026-04-30 10:07:12,405 - INFO - AFC is enabled with max remote calls: 10.
+2026-04-30 10:07:26,234 - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent "HTTP/1.1 200 OK"
+2026-04-30 10:07:29,064 - INFO - AFC is enabled with max remote calls: 10.
+2026-04-30 10:07:37,647 - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent "HTTP/1.1 200 OK"
+2026-04-30 10:10:43,423 - INFO - HTTP Request: GET https://api.mistral.ai/v1/models "HTTP/1.1 200 OK"
+2026-04-30 10:11:30,353 - INFO - HTTP Request: POST https://api.mistral.ai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-04-30 10:11:30,381 - ERROR - Execution Error: name 'locals' is not defined
+2026-04-30 10:13:17,239 - INFO - AFC is enabled with max remote calls: 10.
+2026-04-30 10:13:33,068 - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent "HTTP/1.1 200 OK"
+2026-04-30 10:13:35,966 - INFO - AFC is enabled with max remote calls: 10.
+2026-04-30 10:13:47,297 - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent "HTTP/1.1 200 OK"
+2026-04-30 10:35:25,158 - ERROR - Error inicializando cliente Supabase: Invalid API key
+2026-04-30 10:35:25,172 - ERROR - Error inicializando cliente Supabase: Invalid API key
+2026-04-30 10:35:25,173 - WARNING - No se pudo subir sessions/b7ae43a700824eacae609c78d2cb7b1e_33.pkl: Cliente no inicializado (revisa .env)
+2026-04-30 10:35:27,445 - INFO - AFC is enabled with max remote calls: 10.
+2026-04-30 10:35:28,141 - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent "HTTP/1.1 503 Service Unavailable"
+2026-04-30 10:35:28,144 - ERROR - Error AI (gemini): 503 UNAVAILABLE. {'error': {'code': 503, 'message': 'This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later.', 'status': 'UNAVAILABLE'}}
+2026-04-30 10:36:20,580 - INFO - HTTP Request: POST https://api.mistral.ai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-04-30 10:36:20,615 - ERROR - Execution Error: name 'locals' is not defined
+2026-04-30 10:36:20,633 - INFO - Sesión activa promocionada al chat 22 para invitado@agente-bi.local
+2026-04-30 10:49:32,578 - ERROR - Error inicializando cliente Supabase: Invalid API key
+2026-04-30 10:49:32,588 - ERROR - Error inicializando cliente Supabase: Invalid API key
+2026-04-30 10:49:32,589 - WARNING - No se pudo subir sessions/b7ae43a700824eacae609c78d2cb7b1e_34.pkl: Cliente no inicializado (revisa .env)
+2026-04-30 10:49:35,414 - INFO - AFC is enabled with max remote calls: 10.
+2026-04-30 10:49:47,891 - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent "HTTP/1.1 200 OK"
+2026-04-30 10:49:49,737 - INFO - AFC is enabled with max remote calls: 10.
+2026-04-30 10:49:54,532 - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent "HTTP/1.1 503 Service Unavailable"
+2026-04-30 10:49:54,535 - ERROR - Error AI (gemini): 503 UNAVAILABLE. {'error': {'code': 503, 'message': 'This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later.', 'status': 'UNAVAILABLE'}}
+2026-04-30 10:49:56,539 - INFO - AFC is enabled with max remote calls: 10.
+2026-04-30 10:50:05,110 - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent "HTTP/1.1 200 OK"
+2026-04-30 10:50:05,135 - INFO - Sesión activa promocionada al chat 23 para invitado@agente-bi.local
+2026-04-30 10:51:26,528 - INFO - AFC is enabled with max remote calls: 10.
+2026-04-30 10:51:37,214 - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent "HTTP/1.1 200 OK"
+2026-04-30 10:51:47,639 - INFO - AFC is enabled with max remote calls: 10.
+2026-04-30 10:51:52,536 - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent "HTTP/1.1 200 OK"
+2026-04-30 10:52:02,599 - INFO - AFC is enabled with max remote calls: 10.
+2026-04-30 10:52:07,910 - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent "HTTP/1.1 200 OK"
+2026-04-30 10:52:17,939 - INFO - AFC is enabled with max remote calls: 10.
+2026-04-30 10:52:23,898 - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent "HTTP/1.1 200 OK"
+2026-04-30 10:52:33,942 - INFO - AFC is enabled with max remote calls: 10.
+2026-04-30 10:52:39,661 - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent "HTTP/1.1 200 OK"
+2026-04-30 10:52:49,713 - INFO - AFC is enabled with max remote calls: 10.
+2026-04-30 10:52:51,421 - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent "HTTP/1.1 503 Service Unavailable"
+2026-04-30 10:52:51,423 - ERROR - Error en gemini-3-flash-preview: 503 UNAVAILABLE. {'error': {'code': 503, 'message': 'This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later.', 'status': 'UNAVAILABLE'}}
+2026-04-30 10:52:51,424 - ERROR - Error crítico: 503 UNAVAILABLE. {'error': {'code': 503, 'message': 'This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later.', 'status': 'UNAVAILABLE'}}
+2026-04-30 11:04:39,113 - INFO - AFC is enabled with max remote calls: 10.
+2026-04-30 11:04:51,953 - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent "HTTP/1.1 200 OK"
+2026-04-30 11:05:02,019 - INFO - AFC is enabled with max remote calls: 10.
+2026-04-30 11:05:07,218 - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent "HTTP/1.1 200 OK"
+2026-04-30 11:05:17,251 - INFO - AFC is enabled with max remote calls: 10.
+2026-04-30 11:05:29,006 - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent "HTTP/1.1 200 OK"
+2026-04-30 11:05:39,040 - INFO - AFC is enabled with max remote calls: 10.
+2026-04-30 11:05:43,793 - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent "HTTP/1.1 200 OK"
+2026-04-30 11:05:53,834 - INFO - AFC is enabled with max remote calls: 10.
+2026-04-30 11:06:01,852 - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent "HTTP/1.1 200 OK"
+2026-04-30 11:06:11,879 - INFO - AFC is enabled with max remote calls: 10.
+2026-04-30 11:06:12,357 - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent "HTTP/1.1 503 Service Unavailable"
+2026-04-30 11:06:12,359 - ERROR - Error en Simulación (gemini): 503 UNAVAILABLE. {'error': {'code': 503, 'message': 'This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later.', 'status': 'UNAVAILABLE'}}
+2026-04-30 11:06:12,359 - ERROR - Fallo en Enjambre: 503 UNAVAILABLE. {'error': {'code': 503, 'message': 'This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later.', 'status': 'UNAVAILABLE'}}
+2026-04-30 11:17:21,561 - ERROR - Error inicializando cliente Supabase: Invalid API key
+2026-04-30 11:17:21,570 - ERROR - Error inicializando cliente Supabase: Invalid API key
+2026-04-30 11:17:21,571 - WARNING - No se pudo subir sessions/b7ae43a700824eacae609c78d2cb7b1e_35.pkl: Cliente no inicializado (revisa .env)
+2026-04-30 11:17:35,778 - INFO - AFC is enabled with max remote calls: 10.
+2026-04-30 11:17:53,991 - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent "HTTP/1.1 200 OK"
+2026-04-30 11:18:04,030 - INFO - AFC is enabled with max remote calls: 10.
+2026-04-30 11:18:10,266 - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent "HTTP/1.1 200 OK"
+2026-04-30 11:18:20,304 - INFO - AFC is enabled with max remote calls: 10.
+2026-04-30 11:18:32,681 - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent "HTTP/1.1 200 OK"
+2026-04-30 11:18:42,721 - INFO - AFC is enabled with max remote calls: 10.
+2026-04-30 11:18:50,314 - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent "HTTP/1.1 200 OK"
+2026-04-30 11:19:00,361 - INFO - AFC is enabled with max remote calls: 10.
+2026-04-30 11:19:00,643 - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent "HTTP/1.1 429 Too Many Requests"
+2026-04-30 11:19:20,659 - INFO - AFC is enabled with max remote calls: 10.
+2026-04-30 11:19:20,962 - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent "HTTP/1.1 429 Too Many Requests"
+2026-04-30 11:20:00,969 - ERROR - Fallo en Enjambre: Error crítico: El modelo gemini no responde tras reintentos.
+2026-04-30 11:29:29,829 - INFO - AFC is enabled with max remote calls: 10.
+2026-04-30 11:29:30,666 - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent "HTTP/1.1 429 Too Many Requests"
+2026-04-30 11:29:50,677 - INFO - AFC is enabled with max remote calls: 10.
+2026-04-30 11:29:50,991 - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent "HTTP/1.1 429 Too Many Requests"
+2026-04-30 11:30:31,007 - ERROR - Fallo en Enjambre: Error crítico: El modelo gemini no responde tras reintentos.
+2026-04-30 11:31:07,495 - INFO - AFC is enabled with max remote calls: 10.
+2026-04-30 11:31:08,238 - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent "HTTP/1.1 429 Too Many Requests"
+2026-04-30 11:31:28,247 - INFO - AFC is enabled with max remote calls: 10.
+2026-04-30 11:31:29,021 - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent "HTTP/1.1 429 Too Many Requests"
+2026-04-30 11:32:09,030 - ERROR - Fallo en Enjambre: Error crítico: El modelo gemini no responde tras reintentos.
+2026-04-30 12:16:38,945 - ERROR - Error inicializando cliente Supabase: Invalid API key
+2026-04-30 12:16:38,974 - ERROR - Error inicializando cliente Supabase: Invalid API key
+2026-04-30 12:16:38,977 - WARNING - No se pudo subir sessions/b7ae43a700824eacae609c78d2cb7b1e_36.pkl: Cliente no inicializado (revisa .env)
+2026-04-30 12:16:45,228 - INFO - HTTP Request: POST https://api.mistral.ai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-04-30 12:17:17,065 - INFO - HTTP Request: POST https://api.mistral.ai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-04-30 12:17:48,258 - INFO - HTTP Request: POST https://api.mistral.ai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-04-30 12:17:48,323 - INFO - Sesión activa promocionada al chat 24 para invitado@agente-bi.local
+2026-04-30 12:19:32,603 - INFO - AFC is enabled with max remote calls: 10.
+2026-04-30 12:19:33,543 - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent "HTTP/1.1 429 Too Many Requests"
+2026-04-30 12:19:53,550 - INFO - AFC is enabled with max remote calls: 10.
+2026-04-30 12:19:54,288 - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent "HTTP/1.1 429 Too Many Requests"
+2026-04-30 12:20:34,304 - ERROR - Fallo en Enjambre: Error crítico: El modelo gemini no responde tras reintentos.
+2026-04-30 12:24:49,217 - INFO - \U0001f680 [SWARM] Iniciando simulación #27 con proveedor: MISTRAL
+2026-04-30 12:24:49,332 - INFO - AFC is enabled with max remote calls: 10.
+2026-04-30 12:24:49,800 - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent "HTTP/1.1 429 Too Many Requests"
+2026-04-30 12:25:09,822 - INFO - AFC is enabled with max remote calls: 10.
+2026-04-30 12:25:10,488 - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent "HTTP/1.1 429 Too Many Requests"
+2026-04-30 12:25:50,502 - ERROR - Fallo en Enjambre: Error crítico: El modelo gemini no responde tras reintentos.
+2026-04-30 12:29:42,848 - INFO - \U0001f680 [SWARM] Iniciando simulación #27 con proveedor: MISTRAL
+2026-04-30 12:29:42,990 - INFO - AFC is enabled with max remote calls: 10.
+2026-04-30 12:29:43,408 - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent "HTTP/1.1 429 Too Many Requests"
+2026-04-30 12:30:03,413 - INFO - AFC is enabled with max remote calls: 10.
+2026-04-30 12:30:03,770 - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent "HTTP/1.1 429 Too Many Requests"
+2026-04-30 12:30:43,779 - ERROR - Fallo en Enjambre: Error crítico: El modelo gemini no responde tras reintentos.
+2026-04-30 12:31:08,550 - INFO - \U0001f680 [SWARM] Iniciando simulación #26 con proveedor: MISTRAL
+2026-04-30 12:31:08,646 - INFO - AFC is enabled with max remote calls: 10.
+2026-04-30 12:31:09,444 - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent "HTTP/1.1 429 Too Many Requests"
+2026-04-30 12:31:29,455 - INFO - AFC is enabled with max remote calls: 10.
+2026-04-30 12:31:29,780 - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent "HTTP/1.1 429 Too Many Requests"
+2026-04-30 12:32:09,786 - ERROR - Fallo en Enjambre: Error crítico: El modelo gemini no responde tras reintentos.
+2026-04-30 12:36:41,632 - INFO - \U0001f680 [SWARM] Iniciando simulación #26 con proveedor: MISTRAL
+2026-04-30 12:36:41,723 - ERROR - Fallo en Enjambre: Configuración incompleta: No se encontró la API Key de Mistral para este usuario.
+2026-04-30 12:37:57,126 - INFO - \U0001f680 [SWARM] Iniciando simulación #28 con proveedor: MISTRAL
+2026-04-30 12:37:57,215 - ERROR - Fallo en Enjambre: Configuración incompleta: No se encontró la API Key de Mistral para este usuario.
+2026-04-30 12:39:19,241 - INFO - HTTP Request: GET https://api.mistral.ai/v1/models "HTTP/1.1 200 OK"
+2026-04-30 12:39:23,469 - INFO - \U0001f680 [SWARM] Iniciando simulación #28 con proveedor: MISTRAL
+2026-04-30 12:39:45,062 - INFO - HTTP Request: POST https://api.mistral.ai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-04-30 12:39:51,270 - INFO - HTTP Request: POST https://api.mistral.ai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-04-30 12:39:58,090 - INFO - HTTP Request: POST https://api.mistral.ai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-04-30 12:40:05,008 - INFO - HTTP Request: POST https://api.mistral.ai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-04-30 12:40:07,296 - INFO - HTTP Request: POST https://api.mistral.ai/v1/chat/completions "HTTP/1.1 429 Too Many Requests"
+2026-04-30 12:40:31,272 - INFO - HTTP Request: POST https://api.mistral.ai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-04-30 12:40:33,578 - INFO - HTTP Request: POST https://api.mistral.ai/v1/chat/completions "HTTP/1.1 429 Too Many Requests"
+2026-04-30 12:41:02,470 - INFO - HTTP Request: POST https://api.mistral.ai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-04-30 12:41:09,716 - INFO - HTTP Request: POST https://api.mistral.ai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-04-30 12:41:17,166 - INFO - HTTP Request: POST https://api.mistral.ai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-04-30 12:41:19,460 - INFO - HTTP Request: POST https://api.mistral.ai/v1/chat/completions "HTTP/1.1 429 Too Many Requests"
+2026-04-30 12:41:45,475 - INFO - HTTP Request: POST https://api.mistral.ai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-04-30 12:42:04,813 - INFO - HTTP Request: POST https://api.mistral.ai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-04-30 12:42:12,216 - INFO - HTTP Request: POST https://api.mistral.ai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-04-30 12:42:18,945 - INFO - HTTP Request: POST https://api.mistral.ai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-04-30 12:42:21,245 - INFO - HTTP Request: POST https://api.mistral.ai/v1/chat/completions "HTTP/1.1 429 Too Many Requests"
+2026-04-30 12:42:46,577 - INFO - HTTP Request: POST https://api.mistral.ai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-04-30 12:42:53,092 - INFO - HTTP Request: POST https://api.mistral.ai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-04-30 12:42:58,975 - INFO - HTTP Request: POST https://api.mistral.ai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-04-30 12:43:01,294 - INFO - HTTP Request: POST https://api.mistral.ai/v1/chat/completions "HTTP/1.1 429 Too Many Requests"
+2026-04-30 12:43:26,014 - INFO - HTTP Request: POST https://api.mistral.ai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-04-30 12:44:16,884 - INFO - HTTP Request: POST https://api.mistral.ai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-04-30 13:24:34,692 - ERROR - Error inicializando cliente Supabase: Invalid API key
+2026-04-30 13:24:34,701 - ERROR - Error inicializando cliente Supabase: Invalid API key
+2026-04-30 13:24:34,702 - WARNING - No se pudo subir sessions/b7ae43a700824eacae609c78d2cb7b1e_37.pkl: Cliente no inicializado (revisa .env)
+2026-04-30 13:24:40,402 - INFO - HTTP Request: POST https://api.mistral.ai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-04-30 13:25:43,915 - INFO - HTTP Request: POST https://api.mistral.ai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-04-30 13:26:12,921 - INFO - HTTP Request: POST https://api.mistral.ai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-04-30 13:26:13,028 - INFO - Sesión activa promocionada al chat 25 para invitado@agente-bi.local
+2026-04-30 13:27:20,092 - INFO - HTTP Request: POST https://api.mistral.ai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-04-30 13:27:48,381 - INFO - HTTP Request: POST https://api.mistral.ai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-04-30 13:28:17,205 - INFO - Chromium init'ed with kwargs {}
+2026-04-30 13:28:17,277 - INFO - Found chromium path: C:\Program Files\Google\Chrome\Application\chrome.exe
+2026-04-30 13:28:17,280 - INFO - Temp directory created: C:\Users\vongo\AppData\Local\Temp\tmpfyqnvw1g.
+2026-04-30 13:28:17,286 - INFO - Opening browser.
+2026-04-30 13:28:17,289 - INFO - Temp directory created: C:\Users\vongo\AppData\Local\Temp\tmpzs8zqg3l.
+2026-04-30 13:28:17,289 - INFO - Temporary directory at: C:\Users\vongo\AppData\Local\Temp\tmpzs8zqg3l
+2026-04-30 13:28:18,236 - INFO - Conforming 1 to file:///C:/Users/vongo/AppData/Local/Temp/tmpfyqnvw1g/index.html
+2026-04-30 13:28:18,239 - INFO - Waiting on all navigates
+2026-04-30 13:28:20,618 - INFO - All navigates done, putting them all in queue.
+2026-04-30 13:28:20,620 - INFO - Getting tab from queue (has 1)
+2026-04-30 13:28:20,621 - INFO - Got 481E
+2026-04-30 13:28:20,621 - INFO - Processing Matriz_de_Correlacin_entre_Variables_Numricas.png
+2026-04-30 13:28:20,621 - INFO - Sending big command for Matriz_de_Correlacin_entre_Variables_Numricas.png.
+2026-04-30 13:28:21,044 - INFO - Sent big command for Matriz_de_Correlacin_entre_Variables_Numricas.png.
+2026-04-30 13:28:21,045 - INFO - Reloading tab 481E before return.
+2026-04-30 13:28:21,193 - INFO - Putting tab 481E back (queue size: 0).
+2026-04-30 13:28:21,193 - INFO - Waiting for all cleanups to finish.
+2026-04-30 13:28:21,194 - INFO - Exiting Kaleido
+2026-04-30 13:28:21,194 - INFO - Closing browser.
+2026-04-30 13:28:21,246 - INFO - Closing browser.
+2026-04-30 13:28:21,249 - INFO - TemporaryDirectory.cleanup() worked.
+2026-04-30 13:28:21,250 - INFO - shutil.rmtree worked.
+2026-04-30 13:28:21,250 - INFO - Cancelling tasks.
+2026-04-30 13:28:21,251 - INFO - Exiting Kaleido/Choreo
+2026-04-30 13:28:21,712 - INFO - TemporaryDirectory.cleanup() worked.
+2026-04-30 13:28:21,712 - INFO - shutil.rmtree worked.
+2026-04-30 13:28:21,713 - INFO - TemporaryDirectory.cleanup() worked.
+2026-04-30 13:28:21,713 - INFO - shutil.rmtree worked.
+2026-04-30 13:28:21,714 - INFO - Cancelling tasks.
+2026-04-30 13:28:21,714 - INFO - Exiting Kaleido/Choreo
+2026-04-30 13:28:21,994 - INFO - TemporaryDirectory.cleanup() worked.
+2026-04-30 13:28:21,994 - INFO - shutil.rmtree worked.
+2026-04-30 17:00:31,371 - INFO - \U0001f680 [SWARM] Iniciando simulación #29 con proveedor: MISTRAL
+2026-04-30 17:00:55,512 - INFO - HTTP Request: POST https://api.mistral.ai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-04-30 17:00:57,526 - ERROR - Fallo en Enjambre: Error al parsear agentes. Formato JSON inválido.

@@ -24,7 +24,7 @@ export default function LoginPage() {
                         </svg>
                     </div>
                     <h1 className="text-3xl font-bold text-white mb-2">Acceso Restringido</h1>
-                    <p className="text-gray-400">Inicia sesión con tu cuenta de Google para acceder al Agente BI.</p>
+                    <p className="text-gray-400">Inicia sesión con tu cuenta de Google para acceder al Vektra BI.</p>
                 </div>
 
                 <button
