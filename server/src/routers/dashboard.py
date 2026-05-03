@@ -132,7 +132,8 @@ async def auto_dashboard(
         data_source_obj = next(iter(session_data["data"].values()))
     
     results = generate_auto_dashboard(data_source_obj, api_key, provider, mistral_key)
-    return {"status": "success", "dashboard": results}
+    from src.utils.common import json_serializable
+    return json_serializable({"status": "success", "dashboard": results})
 
 @router.post("/dashboard/filter")
 async def filter_dashboard(

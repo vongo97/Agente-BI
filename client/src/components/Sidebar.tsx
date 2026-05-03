@@ -10,7 +10,7 @@ import { ThemeToggle } from "./ThemeToggle";
 
 export function Sidebar() {
     const { data: session } = useSession();
-    const { apiKey, setApiKey, mistralKey, setMistralKey, aiProvider, setAiProvider, dataSource, setDataSource, isSidebarOpen, setSidebarOpen, setMessages, setActiveChatId, activeChatId, view, setView } = useDashboard();
+    const { apiKey, setApiKey, mistralKey, setMistralKey, aiProvider, setAiProvider, dataSources, setDataSources, addDataSource, removeDataSource, isSidebarOpen, setSidebarOpen, setMessages, setActiveChatId, activeChatId, view, setView } = useDashboard();
     const [apiKeyStatus, setApiKeyStatus] = useState<"idle" | "success" | "error">("idle");
     const [errorMsg, setErrorMsg] = useState("");
     const [uploading, setUploading] = useState(false);
@@ -56,13 +56,20 @@ export function Sidebar() {
             setMessages(res.messages);
             setActiveChatId(id);
             
-            // Restaurar fuente de datos si el chat la tiene vinculada
-            if (res.data_source) {
-                setDataSource({
+            // Restaurar fuentes de datos vinculadas
+            if (res.data_sources && Array.isArray(res.data_sources)) {
+                setDataSources(res.data_sources.map((s: any) => ({
+                    id: s.id,
+                    filename: s.name,
+                    columns: s.columns || []
+                })));
+            } else if (res.data_source) {
+                // Fallback para chats antiguos
+                setDataSources([{
                     id: res.data_source.id,
                     filename: res.data_source.name,
                     columns: res.data_source.columns || []
-                });
+                }]);
             }
 
             setView('chat');
@@ -115,23 +122,29 @@ export function Sidebar() {
     };
 
     const onFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-        if (!e.target.files?.[0]) return;
+        if (!e.target.files || e.target.files.length === 0) return;
+        
         setUploading(true);
+        const files = Array.from(e.target.files);
+        
         try {
-            const res = await uploadFile(e.target.files[0], userId);
-            setMessages([]); // Limpiar chat anterior para nueva fuente
-            setActiveChatId(null);
-            setDataSource({ 
-                id: (res as any).id, 
-                filename: res.filename, 
-                columns: res.columns 
-            });
-            fetchSources(); // Actualizar la lista de fuentes guardadas
+            for (const file of files) {
+                const res = await uploadFile(file, userId);
+                addDataSource({ 
+                    id: (res as any).id, 
+                    filename: res.filename, 
+                    columns: res.columns,
+                    type: 'file'
+                });
+            }
+            fetchSources();
+            setView('chat'); 
         } catch (err: any) {
             console.error(err);
-            alert("Error al subir archivo: " + (err.message || "Error desconocido"));
+            alert("Error al subir archivos: " + (err.message || "Error desconocido"));
         } finally {
             setUploading(false);
+            if (e.target) e.target.value = '';
         }
     };
 
@@ -140,16 +153,9 @@ export function Sidebar() {
         setUploading(true);
         try {
             const res = await connectSql(url || sqlUrl, userId);
-            setMessages([]); // Limpiar chat anterior
-            setActiveChatId(null);
-            setDataSource({ filename: "Base de Datos SQL", columns: ["SQL Engine Active"] });
+            addDataSource({ filename: "Base de Datos SQL", columns: ["SQL Engine Active"], type: 'sql' });
             if (saveConnection && sourceName && !url) {
-                const saved = await saveDataSource(userId, sourceName, 'sql', sqlUrl);
-                setDataSource({ 
-                    filename: "Base de Datos SQL", 
-                    columns: ["SQL Engine Active"],
-                    id: (saved as any).id 
-                });
+                await saveDataSource(userId, sourceName, 'sql', sqlUrl);
                 fetchSources();
             }
             setShowSqlInput(false);
@@ -168,16 +174,9 @@ export function Sidebar() {
         setUploading(true);
         try {
             const res = await connectGoogleSheets(url || gsheetsUrl, userId);
-            setMessages([]); // Limpiar chat anterior
-            setActiveChatId(null);
-            setDataSource({ filename: "Google Sheet", columns: res.columns });
+            addDataSource({ filename: "Google Sheet", columns: res.columns, type: 'gsheets' });
             if (saveConnection && sourceName && !url) {
-                const saved = await saveDataSource(userId, sourceName, 'gsheets', gsheetsUrl);
-                setDataSource({ 
-                    filename: "Google Sheet", 
-                    columns: res.columns,
-                    id: (saved as any).id 
-                });
+                await saveDataSource(userId, sourceName, 'gsheets', gsheetsUrl);
                 fetchSources();
             }
             setShowGSheetsInput(false);
@@ -192,7 +191,7 @@ export function Sidebar() {
     };
 
     const handleDeleteSource = async (id: number) => {
-        if (!confirm("¿Eliminar esta fuente?")) return;
+        if (!confirm("¿Eliminar esta fuente guardada?")) return;
         try {
             await deleteDataSource(id, userId);
             fetchSources();
@@ -274,308 +273,149 @@ export function Sidebar() {
                 </div>
 
                 <div className="flex-1 overflow-y-auto p-4 space-y-8 custom-scrollbar">
-                    {/* Configuración */}
+                    {/* Fuentes de Datos ACTIVAS */}
                     <div>
-                        <label className="flex items-center gap-2 text-[10px] font-black text-[var(--text-tertiary)] uppercase tracking-[0.2em] mb-4">
-                            <Settings className="w-3.5 h-3.5" /> Configuración IA
-                        </label>
-                        <div className="space-y-4">
-                            {/* Selector de Proveedor */}
-                            <div className="bg-[var(--bg-tertiary)] p-1 rounded-xl flex gap-1">
-                                <button
-                                    onClick={() => setAiProvider("gemini")}
-                                    className={`flex-1 py-1.5 text-[9px] lg:text-[10px] font-bold uppercase tracking-wider rounded-lg transition-all ${aiProvider === 'gemini' ? 'bg-blue-600 text-white shadow-md' : 'text-[var(--text-secondary)] hover:bg-black/5 dark:hover:bg-white/5'}`}
+                        <div className="flex items-center justify-between mb-4 px-1">
+                            <label className="flex items-center gap-2 text-[10px] font-black text-gray-600 uppercase tracking-[0.2em]">
+                                <Database className="w-3.5 h-3.5" /> Pool de Datos ({dataSources.length}/10)
+                            </label>
+                            {dataSources.length > 0 && (
+                                <button 
+                                    onClick={async () => {
+                                        try {
+                                            const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+                                            const formData = new FormData();
+                                            formData.append("user_id", userId);
+                                            await fetch(`${API_URL}/clear-session`, { method: "POST", body: formData });
+                                            setDataSources([]);
+                                        } catch (err) {
+                                            setDataSources([]);
+                                        }
+                                    }}
+                                    className="text-[9px] font-black text-red-500/50 hover:text-red-500 uppercase tracking-tighter transition-colors"
                                 >
-                                    Gemini
+                                    Limpiar Todo
                                 </button>
+                            )}
+                        </div>
+
+                        <div className="space-y-3">
+                            {dataSources.map((source, idx) => (
+                                <div key={idx} className="bg-blue-600/5 border border-blue-500/20 rounded-xl p-3 relative overflow-hidden group animate-in slide-in-from-left-2 duration-300">
+                                    <div className="flex items-center gap-3">
+                                        <div className="p-1.5 bg-blue-500/20 rounded-lg">
+                                            {source.type === 'sql' ? <Database className="w-4 h-4 text-blue-400" /> : <FileText className="w-4 h-4 text-blue-400" />}
+                                        </div>
+                                        <div className="overflow-hidden flex-1">
+                                            <p className="text-xs font-bold text-blue-100 truncate">{source.filename}</p>
+                                            <p className="text-[9px] text-blue-400/80 font-bold uppercase">{source.columns.length} Cols</p>
+                                        </div>
+                                        <button 
+                                            onClick={() => removeDataSource(source.filename)}
+                                            className="p-1 text-blue-400/30 hover:text-red-400 transition-colors"
+                                        >
+                                            <X className="w-3.5 h-3.5" />
+                                        </button>
+                                    </div>
+                                </div>
+                            ))}
+
+                            {dataSources.length < 10 && (
+                                <div className="group relative border-2 border-dashed border-white/5 rounded-2xl p-6 text-center hover:border-blue-500/30 hover:bg-blue-500/[0.02] transition-all cursor-pointer overflow-hidden">
+                                    <input type="file" multiple className="absolute inset-0 opacity-0 cursor-pointer z-10" onChange={onFileUpload} />
+                                    {uploading ? (
+                                        <div className="flex flex-col items-center gap-2">
+                                            <Activity className="w-6 h-6 text-blue-500 animate-pulse" />
+                                            <p className="text-[10px] text-blue-400 font-black animate-pulse uppercase tracking-widest">Cargando...</p>
+                                        </div>
+                                    ) : (
+                                        <>
+                                            <div className="w-10 h-10 bg-white/[0.02] rounded-full flex items-center justify-center mx-auto mb-3 group-hover:bg-blue-600/10 transition-colors">
+                                                <Upload className="w-5 h-5 text-gray-600 group-hover:text-blue-500 transition-colors" />
+                                            </div>
+                                            <p className="text-xs text-gray-400 font-bold group-hover:text-gray-200 uppercase tracking-tighter">Subir Nuevo Dataset</p>
+                                        </>
+                                    )}
+                                </div>
+                            )}
+                        </div>
+                    </div>
+
+                    {/* Conectores Rápidos */}
+                    <div className="space-y-2">
+                        <button
+                            onClick={() => setShowGSheetsInput(!showGSheetsInput)}
+                            className="w-full flex items-center justify-between px-5 py-3 bg-white/[0.02] border border-white/5 rounded-xl text-gray-500 hover:text-white hover:bg-white/[0.05] transition-all"
+                        >
+                            <span className="text-[10px] font-black uppercase tracking-widest text-emerald-500/80">Google Sheets</span>
+                            <ChevronDown className={`w-3.5 h-3.5 transition-transform ${showGSheetsInput ? 'rotate-180' : ''}`} />
+                        </button>
+                        {showGSheetsInput && (
+                            <div className="p-3 bg-white/[0.02] border border-white/5 rounded-xl space-y-3 animate-in fade-in slide-in-from-top-2">
+                                <input
+                                    type="text"
+                                    value={gsheetsUrl}
+                                    onChange={(e) => setGsheetsUrl(e.target.value)}
+                                    placeholder="URL de la hoja pública..."
+                                    className="w-full bg-black border border-white/10 rounded-lg px-4 py-2 text-xs text-white focus:outline-none focus:border-blue-500/50"
+                                />
                                 <button
-                                    onClick={() => setAiProvider("mistral")}
-                                    className={`flex-1 py-1.5 text-[9px] lg:text-[10px] font-bold uppercase tracking-wider rounded-lg transition-all ${aiProvider === 'mistral' ? 'bg-purple-600 text-white shadow-md' : 'text-[var(--text-secondary)] hover:bg-black/5 dark:hover:bg-white/5'}`}
+                                    onClick={() => handleGSheetsConnect()}
+                                    className="w-full py-2 bg-blue-600 hover:bg-blue-500 text-white text-[10px] font-black uppercase tracking-widest rounded-lg transition-all"
                                 >
-                                    Mistral
-                                </button>
-                                <button
-                                    onClick={() => setAiProvider("hybrid")}
-                                    className={`flex-1 py-1.5 text-[9px] lg:text-[10px] font-bold uppercase tracking-wider rounded-lg transition-all ${aiProvider === 'hybrid' ? 'bg-gradient-to-r from-blue-600 to-purple-600 text-white shadow-md' : 'text-[var(--text-secondary)] hover:bg-black/5 dark:hover:bg-white/5'}`}
-                                    title="Modo Colaborativo: Gemini (Ingeniero) + Mistral (Estratega)"
-                                >
-                                    Dual
+                                    Conectar
                                 </button>
                             </div>
-
-                            {/* Google API Key - Solo en Gemini o Dual */}
-                            {(aiProvider === 'gemini' || aiProvider === 'hybrid') && (
-                                <div className="relative">
-                                    <input
-                                        type="password"
-                                        value={apiKey}
-                                        onChange={handleApiKeyChange}
-                                        placeholder="Google API Key (Gemini)..."
-                                        className="w-full bg-[var(--bg-tertiary)] border border-blue-500/50 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/5 rounded-xl px-4 py-3 text-sm text-[var(--text-primary)] placeholder-[var(--text-tertiary)] focus:outline-none transition-all"
-                                    />
-                                    <div className="absolute right-3 top-1/2 -translate-y-1/2">
-                                        {apiKeyStatus === "success" && <CheckCircle2 className="w-4 h-4 text-green-500" />}
-                                        {apiKeyStatus === "error" && <AlertCircle className="w-4 h-4 text-red-500" />}
-                                    </div>
-                                </div>
-                            )}
-
-                            {/* Mistral API Key - Solo en Mistral o Dual */}
-                            {(aiProvider === 'mistral' || aiProvider === 'hybrid') && (
-                                <div className="relative">
-                                    <input
-                                        type="password"
-                                        value={mistralKey}
-                                        onChange={handleMistralKeyChange}
-                                        placeholder="Mistral API Key (Mistral)..."
-                                        className="w-full bg-[var(--bg-tertiary)] border border-purple-500/50 focus:border-purple-500 focus:ring-4 focus:ring-purple-500/5 rounded-xl px-4 py-3 text-sm text-[var(--text-primary)] placeholder-[var(--text-tertiary)] focus:outline-none transition-all"
-                                    />
-                                    <div className="absolute right-3 top-1/2 -translate-y-1/2">
-                                        {mistralKeyStatus === "success" && <CheckCircle2 className="w-4 h-4 text-green-500" />}
-                                        {mistralKeyStatus === "error" && <AlertCircle className="w-4 h-4 text-red-500" />}
-                                    </div>
-                                </div>
-                            )}
-                        </div>
+                        )}
+                        
+                        <button
+                            onClick={() => setShowSqlInput(!showSqlInput)}
+                            className="w-full flex items-center justify-between px-5 py-3 bg-white/[0.02] border border-white/5 rounded-xl text-gray-500 hover:text-white hover:bg-white/[0.05] transition-all"
+                        >
+                            <span className="text-[10px] font-black uppercase tracking-widest text-blue-500/80">Base de Datos SQL</span>
+                            <ChevronDown className={`w-3.5 h-3.5 transition-transform ${showSqlInput ? 'rotate-180' : ''}`} />
+                        </button>
+                        {showSqlInput && (
+                            <div className="p-3 bg-white/[0.02] border border-white/5 rounded-xl space-y-3 animate-in fade-in slide-in-from-top-2">
+                                <input
+                                    type="text"
+                                    value={sqlUrl}
+                                    onChange={(e) => setSqlUrl(e.target.value)}
+                                    placeholder="URL: postgresql://..."
+                                    className="w-full bg-black border border-white/10 rounded-lg px-4 py-2 text-xs text-white focus:outline-none focus:border-blue-500/50"
+                                />
+                                <button
+                                    onClick={() => handleSqlConnect()}
+                                    className="w-full py-2 bg-blue-600 hover:bg-blue-500 text-white text-[10px] font-black uppercase tracking-widest rounded-lg transition-all"
+                                >
+                                    Conectar
+                                </button>
+                            </div>
+                        )}
                     </div>
 
-
-                    {/* Fuentes de Datos */}
-                    <div>
-                        <label className="flex items-center gap-2 text-[10px] font-black text-gray-600 uppercase tracking-[0.2em] mb-4">
-                            <Database className="w-3.5 h-3.5" /> Fuentes de Datos
-                        </label>
-                        <div className="space-y-4">
-                            {dataSource ? (
-                                <div className="bg-blue-600/5 border border-blue-500/20 rounded-xl p-4 relative overflow-hidden group">
-                                    <div className="flex items-center gap-3">
-                                        <div className="p-2 bg-blue-500/20 rounded-lg">
-                                            <FileText className="w-5 h-5 text-blue-400" />
-                                        </div>
-                                        <div className="overflow-hidden">
-                                            <p className="text-sm font-semibold text-blue-100 truncate">{dataSource.filename}</p>
-                                            <p className="text-[10px] text-blue-400 font-bold uppercase">{dataSource.columns.length} Columnas Detectadas</p>
-                                        </div>
-                                    </div>
-                                    <button
-                                        onClick={() => setDataSource(null)}
-                                        className="mt-3 w-full py-2 text-[10px] font-bold text-blue-400/50 hover:text-blue-400 uppercase tracking-widest transition-colors"
-                                    >
-                                        Eliminar Fuente
-                                    </button>
-                                </div>
-                            ) : (
-                                <>
-                                    <div className="group relative border-2 border-dashed border-white/5 rounded-2xl p-8 text-center hover:border-blue-500/30 hover:bg-blue-500/[0.02] transition-all cursor-pointer overflow-hidden">
-                                        <input type="file" className="absolute inset-0 opacity-0 cursor-pointer z-10" onChange={onFileUpload} />
-                                        {uploading ? (
-                                            <div className="flex flex-col items-center gap-2">
-                                                <Activity className="w-8 h-8 text-blue-500 animate-pulse" />
-                                                <p className="text-sm text-blue-400 font-bold animate-pulse">Procesando...</p>
-                                            </div>
-                                        ) : (
-                                            <>
-                                                <div className="w-12 h-12 bg-white/[0.02] rounded-full flex items-center justify-center mx-auto mb-4 group-hover:bg-blue-600/10 transition-colors">
-                                                    <Upload className="w-6 h-6 text-gray-600 group-hover:text-blue-500 transition-colors" />
-                                                </div>
-                                                <p className="text-sm text-gray-400 font-medium group-hover:text-gray-200">Subir CSV o Excel</p>
-                                                <p className="text-[10px] text-gray-600 mt-1 uppercase tracking-tighter">Arrastra tus datos aquí</p>
-                                            </>
-                                        )}
-                                    </div>
-
-                                    {/* Conector Google Sheets */}
-                                    <div className="space-y-2">
-                                        <button
-                                            onClick={() => setShowGSheetsInput(!showGSheetsInput)}
-                                            className="w-full flex items-center justify-between px-5 py-4 bg-white/[0.02] border border-white/5 rounded-2xl text-gray-500 hover:text-white hover:bg-white/[0.05] hover:border-white/10 transition-all group"
-                                        >
-                                            <span className="text-xs font-bold uppercase tracking-widest text-emerald-500/80">Google Sheets</span>
-                                            <ChevronDown className={`w-4 h-4 transition-transform ${showGSheetsInput ? 'rotate-180' : ''}`} />
-                                        </button>
-                                        {showGSheetsInput && (
-                                            <div className="p-4 bg-white/[0.02] border border-white/5 rounded-2xl space-y-3 animate-in fade-in slide-in-from-top-2">
-                                                <input
-                                                    type="text"
-                                                    value={sourceName}
-                                                    onChange={(e) => setSourceName(e.target.value)}
-                                                    placeholder="Nombre de la fuente (ej. Ventas 2024)..."
-                                                    className="w-full bg-black border border-white/10 rounded-xl px-4 py-2.5 text-xs text-white focus:outline-none focus:border-blue-500/50"
-                                                />
-                                                <input
-                                                    type="text"
-                                                    value={gsheetsUrl}
-                                                    onChange={(e) => setGsheetsUrl(e.target.value)}
-                                                    placeholder="Pegar URL de la hoja..."
-                                                    className="w-full bg-black border border-white/10 rounded-xl px-4 py-2.5 text-xs text-white focus:outline-none focus:border-blue-500/50"
-                                                />
-                                                <div className="flex items-center gap-2 px-1">
-                                                    <input 
-                                                        type="checkbox" 
-                                                        id="save-gsheets" 
-                                                        checked={saveConnection} 
-                                                        onChange={(e) => setSaveConnection(e.target.checked)}
-                                                        className="w-3.5 h-3.5 rounded border-white/10 bg-black text-blue-600 focus:ring-blue-500/20"
-                                                    />
-                                                    <label htmlFor="save-gsheets" className="text-[10px] text-gray-500 font-bold uppercase tracking-tighter cursor-pointer">Guardar conexión</label>
-                                                </div>
-                                                <button
-                                                    onClick={() => handleGSheetsConnect()}
-                                                    className="w-full py-2.5 bg-blue-600 hover:bg-blue-500 text-white text-[10px] font-black uppercase tracking-widest rounded-xl transition-all"
-                                                >
-                                                    Conectar Hoja
-                                                </button>
-                                            </div>
-                                        )}
-                                    </div>
-
-                                    {/* Conector SQL */}
-                                    <div className="space-y-2">
-                                        <button
-                                            onClick={() => setShowSqlInput(!showSqlInput)}
-                                            className="w-full flex items-center justify-between px-5 py-4 bg-white/[0.02] border border-white/5 rounded-2xl text-gray-500 hover:text-white hover:bg-white/[0.05] hover:border-white/10 transition-all group"
-                                        >
-                                            <span className="text-xs font-bold uppercase tracking-widest text-blue-500/80">Base de Datos SQL</span>
-                                            <ChevronDown className={`w-4 h-4 transition-transform ${showSqlInput ? 'rotate-180' : ''}`} />
-                                        </button>
-                                        {showSqlInput && (
-                                            <div className="p-4 bg-white/[0.02] border border-white/5 rounded-2xl space-y-3 animate-in fade-in slide-in-from-top-2">
-                                                <input
-                                                    type="text"
-                                                    value={sourceName}
-                                                    onChange={(e) => setSourceName(e.target.value)}
-                                                    placeholder="Nombre de la fuente (ej. Supabase Prod)..."
-                                                    className="w-full bg-black border border-white/10 rounded-xl px-4 py-2.5 text-xs text-white focus:outline-none focus:border-blue-500/50"
-                                                />
-                                                <input
-                                                    type="text"
-                                                    value={sqlUrl}
-                                                    onChange={(e) => setSqlUrl(e.target.value)}
-                                                    placeholder="postgresql://user:pass@host/db"
-                                                    className="w-full bg-black border border-white/10 rounded-xl px-4 py-2.5 text-xs text-white focus:outline-none focus:border-blue-500/50"
-                                                />
-                                                <div className="flex items-center gap-2 px-1">
-                                                    <input 
-                                                        type="checkbox" 
-                                                        id="save-sql" 
-                                                        checked={saveConnection} 
-                                                        onChange={(e) => setSaveConnection(e.target.checked)}
-                                                        className="w-3.5 h-3.5 rounded border-white/10 bg-black text-blue-600 focus:ring-blue-500/20"
-                                                    />
-                                                    <label htmlFor="save-sql" className="text-[10px] text-gray-500 font-bold uppercase tracking-tighter cursor-pointer">Guardar conexión</label>
-                                                </div>
-                                                <button
-                                                    onClick={() => handleSqlConnect()}
-                                                    className="w-full py-2.5 bg-blue-600 hover:bg-blue-500 text-white text-[10px] font-black uppercase tracking-widest rounded-xl transition-all"
-                                                >
-                                                    Conectar SQL
-                                                </button>
-                                            </div>
-                                        )}
-                                    </div>
-
-                                    {/* Fuentes Guardadas (Nueva Persistencia) */}
-                                    {savedSources.length > 0 && (
-                                        <div className="space-y-4 pt-4 border-t border-white/5">
-                                            <div className="flex items-center justify-between px-1">
-                                                <label className="text-[10px] font-black text-gray-700 uppercase tracking-widest">Mis Fuentes de Datos</label>
-                                                <span className="text-[10px] font-bold text-blue-500/50">{savedSources.length}</span>
-                                            </div>
-                                            <div className="grid grid-cols-1 gap-2">
-                                                {savedSources.map((source: any) => (
-                                                    <div 
-                                                        key={source.id}
-                                                        className="group flex items-center justify-between p-3 bg-white/[0.03] border border-white/5 rounded-xl hover:bg-white/[0.06] hover:border-blue-500/20 transition-all"
-                                                    >
-                                                        <button 
-                                                            onClick={() => {
-                                                                if (source.type === 'sql') handleSqlConnect(source.url);
-                                                                else if (source.type === 'gsheets') handleGSheetsConnect(source.url);
-                                                                else {
-                                                                    // Restaurar fuente de archivo
-                                                                    const cols = typeof source.columns === 'string' ? JSON.parse(source.columns || "[]") : (source.columns || []);
-                                                                    setDataSource({
-                                                                        id: source.id,
-                                                                        filename: source.name,
-                                                                        columns: cols
-                                                                    });
-                                                                    setMessages([]);
-                                                                    setActiveChatId(null);
-                                                                }
-                                                            }}
-                                                            className="flex-1 flex items-center gap-3 text-left overflow-hidden"
-                                                        >
-                                                            <div className={`p-1.5 rounded-lg ${
-                                                                source.type === 'sql' ? 'bg-blue-500/10 text-blue-400' : 
-                                                                source.type === 'gsheets' ? 'bg-emerald-500/10 text-emerald-400' :
-                                                                'bg-purple-500/10 text-purple-400'
-                                                            }`}>
-                                                                {source.type === 'sql' ? <Database className="w-3.5 h-3.5" /> : 
-                                                                 source.type === 'gsheets' ? <Database className="w-3.5 h-3.5" /> : 
-                                                                 <FileText className="w-3.5 h-3.5" />}
-                                                            </div>
-                                                            <div className="overflow-hidden">
-                                                                <p className="text-[11px] font-bold text-gray-300 truncate">{source.name}</p>
-                                                                <p className="text-[8px] font-black text-gray-600 uppercase tracking-tighter">
-                                                                    {source.type === 'sql' ? 'SQL Database' : 
-                                                                     source.type === 'gsheets' ? 'Google Sheets' : 
-                                                                     'Archivo Persistente'}
-                                                                </p>
-                                                            </div>
-                                                        </button>
-                                                        <button 
-                                                            onClick={() => handleDeleteSource(source.id)}
-                                                            className="p-1.5 opacity-0 group-hover:opacity-100 text-gray-600 hover:text-red-500 transition-all"
-                                                        >
-                                                            <X className="w-3.5 h-3.5" />
-                                                        </button>
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        </div>
-                                    )}
-                                </>
-                            )}
-                        </div>
-                    </div>
-
-                    {/* Historial de Análisis */}
+                    {/* Historial */}
                     <div className="pt-4 border-t border-white/5">
                         <label className="flex items-center gap-2 text-[10px] font-black text-gray-600 uppercase tracking-[0.2em] mb-4">
                             <History className="w-3.5 h-3.5" /> Historial Reciente
                         </label>
                         <div className="space-y-2 pb-8">
-                            {history.length === 0 ? (
-                                <div className="p-4 border border-dashed border-white/5 rounded-xl text-center">
-                                    <p className="text-[10px] text-gray-600 font-bold uppercase tracking-tight">Sin historial previo</p>
-                                </div>
-                            ) : (
-                                history.map((chat) => (
-                                    <button
-                                        key={chat.id}
-                                        onClick={() => loadChat(chat.id)}
-                                        className={`w-full flex items-center gap-3 p-3 rounded-xl transition-all border ${activeChatId === chat.id
-                                            ? 'bg-blue-600/10 border-blue-500/30 text-blue-400'
-                                            : 'bg-white/[0.02] border-white/5 text-gray-500 hover:bg-white/[0.05] hover:border-white/10 hover:text-gray-300'
-                                            }`}
-                                    >
-                                        <div className={`p-1.5 rounded-lg flex-shrink-0 ${activeChatId === chat.id ? 'bg-blue-500/20' : 'bg-white/5'}`}>
-                                            <MessageSquare className="w-3.5 h-3.5" />
-                                        </div>
-                                        <div className="flex-1 text-left overflow-hidden">
-                                            <p className="text-[11px] font-bold truncate tracking-tight">{chat.title}</p>
-                                            <div className="flex items-center gap-1 mt-0.5 opacity-50">
-                                                <Clock className="w-2.5 h-2.5" />
-                                                <p className="text-[8px] font-black uppercase">{new Date(chat.created_at).toLocaleDateString()}</p>
-                                            </div>
-                                        </div>
-                                    </button>
-                                ))
-                            )}
+                            {history.slice(0, 5).map((chat) => (
+                                <button
+                                    key={chat.id}
+                                    onClick={() => loadChat(chat.id)}
+                                    className={`w-full flex items-center gap-3 p-3 rounded-xl transition-all border ${activeChatId === chat.id
+                                        ? 'bg-blue-600/10 border-blue-500/30 text-blue-400'
+                                        : 'bg-white/[0.02] border-white/5 text-gray-500 hover:text-gray-300'
+                                        }`}
+                                >
+                                    <MessageSquare className="w-3.5 h-3.5" />
+                                    <p className="text-[10px] font-bold truncate flex-1 text-left tracking-tight">{chat.title}</p>
+                                </button>
+                            ))}
                         </div>
                     </div>
                 </div>
-
 
                 <div className="p-6 border-t border-[var(--border-color)] bg-[var(--bg-secondary)] space-y-3">
                     <ThemeToggle />
@@ -583,7 +423,7 @@ export function Sidebar() {
                         onClick={() => signOut()}
                         className="w-full flex items-center justify-center gap-2 px-4 py-4 text-gray-500 hover:text-red-400 hover:bg-red-500/10 rounded-2xl transition-all text-xs font-black uppercase tracking-[0.2em]"
                     >
-                        <LogOut className="w-4 h-4" /> Salir del Sistema
+                        <LogOut className="w-4 h-4" /> Salir
                     </button>
                 </div>
             </aside>

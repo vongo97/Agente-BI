@@ -63,89 +63,201 @@ def get_db_schema(engine):
     return schema_info
 
 def _clean_dataframe(df):
-    """
-    Limpieza agresiva para datos dispersos y Excel mal formateados.
-    """
-    # 1. Eliminar filas y columnas que están completamente vacías
+    """Limpieza total y robusta para archivos financieros complejos."""
+    import re
+    import unicodedata
+
+    def slugify_column(name):
+        name = str(name).strip().replace('"', '').replace("'", "")
+        name = "".join(c for c in unicodedata.normalize('NFD', name) if unicodedata.category(c) != 'Mn')
+        name = re.sub(r'[^a-zA-Z0-9]', '_', name).lower()
+        name = re.sub(r'_+', '_', name).strip('_')
+        return name if name else "nan"
+
+    # 1. Limpieza inicial: Eliminar todo lo que esté vacío
     df = df.dropna(how='all').dropna(axis=1, how='all')
     
-    # 2. Si la primera fila parece ser basura (muchos nulos) y la segunda no, re-asignar headers
+    # 2. Localizar el Bloque de Datos y el Header
     if df.shape[0] > 1:
-        first_row_nans = df.iloc[0].isnull().sum()
-        second_row_nans = df.iloc[1].isnull().sum()
-        if first_row_nans > (df.shape[1] / 2) and second_row_nans < first_row_nans:
-            # La segunda fila parece mejor candidata a header
-            df.columns = [str(c).strip() if pd.notnull(c) else f"Col_{i}" for i, c in enumerate(df.iloc[0])]
-            df = df.iloc[1:].reset_index(drop=True)
+        # Buscamos la primera fila que tenga al menos un número o fecha
+        for i in range(min(25, len(df))):
+            # Usar vectorización para evitar errores de iteración en floats
+            row_as_str = df.iloc[i].astype(str)
+            if row_as_str.str.contains(r'\d').any():
+                # Encontramos datos. Vamos a reconstruir el header fusionando las filas superiores
+                header_rows = []
+                for j in range(max(0, i-3), i):
+                    header_rows.append(df.iloc[j].fillna("").astype(str).tolist())
+                
+                if header_rows:
+                    final_headers = []
+                    num_cols = df.shape[1]
+                    for col_idx in range(num_cols):
+                        # Unir piezas de texto de las filas de cabecera para esta columna
+                        parts = [row[col_idx] for row in header_rows if row[col_idx].strip() and row[col_idx].lower() != 'nan']
+                        full_name = " ".join(parts).strip()
+                        final_headers.append(slugify_column(full_name))
+                    
+                    df.columns = final_headers
+                else:
+                    df.columns = [slugify_column(c) for c in df.iloc[i-1]]
+                
+                df = df.iloc[i:].reset_index(drop=True)
+                break
 
-    # 3. Limpiar nombres de columnas
-    df.columns = [str(c).strip().replace("\n", " ") for c in df.columns]
-    
-    # 4. Limpieza de tipos de datos numéricos
+    # 3. Forzar Nombres Únicos
+    cols = []
+    seen = {}
+    for c in df.columns:
+        c_str = str(c)
+        if c_str in seen:
+            seen[c_str] += 1
+            cols.append(f"{c_str}_{seen[c_str]}")
+        else:
+            seen[c_str] = 0
+            cols.append(c_str)
+    df.columns = cols
+
+    # 4. RESCATE DE FECHA (Prioridad Máxima)
+    date_col_found = None
     for col in df.columns:
-        if df[col].dtype == 'object':
-            sample = df[col].dropna().head(10).astype(str)
-            if sample.str.contains(r'\d').any() and sample.str.contains(r'[€\$â\x82\xac\x80 \xa0,]').any():
-                cleaned = df[col].astype(str).str.replace(r'[€\$â\x82\xac\x80 \xa0]', '', regex=True)
-                if cleaned.str.contains(r',').any() and cleaned.str.contains(r'\.').any():
-                    cleaned = cleaned.str.replace(',', '')
-                elif cleaned.str.contains(r',').any():
-                    cleaned = cleaned.str.replace(',', '.')
-                cleaned = cleaned.str.replace(r'[^-0-9.]', '', regex=True)
-                try:
-                    df[col] = pd.to_numeric(cleaned, errors='coerce')
-                except: pass
+        sample = df[col].dropna().head(15)
+        if not sample.empty:
+            try:
+                converted = pd.to_datetime(sample, errors='coerce')
+                if converted.notnull().sum() > (len(sample) * 0.6):
+                    if 'fecha' not in str(col).lower():
+                        df = df.rename(columns={col: 'fecha_mes_ano'})
+                        date_col_found = 'fecha_mes_ano'
+                    else:
+                        date_col_found = col
+                    break
+            except: pass
+
+    # 5. Limpieza Numérica
+    for col in df.columns:
+        if col == date_col_found: continue
+        try:
+            col_data = df[col]
+            if col_data.dtype == 'object':
+                cleaned = col_data.astype(str).str.replace(r'[^-0-9,.]', '', regex=True).str.replace(',', '.')
+                num_series = pd.to_numeric(cleaned, errors='coerce')
+                if num_series.notnull().sum() > (len(df) * 0.4):
+                    df[col] = num_series
+        except: pass
+
+    # 6. Eliminar columnas que se llamen 'nan' y que estén vacías
+    cols_to_keep = [c for c in df.columns if 'nan' not in str(c).lower() or df[c].notnull().sum() > 0]
+    df = df[cols_to_keep]
+    
+    # 7. Eliminar filas de Metadatos / Notas (Footers)
+    if not df.empty:
+        # Si una fila tiene una celda con más de 50 caracteres y el resto casi vacío, es una nota
+        def is_metadata_note(row):
+            text_cells = [str(val) for val in row if len(str(val)) > 50]
+            # Si hay una celda muy larga y pocas celdas con datos reales
+            return len(text_cells) >= 1 and row.count() <= 3
+            
+        mask = df.apply(is_metadata_note, axis=1)
+        df = df[~mask].reset_index(drop=True)
+
+    # 8. Si la primera fila es igual al header, la borramos
+    if not df.empty:
+        try:
+            first_row = df.iloc[0].astype(str).str.lower().tolist()
+            headers = [str(c).lower() for c in df.columns]
+            matches = sum(1 for r, h in zip(first_row, headers) if h in r or r in h)
+            if matches >= (len(df.columns) * 0.6):
+                df = df.iloc[1:].reset_index(drop=True)
+        except: pass
+
+    return df
+
     return df
 
 def load_file_data(file_path):
-    """Carga archivos CSV o Excel y limpia los nombres de columnas."""
+    """Carga archivos CSV o Excel con detección de encoding robusta."""
     ext = file_path.lower()
     try:
         if ext.endswith('.csv'):
-            # Probar múltiples encodings y separadores para evitar errores
+            # Latin-1 suele ser el culpable en archivos de Excel guardados como CSV en español
             encodings = ['utf-8', 'latin-1', 'cp1252', 'iso-8859-1']
-            separators = [',', ';', '\t']
-            last_error = None
+            separators = [';', ',', '\t']
             
             for encoding in encodings:
                 for sep in separators:
                     try:
-                        print(f"[DEBUG] Intentando cargar CSV con encoding: {encoding} y sep: {sep}")
-                        # Intentamos cargar con el separador específico
-                        df = pd.read_csv(file_path, encoding=encoding, sep=sep)
+                        decimal = ',' if sep == ';' else '.'
+                        df = pd.read_csv(file_path, encoding=encoding, sep=sep, decimal=decimal)
                         
-                        # Si solo hay una columna y el separador no es coma, probablemente el sep sea incorrecto
-                        if len(df.columns) == 1 and sep != ',':
-                            continue
+                        if len(df.columns) > 1:
+                            # Verificación rápida de broken characters ()
+                            if any('' in str(c) for c in df.columns):
+                                continue
                             
-                        print(f"[DEBUG] EXITO: Archivo CSV cargado con encoding: {encoding} y sep: {sep}")
-                        return _clean_dataframe(df)
-                    except (UnicodeDecodeError, pd.errors.ParserError) as e:
-                        last_error = e
+                            print(f"[DEBUG] EXITO: CSV ({sep}, {encoding}, {decimal})")
+                            return _clean_dataframe(df)
+                    except:
                         continue
-                
-                # Intento final con el motor de python que intenta adivinar el separador
-                try:
-                    print(f"[DEBUG] Intento alternativo (engine='python') con encoding: {encoding}")
-                    df = pd.read_csv(file_path, encoding=encoding, sep=None, engine='python', on_bad_lines='skip')
-                    print(f"[DEBUG] EXITO: Archivo CSV cargado con motor python, encoding: {encoding}")
-                    return _clean_dataframe(df)
-                except:
-                    continue
             
-            # Si ninguno funciona, lanzar el último error con detalle
-            error_msg = f"No se pudo leer el CSV. Asegúrate de que el formato sea correcto. Error técnico: {last_error}"
-            print(f"[DEBUG] {error_msg}")
-            raise Exception(error_msg)
+            # Último recurso: motor python
+            for encoding in encodings:
+                try:
+                    df = pd.read_csv(file_path, encoding=encoding, sep=None, engine='python', on_bad_lines='skip')
+                    return _clean_dataframe(df)
+                except: continue
+                
+            raise Exception("No se pudo determinar el formato del CSV.")
         elif ext.endswith(('.xls', '.xlsx', '.xlsm')):
-            return _clean_dataframe(pd.read_excel(file_path))
+            print(f"[DEBUG] Cargando archivo Excel (Context-safe): {file_path}")
+            engine = 'openpyxl' if ext.endswith('.xlsx') else None
+            
+            best_df = None
+            max_cells = -1
+            
+            # Usar 'with' para asegurar que Windows libere el archivo inmediatamente
+            with pd.ExcelFile(file_path, engine=engine) as excel_file:
+                sheets = excel_file.sheet_names
+                for sheet in sheets:
+                    try:
+                        # Leemos con header=None para no perder ninguna fila durante el conteo
+                        temp_df = pd.read_excel(excel_file, sheet_name=sheet, header=None)
+                        cells_count = temp_df.notnull().sum().sum()
+                        print(f"[DEBUG] Hoja '{sheet}': {cells_count} celdas.")
+                        
+                        if cells_count > max_cells:
+                            max_cells = cells_count
+                            best_df = temp_df
+                    except Exception as sheet_err:
+                        print(f"[DEBUG] Error leyendo hoja '{sheet}': {sheet_err}")
+                        continue
+            
+            if best_df is not None:
+                # Si leímos con header=None, _clean_dataframe se encargará de encontrar el header real
+                return _clean_dataframe(best_df)
+            else:
+                raise Exception("El archivo Excel parece estar vacío.")
         else:
-            # Intentar cargar como CSV por defecto si no tiene extensión conocida
-            try:
+            # Motor de carga de CSV Ultra-Resiliente (Detección automática)
+            print(f"[DEBUG] Cargando archivo CSV (Auto-Sense): {file_path}")
+            encodings = ['utf-8-sig', 'latin-1', 'utf-8']
+            best_df = None
+            
+            for enc in encodings:
+                try:
+                    # sep=None con engine='python' detecta automáticamente si es , ; o \t
+                    best_df = pd.read_csv(file_path, sep=None, engine='python', encoding=enc)
+                    if best_df.shape[1] > 1: # Si encontró más de una columna, es un éxito
+                        break
+                except: continue
+            
+            if best_df is not None:
+                return _clean_dataframe(best_df)
+            else:
+                # Fallback final
                 return _clean_dataframe(pd.read_csv(file_path))
-            except:
-                raise ValueError(f"Formato de archivo no soportado. Por favor, sube un CSV o Excel (.xlsx).")
     except Exception as e:
+        print(f"[DEBUG] Error crítico cargando archivo: {str(e)}")
         raise Exception(f"Error al leer el archivo: {str(e)}")
 
 import re

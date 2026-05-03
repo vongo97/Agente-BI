@@ -9,7 +9,7 @@ import ReactMarkdown from 'react-markdown';
 
 export function SimulationSandbox() {
     const { data: session } = useSession();
-    const { dataSource, setDataSource, apiKey, aiProvider } = useDashboard();
+    const { dataSources, apiKey, aiProvider } = useDashboard();
     const [simulations, setSimulations] = useState<any[]>([]);
     const [activeSim, setActiveSim] = useState<any>(null);
     const [messages, setMessages] = useState<any[]>([]);
@@ -18,7 +18,7 @@ export function SimulationSandbox() {
     const [loading, setLoading] = useState(false);
     const [polling, setPolling] = useState(false);
     const [availableSources, setAvailableSources] = useState<any[]>([]);
-    const [selectedSourceId, setSelectedSourceId] = useState<number | undefined>(dataSource?.id);
+    const [selectedSourceId, setSelectedSourceId] = useState<number | undefined>(dataSources[0]?.id);
     
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const userId = session?.user?.email || "invitado@agente-bi.local";
@@ -349,11 +349,11 @@ export function SimulationSandbox() {
                                     <label className="text-[10px] font-black text-gray-600 uppercase tracking-widest mb-3 block">Fuente de Datos Base</label>
                                     <div className="grid grid-cols-2 gap-3">
                                         <select 
-                                            value={selectedSourceId}
-                                            onChange={(e) => setSelectedSourceId(Number(e.target.value))}
+                                            value={selectedSourceId || ""}
+                                            onChange={(e) => setSelectedSourceId(e.target.value ? Number(e.target.value) : undefined)}
                                             className="col-span-2 bg-black border border-white/10 rounded-2xl px-6 py-4 text-sm text-white focus:outline-none focus:border-purple-500/50 appearance-none cursor-pointer"
                                         >
-                                            <option value="">Selecciona una fuente de datos...</option>
+                                            <option value="">Utilizar pool de datos actual (Recomendado)</option>
                                             {availableSources.map(s => (
                                                 <option key={s.id} value={s.id}>{s.name} ({s.type})</option>
                                             ))}

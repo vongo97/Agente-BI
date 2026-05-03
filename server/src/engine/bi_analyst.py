@@ -11,12 +11,13 @@ from google.genai import types
 # Módulos internos
 from . import prompts
 from . import executor
+from src.utils.common import SafeJSONEncoder
 
 logger = logging.getLogger(__name__)
 
 # Configuración de Modelos
 MODELS = {
-    "GEMINI": "gemini-3-flash-preview",
+    "GEMINI": "gemini-3.1-flash-lite-preview",
     "MISTRAL": "mistral-large-latest"
 }
 
@@ -69,8 +70,8 @@ def generate_ai_content(prompt, api_key, provider="gemini", temperature=0.7):
         logger.error(f"Error AI ({provider}): {e}")
         return f"Error técnico: {str(e)}"
 
-def analyze_data(data_context, query, api_key, chat_history=[], mode="file", provider="gemini", mistral_key=None):
-    """Analista Inteligente con soporte Dual (Híbrido)."""
+def analyze_data(data_context, query, api_key, chat_history=[], mode="file", provider="gemini", mistral_key=None, primary_source_name=None):
+    """Analista Inteligente con soporte Dual (Híbrido) y Aislamiento de Contexto."""
     try:
         # Configuración de roles para modo DUAL (Híbrido)
         eng_provider = "gemini" if provider in ["gemini", "hybrid"] else "mistral"
@@ -83,26 +84,89 @@ def analyze_data(data_context, query, api_key, chat_history=[], mode="file", pro
         if mode == "sql":
             prompt = prompts.SQL_ENGINEER_PROMPT.format(query=query, context_str=data_context["schema"])
             raw = generate_ai_content(prompt, eng_key, eng_provider)
-            if "⚠️" in raw: return raw # Error de cuota
+            if "⚠️" in raw: return raw
             temp_text, _, clean_sql = executor.execute_sql_safe(data_context["data"], raw)
             real_results = temp_text or "Resultados SQL."
             fig_code = f"```sql\n{clean_sql}\n```" if clean_sql else ""
             context_str = f"Schema SQL: {data_context['schema'][:200]}"
         else:
-            # Caso Pandas
+            # Caso Pandas (Archivos, GSheets, etc.)
             if isinstance(data_context, dict):
-                context_str = f"Tablas: {list(data_context.keys())}"
-                data_var = "dfs"
-            else:
-                context_str = f"Columnas: {data_context.columns.tolist()}"
-                data_var = "df"
+                # Generar descripción de tablas
+                tables_desc = []
+                head_info = {}
+                
+                # AISLAMIENTO DE CONTEXTO: Si hay una fuente primaria, la priorizamos y aislamos
+                focus_instruction = ""
+                if primary_source_name and primary_source_name in data_context:
+                    focus_instruction = f"⚠️ IMPORTANTE: El usuario se está enfocando en la tabla '{primary_source_name}'. Analiza ESTE archivo principalmente. Solo menciona o cruza con otras tablas si el usuario lo pide explícitamente en su pregunta."
+                    
+                    # Verificamos si el usuario pide comparación
+                    query_lower = query.lower()
+                    comparison_keywords = ["compara", "relaciona", "cruza", "vs", "versus", "correlacion", "unir", "junto"]
+                    wants_comparison = any(word in query_lower for word in comparison_keywords)
+                    
+                    if not wants_comparison:
+                         # Si NO pide comparación, ocultamos el resto del pool para evitar fugas/distracciones
+                         data_context = {primary_source_name: data_context[primary_source_name]}
+                
+                for name, df in data_context.items():
+                    if isinstance(df, pd.DataFrame):
+                        tables_desc.append(f"- Tabla '{name}': {df.columns.tolist()} ({len(df)} filas)")
+                        head_info[name] = df.head(2).to_dict()
+                
+                data_info = "\n".join(tables_desc)
+                context_str = data_info
+                
+                p = f"""
+        Eres un Analista BI Experto con capacidades de Data Science.
+        Tu objetivo es analizar los siguientes datos y responder: "{query}"
 
-            p = prompts.ENGINEER_PROMPT_TEMPLATE.format(data_var=data_var, query=query, context_str=context_str)
+        {focus_instruction}
+
+        ESTRUCTURA DE DATOS DISPONIBLE:
+        {data_info}
+
+        REGLAS CRÍTICAS:
+        1. Acceso a Datos: Tienes un diccionario llamado 'dfs' que contiene los DataFrames.
+           - Ejemplo: df1 = dfs['nombre_tabla_1']
+        2. ENFOQUE: Si se te indicó una tabla principal ('{primary_source_name}'), ignora las demás a menos que se pida un cruce explícito.
+        3. Visualización: Genera un gráfico relevante con la variable 'fig'.
+        4. Responde siempre en Español con un tono profesional.
+
+        MUESTRA DE DATOS (JSON):
+        {json.dumps(head_info, indent=2, cls=SafeJSONEncoder)}
+
+        Escribe tu respuesta siguiendo este formato:
+        Explica tu razonamiento estratégico y hallazgos.
+        ```python
+        # Código Python
+        import pandas as pd
+        import plotly.express as px
+        # Tu código aquí usando el diccionario 'dfs'...
+        ```
+        """
+                data_var = "dfs"
+            elif isinstance(data_context, pd.DataFrame):
+                context_str = f"Columnas: {data_context.columns.tolist()}"
+                p = prompts.ENGINEER_PROMPT_TEMPLATE.format(data_var="df", query=query, context_str=context_str)
+                data_var = "df"
+            else:
+                context_str = f"Contexto: {list(data_context.keys()) if isinstance(data_context, dict) else str(data_context)[:200]}"
+                p = prompts.ENGINEER_PROMPT_TEMPLATE.format(data_var="dfs", query=query, context_str=context_str)
+                data_var = "dfs" if isinstance(data_context, dict) else "df"
+
             raw = generate_ai_content(p, eng_key, eng_provider)
             if "⚠️" in raw: return raw
             
             temp_text, _ = executor.execute_analysis(data_context, raw, data_var)
-            real_results = temp_text.split("---")[-1].strip() if "---" in temp_text else temp_text
+            
+            # Limpieza de resultados para el Estratega
+            if "### ⚠️" in temp_text or "### 🛡️" in temp_text:
+                real_results = f"ERROR TÉCNICO: {temp_text}."
+            else:
+                real_results = temp_text.split("---")[-1].strip() if "---" in temp_text else temp_text
+            
             m = re.search(r"```python\n(.*?)```", raw, re.DOTALL)
             fig_code = f"```python\n{m.group(1)}\n```" if m else ""
 

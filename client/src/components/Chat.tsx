@@ -27,7 +27,7 @@ export function Chat() {
         apiKey,
         mistralKey,
         aiProvider,
-        dataSource,
+        dataSources,
         setSidebarOpen,
         messages,
         setMessages,
@@ -58,19 +58,20 @@ export function Chat() {
 
     // Cargar sugerencias cuando se conecta una fuente
     useEffect(() => {
-        if (dataSource && apiKey && messages.length === 0 && showAiSuggestions) {
+        if (dataSources.length > 0 && apiKey && messages.length === 0 && showAiSuggestions) {
             fetchSuggestions();
-        } else if (!dataSource || !showAiSuggestions) {
+        } else if (dataSources.length === 0 || !showAiSuggestions) {
             if (suggestions.length > 0) setSuggestions([]);
         }
-    }, [dataSource?.filename, messages.length === 0, apiKey, activeChatId, showAiSuggestions]);
+    }, [dataSources.length, messages.length === 0, apiKey, activeChatId, showAiSuggestions]);
 
     const fetchSuggestions = async () => {
-        if (!apiKey || !dataSource) return;
+        if (!apiKey || dataSources.length === 0) return;
         setLoadingSuggestions(true);
         try {
-            console.log("[DEBUG] Fetching suggestions for:", dataSource.filename, "Chat:", activeChatId);
-            const res = await suggestQuestions(userId, apiKey, dataSource?.id, activeChatId || undefined, aiProvider, mistralKey);
+            // Usamos el ID del primer archivo para las sugerencias iniciales
+            const mainSourceId = dataSources[0].id;
+            const res = await suggestQuestions(userId, apiKey, mainSourceId, activeChatId || undefined, aiProvider, mistralKey);
             setSuggestions(res.suggestions || []);
         } catch (error) {
             console.error("Error cargando sugerencias:", error);
@@ -86,8 +87,8 @@ export function Chat() {
 
     const handleSendAsQuery = async (queryText: string) => {
         if (!queryText.trim() || loading) return;
-        if (!dataSource) {
-            alert("Por favor, sube una fuente de datos primero.");
+        if (dataSources.length === 0) {
+            alert("Por favor, sube al menos una fuente de datos primero.");
             return;
         }
 
@@ -113,7 +114,10 @@ export function Chat() {
                 }, 3000);
             }
 
-            const res = await analyzeData(queryText, apiKey, userId, activeChatId || undefined, dataSource?.id, aiProvider, mistralKey);
+            // Enviamos el id de la primera fuente por compatibilidad, 
+            // pero el backend usará todo el pool acumulado en la sesión.
+            const mainSourceId = dataSources[0].id;
+            const res = await analyzeData(queryText, apiKey, userId, activeChatId || undefined, mainSourceId, aiProvider, mistralKey);
 
             const assistantMsg: Message = {
                 id: res.message_id,
@@ -135,7 +139,7 @@ export function Chat() {
     };
 
     const handleAutoDash = async () => {
-        if (!dataSource || !apiKey) {
+        if (dataSources.length === 0 || !apiKey) {
             alert("Necesitas datos y API Key.");
             return;
         }
@@ -147,7 +151,7 @@ export function Chat() {
         }, 2000);
 
         try {
-            const res = await generateAutoDashboard(apiKey, userId, dataSource?.id, activeChatId || undefined, aiProvider, mistralKey);
+            const res = await generateAutoDashboard(apiKey, userId, dataSources[0].id, activeChatId || undefined, aiProvider, mistralKey);
 
             const metrics = res.metrics || [];
             const charts = res.charts || [];
@@ -184,7 +188,7 @@ export function Chat() {
         }
         setCleaningData(true);
         try {
-            const res = await cleanData(userId, apiKey, dataSource?.id, activeChatId || undefined, aiProvider, mistralKey);
+            const res = await cleanData(userId, apiKey, dataSources[0].id, activeChatId || undefined, aiProvider, mistralKey);
 
             // Notificar éxito y actualizar columnas si es necesario (el backend ya las actualizó en la sesión)
             const newMessage: Message = {
@@ -245,7 +249,7 @@ export function Chat() {
                     <h2 className="text-[10px] font-black text-[var(--text-tertiary)] uppercase tracking-[0.2em] flex items-center gap-2 truncate">Analista AI</h2>
                 </div>
                 <div className="flex items-center gap-2 lg:gap-4">
-                    {dataSource && (
+                    {dataSources.length > 0 && (
                         <div className="flex items-center gap-2">
                             <button
                                 onClick={handleCleanData}
@@ -319,7 +323,7 @@ export function Chat() {
                             <p className="text-gray-500 text-sm leading-relaxed max-w-sm mx-auto">Transforma datos fríos en decisiones estratégicas.</p>
                         </div>
 
-                        {dataSource && showAiSuggestions && (
+                        {dataSources.length > 0 && showAiSuggestions && (
                             <div className="grid grid-cols-1 gap-3 w-full max-w-md animate-in fade-in slide-in-from-bottom-8 duration-1000 delay-300">
                                 <p className="text-[10px] font-black text-gray-700 uppercase tracking-widest mb-2">Sugerencias de la IA</p>
                                 {loadingSuggestions ? (
@@ -464,13 +468,13 @@ export function Chat() {
                         value={input}
                         onChange={(e) => setInput(e.target.value)}
                         onKeyDown={(e) => e.key === 'Enter' && handleSend()}
-                        placeholder={dataSource ? "Escribe tu pregunta estratégica..." : "Suba un archivo para comenzar..."}
-                        disabled={!dataSource || loading}
+                        placeholder={dataSources.length > 0 ? "Escribe tu pregunta estratégica..." : "Suba un archivo para comenzar..."}
+                        disabled={dataSources.length === 0 || loading}
                         className="relative w-full bg-[var(--bg-secondary)] border border-[var(--border-color)] rounded-2xl px-6 py-5 pr-16 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-tertiary)] focus:outline-none focus:border-blue-500/50 transition-all shadow-3xl disabled:opacity-50 disabled:cursor-not-allowed"
                     />
                     <button
                         onClick={handleSend}
-                        disabled={loading || !input.trim() || !dataSource}
+                        disabled={loading || !input.trim() || dataSources.length === 0}
                         className="absolute right-3 top-1/2 -translate-y-1/2 p-3 bg-blue-600 text-white rounded-xl hover:bg-blue-500 transition-all disabled:bg-gray-800 disabled:text-gray-600"
                     >
                         <Send className="w-5 h-5" />

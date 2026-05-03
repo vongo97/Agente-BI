@@ -4,6 +4,7 @@ import logging
 import os
 import re
 from datetime import datetime
+from typing import Optional
 from sqlalchemy.orm import Session
 from google import genai
 from google.genai import types
@@ -130,20 +131,51 @@ class SwarmEngine:
         finally:
             self.db.close()
 
-    def _get_data_context(self, user_id: str, data_source_id: int):
+    def _get_data_context(self, user_id: str, data_source_id: Optional[int]):
         import pandas as pd
-        if not data_source_id: return "Sin datos.", "N/A"
-        try:
+        from src.utils.common import get_session_file
+        
+        # 1. Cargar el Pool de Sesión Completo (Prioridad)
+        session_file = get_session_file(user_id)
+        session_data = None
+        if os.path.exists(session_file):
+            try:
+                session_data = pd.read_pickle(session_file)
+            except Exception as e:
+                logger.error(f"Error cargando pool en Swarm: {e}")
+
+        # 2. Si no hay sesión o se pide una fuente específica, intentar cargarla
+        if not session_data and data_source_id:
             source = self.db.query(DataSource).filter(DataSource.id == data_source_id).first()
-            if not source or not source.url: return "Sin datos.", "N/A"
-            if os.path.exists(source.url):
-                session_data = pd.read_pickle(source.url)
+            if source and source.url != "session_memory" and os.path.exists(source.url):
+                try:
+                    loaded = pd.read_pickle(source.url)
+                    if isinstance(loaded, pd.DataFrame):
+                        session_data = {"type": "file", "data": {source.name or "dataset_1": loaded}}
+                    else:
+                        session_data = loaded
+                except: pass
+
+        if not session_data:
+            return "Sin datos activos en la sesión.", "N/A"
+
+        try:
+            # session_data puede ser un DataFrame (antiguo) o un dict con "data" (nuevo pool)
+            if isinstance(session_data, pd.DataFrame):
+                dfs = {"dataset_default": session_data}
+            else:
                 dfs = session_data.get("data", {})
-                c = [f"Tabla '{n}': {df.columns.tolist()}" for n, df in dfs.items()]
-                h = [f"Muestra '{n}':\n{df.head(2).to_string()}" for n, df in dfs.items()]
-                return "\n".join(c), "\n".join(h)
-            return f"Fuente: {source.name}", "N/A"
-        except: return "Error leyendo datos.", "N/A"
+
+            if not dfs:
+                return "No hay tablas cargadas en el pool.", "N/A"
+
+            c = [f"Tabla '{n}': {df.columns.tolist()}" for n, df in dfs.items() if isinstance(df, pd.DataFrame)]
+            h = [f"Muestra '{n}':\n{df.head(2).to_string()}" for n, df in dfs.items() if isinstance(df, pd.DataFrame)]
+            
+            return "\n".join(c), "\n".join(h)
+        except Exception as e:
+            logger.error(f"Error parseando contexto de simulación: {e}")
+            return "Error leyendo el pool de datos.", "N/A"
 
     async def _generate_agents(self, sim, context_str, head_str):
         prompt = prompts.SWARM_PERSONA_PROMPT.format(

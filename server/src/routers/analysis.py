@@ -43,9 +43,14 @@ async def analyze(
     session_data = get_user_data(user_id, chat_id)
     print(f"[DEBUG] Session Data found: {True if session_data else False}")
     
-    # VALIDACIÓN DE FUENTE: Si el ID solicitado no coincide con lo cargado, forzar recarga
-    if session_data and data_source_id and session_data.get("source_id") != data_source_id:
-        print(f"[DEBUG] Source Mismatch: session={session_data.get('source_id')} vs request={data_source_id}")
+    # VALIDACIÓN DE FUENTE: Si el ID solicitado no está en el pool de la sesión, forzar recarga
+    is_source_in_pool = session_data and data_source_id and (
+        session_data.get("source_id") == data_source_id or 
+        data_source_id in session_data.get("sources", [])
+    )
+
+    if session_data and data_source_id and not is_source_in_pool:
+        print(f"[DEBUG] Source Mismatch: request={data_source_id} not in pool {session_data.get('sources', [])}")
         session_data = None
         
     if not session_data:
@@ -69,9 +74,25 @@ async def analyze(
         # Determinar el tipo de dato y la variable
         data_type = session_data["type"]
         data_var = "dfs" if data_type == "file" else "engine"
+
+        # Determinar el nombre de la fuente primaria para el aislamiento de contexto
+        primary_source_name = None
+        if data_source_id:
+            from src.database import DataSource
+            source_obj = db.query(DataSource).filter(DataSource.id == data_source_id).first()
+            if source_obj:
+                primary_source_name = source_obj.name
         
         # 1. Obtener código de la IA
-        raw_response = analyze_data(session_data["data"], query, api_key, mode=data_type, provider=provider, mistral_key=mistral_key)
+        raw_response = analyze_data(
+            session_data["data"], 
+            query, 
+            api_key, 
+            mode=data_type, 
+            provider=provider, 
+            mistral_key=mistral_key,
+            primary_source_name=primary_source_name
+        )
         
         # 2. Ejecutar análisis final
         output_text, fig = execute_analysis(session_data["data"], raw_response, data_var)
@@ -97,23 +118,25 @@ async def analyze(
         user_msg = Message(chat_id=db_chat.id, role="user", content=query)
         db.add(user_msg)
         
+        from src.utils.common import SafeJSONEncoder, json_serializable
         assistant_msg = Message(
             chat_id=db_chat.id, 
             role="assistant", 
             content=output_text,
-            figure_json=json.dumps(fig_json) if fig_json else None,
+            figure_json=json.dumps(fig_json, cls=SafeJSONEncoder) if fig_json else None,
             analysis_code=raw_response
         )
         db.add(assistant_msg)
         db.commit()
             
-        return {
+        from src.utils.common import json_serializable
+        return json_serializable({
             "chat_id": db_chat.id,
             "message_id": assistant_msg.id,
             "analysis": output_text,
             "figure": fig_json,
             "code": raw_response
-        }
+        })
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -129,16 +152,23 @@ async def get_suggestions(
 ):
     session_data = get_user_data(user_id, chat_id)
     
-    # VALIDACIÓN DE FUENTE: Si el ID solicitado no coincide con lo cargado, forzar recarga
-    if session_data and data_source_id and session_data.get("source_id") != data_source_id:
+    # VALIDACIÓN DE FUENTE: Si el ID solicitado no está en el pool, forzar recarga
+    is_source_in_pool = session_data and data_source_id and (
+        session_data.get("source_id") == data_source_id or 
+        data_source_id in session_data.get("sources", [])
+    )
+
+    if session_data and data_source_id and not is_source_in_pool:
         session_data = None
 
-    if not session_data and data_source_id:
-        from src.database import DataSource
-        from src.utils.common import load_source_to_session
-        source = db.query(DataSource).filter(DataSource.id == data_source_id, DataSource.user_id == user_id).first()
-        if source and load_source_to_session(user_id, source, chat_id):
-            session_data = get_user_data(user_id, chat_id)
+    if not session_data:
+        # Intentar auto-cargar desde DataSource si tenemos el ID
+        if data_source_id:
+            from src.database import DataSource
+            from src.utils.common import load_source_to_session
+            source = db.query(DataSource).filter(DataSource.id == data_source_id, DataSource.user_id == user_id).first()
+            if source and load_source_to_session(user_id, source, chat_id):
+                session_data = get_user_data(user_id, chat_id)
 
     if not session_data:
         raise HTTPException(status_code=404, detail="No hay datos cargados para generar sugerencias.")

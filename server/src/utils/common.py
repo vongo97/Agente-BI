@@ -12,6 +12,28 @@ logger = logging.getLogger(__name__)
 # Almacenamiento temporal de datos
 data_store = {}
 
+# --- UTILIDADES DE SERIALIZACIÓN SEGURA ---
+import json
+from datetime import datetime, date
+import numpy as np
+
+class SafeJSONEncoder(json.JSONEncoder):
+    """Codificador JSON que maneja fechas y tipos de numpy automáticamente."""
+    def default(self, obj):
+        if isinstance(obj, (datetime, date)):
+            return obj.isoformat()
+        if isinstance(obj, (np.int64, np.int32, np.int16, np.int8)):
+            return int(obj)
+        if isinstance(obj, (np.float64, np.float32, np.float16)):
+            return float(obj)
+        if isinstance(obj, np.ndarray):
+            return obj.tolist()
+        return super().default(obj)
+
+def json_serializable(obj):
+    """Convierte un objeto a un diccionario serializable a JSON usando el encoder seguro."""
+    return json.loads(json.dumps(obj, cls=SafeJSONEncoder))
+
 # Directorios de Almacenamiento (Persistencia en Render)
 STORAGE_ROOT = "/data" if os.path.exists("/data") else "."
 SESSIONS_DIR = os.path.join(STORAGE_ROOT, "sessions_cache")
@@ -51,14 +73,24 @@ def get_user_data(user_id: str, chat_id: Optional[int] = None):
     """Obtiene los datos del usuario para un contexto específico (Chat o Sesión Activa)."""
     session_key = get_session_key(user_id, chat_id)
     
+    # 1. Intentar desde memoria (rápido)
     if session_key in data_store and data_store[session_key] is not None:
         return data_store[session_key]
     
-    # FALLBACK: Si es un chat nuevo y no tiene datos, intentar heredar de la sesión activa
+    # 2. Intentar desde archivo (persistencia)
+    try:
+        session_file = get_session_file(user_id)
+        if os.path.exists(session_file):
+            stored_data = pd.read_pickle(session_file)
+            data_store[session_key] = stored_data
+            return stored_data
+    except Exception as e:
+        logger.error(f"Error cargando sesión persistente para {user_id}: {e}")
+    
+    # 3. FALLBACK: Si es un chat nuevo, intentar heredar de la sesión activa
     if chat_id:
         active_key = get_session_key(user_id, None)
         if active_key in data_store and data_store[active_key] is not None:
-            # "Promocionamos" los datos al chat actual
             data_store[session_key] = data_store[active_key]
             return data_store[session_key]
             
@@ -87,12 +119,15 @@ def load_source_to_session(user_id: str, source, chat_id: Optional[int] = None) 
         data_store[session_key] = None
         
         if source.type == 'file':
-            if os.path.exists(source.url):
-                stored_data = pd.read_pickle(source.url)
+            # Si el URL es 'session_memory', cargamos la sesión global del usuario
+            actual_url = get_session_file(user_id) if source.url == "session_memory" else source.url
+            
+            if os.path.exists(actual_url):
+                stored_data = pd.read_pickle(actual_url)
                 if isinstance(stored_data, pd.DataFrame):
-                    data_store[session_key] = {"type": "file", "data": {"dataset_1": stored_data}, "source_id": source.id}
+                    data_store[session_key] = {"type": "file", "data": {"dataset_1": stored_data}, "sources": [source.id]}
                 else:
-                    data_store[session_key] = {**stored_data, "source_id": source.id}
+                    data_store[session_key] = stored_data
                 return True
         elif source.type == 'sql':
             from src.connectors.data_connectors import get_sql_engine, get_db_schema

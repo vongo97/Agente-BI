@@ -10,6 +10,13 @@ export type Message = {
     fig?: any;
 };
 
+export interface DataSource {
+    id?: number;
+    filename: string;
+    columns: string[];
+    type?: 'file' | 'sql' | 'gsheets';
+}
+
 interface DashboardContextType {
     apiKey: string;
     setApiKey: (key: string) => void;
@@ -17,8 +24,10 @@ interface DashboardContextType {
     setMistralKey: (key: string) => void;
     aiProvider: "gemini" | "mistral" | "hybrid";
     setAiProvider: (provider: "gemini" | "mistral" | "hybrid") => void;
-    dataSource: { id?: number; filename: string; columns: string[] } | null;
-    setDataSource: (source: { id?: number; filename: string; columns: string[] } | null) => void;
+    dataSources: DataSource[];
+    setDataSources: (sources: DataSource[]) => void;
+    addDataSource: (source: DataSource) => void;
+    removeDataSource: (filename: string) => void;
     isSidebarOpen: boolean;
     setSidebarOpen: (open: boolean) => void;
     messages: Message[];
@@ -46,7 +55,7 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
     const [apiKey, setApiKey] = useState("");
     const [mistralKey, setMistralKey] = useState("");
     const [aiProvider, setAiProvider] = useState<"gemini" | "mistral" | "hybrid">("gemini");
-    const [dataSource, setDataSource] = useState<{ id?: number; filename: string; columns: string[] } | null>(null);
+    const [dataSources, setDataSources] = useState<DataSource[]>([]);
     const [isSidebarOpen, setSidebarOpen] = useState(false);
     const [messages, setMessages] = useState<Message[]>([]);
     const [activeChatId, setActiveChatId] = useState<number | null>(null);
@@ -57,6 +66,22 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
     const [suggestions, setSuggestions] = useState<string[]>([]);
     const [loadingSuggestions, setLoadingSuggestions] = useState(false);
     const [filters, setFilters] = useState<Record<string, string | number | null>>({});
+
+    const addDataSource = (source: DataSource) => {
+        setDataSources(prev => {
+            // Evitar duplicados por nombre de archivo
+            if (prev.find(s => s.filename === source.filename)) return prev;
+            if (prev.length >= 10) {
+                alert("Límite de 10 archivos alcanzado.");
+                return prev;
+            }
+            return [...prev, source];
+        });
+    };
+
+    const removeDataSource = (filename: string) => {
+        setDataSources(prev => prev.filter(s => s.filename !== filename));
+    };
 
     // Cargar API Keys y preferencias desde el Backend y LocalStorage
     useEffect(() => {
@@ -153,7 +178,8 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
             apiKey, setApiKey,
             mistralKey, setMistralKey,
             aiProvider, setAiProvider,
-            dataSource, setDataSource,
+            dataSources, setDataSources,
+            addDataSource, removeDataSource,
             isSidebarOpen, setSidebarOpen,
             messages, setMessages,
             activeChatId, setActiveChatId,

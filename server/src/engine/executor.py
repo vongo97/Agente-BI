@@ -131,16 +131,18 @@ def get_safe_environment(var_name=None, context_obj=None):
         env[var_name] = smart_context
         
         # INYECCIÓN DE ALIAS AUTOMÁTICOS (Invisible Aliasing)
-        # Si context_obj es un dict con una sola tabla, exponemos esa tabla directamente
-        # como 'df', 'ventas', 'data' para máxima compatibilidad con alucinaciones de la IA.
-        if isinstance(context_obj, dict) and len(context_obj) == 1:
-            main_df = list(context_obj.values())[0]
+        # Exponemos la primera tabla directamente como 'df' para máxima 
+        # compatibilidad con las alucinaciones o hábitos de la IA.
+        if isinstance(context_obj, dict) and len(context_obj) > 0:
+            first_key = list(context_obj.keys())[0]
+            main_df = context_obj[first_key]
             if isinstance(main_df, pd.DataFrame):
                 env['df'] = main_df
                 env['data'] = main_df
                 env['table'] = main_df
-                # Solo inyectar 'ventas' si parece ser de ventas (o por defecto si es la única)
-                env['ventas'] = main_df
+                # Alias dinámico: si el nombre de la tabla es razonable, usarlo
+                if first_key.isidentifier():
+                    env[first_key] = main_df
                 
     # PARCHE DE COMPATIBILIDAD PANDAS 2.1+
     # En versiones nuevas applymap se renombró a map.
