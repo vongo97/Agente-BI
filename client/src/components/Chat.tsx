@@ -57,21 +57,24 @@ export function Chat() {
         }
     }, [messages]);
 
-    // Cargar sugerencias cuando se conecta una fuente
+    // Cargar sugerencias cuando se conecta una fuente o cambia el pool
     useEffect(() => {
-        if (dataSources.length > 0 && apiKey && messages.length === 0 && showAiSuggestions && autoSuggestionsEnabled) {
+        const canFetch = dataSources.length > 0 && apiKey && showAiSuggestions;
+        const isNewSource = dataSources.length > 0;
+        
+        if (canFetch && (messages.length === 0 || autoSuggestionsEnabled)) {
             fetchSuggestions();
         } else if (dataSources.length === 0 || !showAiSuggestions) {
             if (suggestions.length > 0) setSuggestions([]);
         }
-    }, [dataSources.length, messages.length === 0, apiKey, activeChatId, showAiSuggestions, autoSuggestionsEnabled]);
+    }, [dataSources.length, apiKey, showAiSuggestions, autoSuggestionsEnabled]);
 
     const fetchSuggestions = async () => {
         if (!apiKey || dataSources.length === 0) return;
         setLoadingSuggestions(true);
         try {
-            // Usamos el ID del primer archivo para las sugerencias iniciales
-            const mainSourceId = dataSources[0].id;
+            // Usamos el ID del ÚLTIMO archivo subido para que las sugerencias sean frescas
+            const mainSourceId = dataSources[dataSources.length - 1].id;
             const res = await suggestQuestions(userId, apiKey, mainSourceId, activeChatId || undefined, aiProvider, mistralKey);
             setSuggestions(res.suggestions || []);
         } catch (error) {
