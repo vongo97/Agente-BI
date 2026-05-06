@@ -3,6 +3,8 @@ import shutil
 import tempfile
 import pandas as pd
 import json
+import hashlib
+from datetime import datetime
 from typing import Optional, List
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Depends
 from sqlalchemy.orm import Session
@@ -15,59 +17,71 @@ router = APIRouter(tags=["Data Management"])
 
 @router.post("/upload")
 async def upload_file(user_id: str = Form(...), file: UploadFile = File(...), db: Session = Depends(get_db)):
-    check_authorization(user_id)
     try:
-        suffix = os.path.splitext(file.filename)[1].lower()
-        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
-            shutil.copyfileobj(file.file, tmp)
-            file_location = tmp.name
+        check_authorization(user_id)
         
+        # 1. Sanitizar nombre de archivo (Evitar problemas en Windows)
+        clean_name = "".join([c if c.isalnum() or c in "._-" else "_" for c in file.filename])
+        safe_user = hashlib.md5(user_id.encode()).hexdigest()
+        permanent_name = f"{safe_user}_{int(datetime.utcnow().timestamp())}_{clean_name}"
+        permanent_path = os.path.join(DATA_SOURCES_DIR, permanent_name)
+        
+        # 2. Guardar archivo físico
+        file.file.seek(0)
+        with open(permanent_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+        
+        # 3. Procesar datos
+        df = load_file_data(permanent_path)
+        safe_filename = "".join([c if c.isalnum() else "_" for c in clean_name.split('.')[0]])
+        
+        # 4. Actualizar sesión en memoria
+        session_data = get_user_data(user_id)
+        if not session_data or session_data.get("type") != "file":
+            session_data = {"type": "file", "data": {}, "sources": []}
+        
+        session_data["data"][safe_filename] = df
+        
+        # 5. Guardar en Base de Datos
+        new_source = DataSource(
+            user_id=user_id,
+            name=file.filename,
+            type="file",
+            url=permanent_path,
+            columns=json.dumps(df.columns.tolist())
+        )
+        db.add(new_source)
+        db.commit()
+        db.refresh(new_source)
+        
+        session_data["sources"].append(new_source.id)
+        data_store[f"{user_id}_active"] = session_data
+        
+        # 6. Persistencia PKL
+        session_file = get_session_file(user_id)
+        pd.to_pickle(session_data, session_file)
+        
+        # 7. Sincronización Nube (Opcional, no bloqueante ante errores de API)
         try:
-            df = load_file_data(file_location)
-            # Nombre de tabla limpio para Python/Pandas
-            safe_filename = "".join([c if c.isalnum() else "_" for c in file.filename.split('.')[0]])
-            
-            # Obtener sesión existente o crear una nueva
-            session_data = get_user_data(user_id)
-            if not session_data or session_data.get("type") != "file":
-                session_data = {"type": "file", "data": {}, "sources": []}
-            
-            # Añadir el nuevo DataFrame al diccionario
-            session_data["data"][safe_filename] = df
-            
-            # Guardar DataSource en DB para el historial
-            new_source = DataSource(
-                user_id=user_id,
-                name=file.filename,
-                type="file",
-                url="session_memory",
-                columns=json.dumps(df.columns.tolist())
-            )
-            db.add(new_source)
-            db.commit()
-            db.refresh(new_source)
-            
-            session_data["sources"].append(new_source.id)
-            data_store[user_id] = session_data
-            
-            # Persistencia en PKL (Pool acumulado)
-            session_file = get_session_file(user_id)
-            pd.to_pickle(session_data, session_file)
-            
-            return {
-                "id": new_source.id,
-                "filename": file.filename,
-                "table_key": safe_filename,
-                "columns": df.columns.tolist(),
-                "rows": len(df),
-                "total_tables": len(session_data["data"]),
-                "message": f"Archivo '{file.filename}' añadido al pool de datos."
-            }
-        finally:
-            if os.path.exists(file_location):
-                os.remove(file_location)
+            upload_file_to_cloud(permanent_path, f"data_sources/{permanent_name}")
+        except:
+            print(f"AVISO: Falló la subida a la nube para {permanent_name} (pero el archivo se guardó localmente)")
+
+        return {
+            "id": int(new_source.id),
+            "filename": str(file.filename),
+            "table_key": str(safe_filename),
+            "columns": [str(c) for c in df.columns.tolist()],
+            "rows": int(len(df)),
+            "total_tables": int(len(session_data["data"])),
+            "message": f"Archivo '{file.filename}' añadido con éxito."
+        }
+        
     except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Error en /upload: {str(e)}")
+        import traceback
+        print(f"!!! ERROR CRÍTICO EN /UPLOAD: {str(e)}")
+        print(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=f"Error en el servidor al procesar el archivo: {str(e)}")
 
 @router.post("/connect-sql")
 async def connect_sql(user_id: str = Form(...), url: str = Form(...), db: Session = Depends(get_db)):
@@ -199,3 +213,7 @@ async def delete_data_source(source_id: int, user_id: str, db: Session = Depends
     db.delete(source)
     db.commit()
     return {"message": "Fuente eliminada"}
+
+@router.get("/sources")
+async def list_data_sources(user_id: str, db: Session = Depends(get_db)):
+    return db.query(DataSource).filter(DataSource.user_id == user_id).order_by(DataSource.created_at.desc()).all()

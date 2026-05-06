@@ -59,6 +59,11 @@ export async function getChatDetails(chatId: number, userId: string) {
   return handleResponse(response);
 }
 
+export async function getDataSources(userId: string) {
+  const response = await fetch(`${API_URL}/sources?user_id=${userId}`);
+  return handleResponse(response);
+}
+
 export async function connectSql(url: string, userId: string) {
   const formData = new FormData();
   formData.append("url", url);
@@ -225,11 +230,6 @@ export async function cleanData(userId: string, apiKey: string, dataSourceId?: n
 
 // --- DATA SOURCES (Fase 3.2) ---
 
-export async function getDataSources(userId: string) {
-  const response = await fetch(`${API_URL}/data-sources?user_id=${userId}`);
-  return handleResponse(response);
-}
-
 export async function saveDataSource(userId: string, name: string, type: 'sql' | 'gsheets' | 'file', url: string, columns?: string[]) {
   const formData = new FormData();
   formData.append("user_id", userId);
@@ -254,16 +254,49 @@ export async function deleteDataSource(sourceId: number, userId: string) {
 
 // --- SIMULATION (MIROFISH LITE) ---
 
-export async function createSimulation(userId: string, title: string, hypothesis: string, dataSourceId?: number, apiKey?: string) {
+export async function createSimulation(
+  userId: string, 
+  title: string, 
+  hypothesis: string, 
+  dataSourceId?: number, 
+  apiKey?: string, 
+  selectedIds?: number[], 
+  provider: string = "gemini", 
+  mistralKey?: string
+) {
   const response = await fetch(`${API_URL}/simulation`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      user_id: userId,
+      userId: userId,
       title,
       hypothesis,
-      data_source_id: dataSourceId,
-      api_key: apiKey
+      dataSourceId,
+      selectedIds: selectedIds,
+      apiKey: apiKey,
+      provider: provider,
+      mistralKey: mistralKey
+    }),
+  });
+  return handleResponse(response);
+}
+
+export async function getSimulationSuggestions(
+  userId: string, 
+  selectedIds: number[], 
+  apiKey: string, 
+  provider: string = "gemini", 
+  mistralKey?: string
+) {
+  const response = await fetch(`${API_URL}/simulation/suggestions`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      userId: userId,
+      selectedIds: selectedIds,
+      apiKey: apiKey,
+      provider: provider,
+      mistralKey: mistralKey
     }),
   });
   return handleResponse(response);

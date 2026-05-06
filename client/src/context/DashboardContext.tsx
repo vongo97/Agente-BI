@@ -38,6 +38,8 @@ interface DashboardContextType {
     setView: (view: 'chat' | 'dashboard' | 'settings' | 'simulation') => void;
     showAiSuggestions: boolean;
     setShowAiSuggestions: (show: boolean) => void;
+    autoSuggestionsEnabled: boolean;
+    setAutoSuggestionsEnabled: (enabled: boolean) => void;
     isServerHealthy: boolean | null;
     isWakingUp: boolean;
     suggestions: string[];
@@ -46,12 +48,14 @@ interface DashboardContextType {
     setLoadingSuggestions: (loading: boolean) => void;
     filters: Record<string, string | number | null>;
     setFilters: (filters: Record<string, string | number | null> | ((prev: any) => any)) => void;
+    userId: string;
 }
 
 const DashboardContext = createContext<DashboardContextType | undefined>(undefined);
 
 export function DashboardProvider({ children }: { children: React.ReactNode }) {
     const { data: session } = useSession();
+    const userId = session?.user?.email || "invitado@agente-bi.local";
     const [apiKey, setApiKey] = useState("");
     const [mistralKey, setMistralKey] = useState("");
     const [aiProvider, setAiProvider] = useState<"gemini" | "mistral" | "hybrid">("gemini");
@@ -61,6 +65,7 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
     const [activeChatId, setActiveChatId] = useState<number | null>(null);
     const [view, setView] = useState<'chat' | 'dashboard' | 'settings' | 'simulation'>('chat');
     const [showAiSuggestions, setShowAiSuggestions] = useState(true);
+    const [autoSuggestionsEnabled, setAutoSuggestionsEnabled] = useState(false);
     const [isServerHealthy, setIsServerHealthy] = useState<boolean | null>(null);
     const [isWakingUp, setIsWakingUp] = useState(false);
     const [suggestions, setSuggestions] = useState<string[]>([]);
@@ -188,7 +193,9 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
             suggestions, setSuggestions,
             loadingSuggestions, setLoadingSuggestions,
             filters, setFilters,
-            showAiSuggestions, setShowAiSuggestions
+            showAiSuggestions, setShowAiSuggestions,
+            autoSuggestionsEnabled, setAutoSuggestionsEnabled,
+            userId
         }}>
             {children}
         </DashboardContext.Provider>

@@ -8,7 +8,7 @@ from src.utils.common import check_authorization
 router = APIRouter(tags=["Auth & Config"])
 
 @router.post("/validate-key")
-async def validate_key(api_key: str = Form(...), provider: str = Form("gemini")):
+def validate_key(api_key: str = Form(...), provider: str = Form("gemini")):
     is_valid, error = validate_api_key(api_key, provider=provider)
     return {"valid": is_valid, "error": error}
 

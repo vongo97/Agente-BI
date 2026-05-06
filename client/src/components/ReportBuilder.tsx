@@ -22,8 +22,8 @@ export function ReportBuilder({ isOpen, onClose, messages, userId }: ReportBuild
 
     if (!isOpen) return null;
 
-    // Solo mensajes con gráficos de la IA
-    const chartMessages = messages.filter(m => m.role === 'assistant' && m.fig && m.id);
+    // Todos los mensajes del asistente que tengan ID (guardados en BD)
+    const assistantMessages = messages.filter(m => m.role === 'assistant' && m.id);
 
     const toggleMessage = (id: number) => {
         setSelectedMessageIds(prev =>
@@ -138,16 +138,16 @@ export function ReportBuilder({ isOpen, onClose, messages, userId }: ReportBuild
                         />
                     </div>
 
-                    {/* Selección de Gráficos */}
+                    {/* Selección de Mensajes */}
                     <div className="space-y-4">
-                        <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest">Selecciona Visualizaciones ({selectedMessageIds.length})</label>
-                        {chartMessages.length === 0 ? (
+                        <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest">Selecciona Hallazgos ({selectedMessageIds.length})</label>
+                        {assistantMessages.length === 0 ? (
                             <div className="p-8 text-center border-2 border-dashed border-white/5 rounded-2xl">
-                                <p className="text-gray-500 text-sm italic">No hay gráficos disponibles en este chat.</p>
+                                <p className="text-gray-500 text-sm italic">No hay análisis disponibles en este chat.</p>
                             </div>
                         ) : (
                             <div className="grid grid-cols-1 gap-3">
-                                {chartMessages.map((m) => (
+                                {assistantMessages.map((m) => (
                                     <button
                                         key={m.id}
                                         onClick={() => toggleMessage(m.id!)}

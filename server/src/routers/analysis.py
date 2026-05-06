@@ -9,7 +9,7 @@ from src.utils.common import check_authorization, get_user_data
 router = APIRouter(tags=["Analysis"])
 
 @router.post("/analyze")
-async def analyze(
+def analyze(
     query: str = Form(...),
     api_key: str = Form(...),
     user_id: str = Form(...),
@@ -141,7 +141,7 @@ async def analyze(
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/suggest-questions")
-async def get_suggestions(
+def get_suggestions(
     user_id: str = Form(...), 
     api_key: str = Form(...),
     chat_id: Optional[int] = Form(None), # AÑADIDO
@@ -150,6 +150,13 @@ async def get_suggestions(
     mistral_key: Optional[str] = Form(None),
     db: Session = Depends(get_db)
 ):
+    # Si no viene mistral_key, intentar recuperarla de la base de datos
+    if not mistral_key:
+        from src.database import UserConfig
+        config = db.query(UserConfig).filter(UserConfig.user_id == user_id).first()
+        if config:
+            mistral_key = config.mistral_key
+
     session_data = get_user_data(user_id, chat_id)
     
     # VALIDACIÓN DE FUENTE: Si el ID solicitado no está en el pool, forzar recarga
@@ -188,7 +195,7 @@ async def detect_anomalies():
     }
 
 @router.post("/generate-report-summary")
-async def get_report_summary(
+def get_report_summary(
     query: str = Form(...),
     api_key: str = Form(...),
     user_id: str = Form(...),

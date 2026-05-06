@@ -31,6 +31,20 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+@app.middleware("http")
+async def catch_exceptions_middleware(request, call_next):
+    try:
+        return await call_next(request)
+    except Exception as e:
+        import traceback
+        error_trace = traceback.format_exc()
+        logger.error(f"GLOBAL 500 ERROR: {str(e)}\n{error_trace}")
+        from fastapi.responses import JSONResponse
+        return JSONResponse(
+            status_code=500,
+            content={"detail": f"Internal Server Error: {str(e)}", "traceback": error_trace}
+        )
+
 # Registrar Routers
 app.include_router(auth.router)
 app.include_router(data.router)

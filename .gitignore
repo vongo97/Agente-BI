@@ -1,45 +1,32 @@
-# Entorno Virtual
-venv/
-env/
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
 .venv/
-.env*
+env/
+venv/
+ENV/
+
+# Databases & Logs
+*.db
+*.db-journal
+*.log
+sessions_cache/
+data_sources/
+
+# Environment variables
+.env
+
+# Node / Frontend
 node_modules/
-dist/
-build/
 .next/
 out/
-.vercel
-
-# Credenciales y Secretos (CRÍTICO)
-client_secret.json
+build/
+.DS_Store
 *.local
 
-# Cache de Python
-__pycache__/
-*.pyc
-*.pyo
-*.pyd
-.pytest_cache/
-
-# Archivos de Streamlit y Datos de prueba
-.streamlit/config.toml
-*.csv
-*.xlsx
-*.xlsm
-!*.example  # No ignorar archivos de ejemplo como .env.example
-
-# Reportes y Exportaciones Generadas
+# Reports
 exports/
-Informe_Ejecutivo.pdf
-analisis.png
-datos.xlsx
-
-# Herramientas de Desarrollo / IDEs
-.vscode/
-.idea/
-*.swp
-*.swo
-
-# Sistema Operativo
-.DS_Store
-Thumbs.db
+*.pdf
+*.pptx
+*.png

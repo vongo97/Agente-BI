@@ -289,6 +289,9 @@ ESCENARIO DE LA SIMULACIÓN:
 Hipótesis a debatir: "{hypothesis}"
 Ronda de simulación: {round_number}
 
+DATOS Y HECHOS REALES (Resumen de tus documentos):
+{context_str}
+
 CONTEXTO DE LA DISCUSIÓN PREVIA:
 {history_str}
 
@@ -332,6 +335,38 @@ ESTRUCTURA DEL REPORTE:
 
 ## 🎯 Veredicto Estratégico
 [Conclusión definitiva y recomendación de acción inmediata]
-
-REGLA DE ORO: Sé asertivo, profundo y evita el lenguaje de "asistente".
 """
+
+# 4. Generador de Hipótesis Sugeridas (Data-Driven)
+SIMULATION_SUGGESTIONS_PROMPT = """
+Eres un Arquitecto de Escenarios y Experto en Análisis de Riesgos. Tu objetivo es proponer las 3 hipótesis de simulación más críticas, REALISTAS y REVELADORAS para este negocio basadas EXCLUSIVAMENTE en los documentos proporcionados.
+
+DATOS DISPONIBLES (Contexto Técnico):
+{context_str}
+
+MUESTRA REAL DE DATOS (Observa los valores y rangos):
+{head_str}
+
+REGLAS DE ORO (INCUMPLIMIENTO = ERROR):
+1. **PROHIBIDO LO GENÉRICO**: No propongas "Colapso en ventas" o "Crisis de suministros" a menos que existan columnas explícitas de Ventas o Proveedores en los datos proporcionados. 
+2. **TERMINOLOGÍA REAL**: Debes usar al menos 2 nombres de columnas exactas del dataset en cada hipótesis para demostrar personalización.
+3. **BASADO EN VALORES**: Si los datos muestran un rango numérico, propón un cambio que sea coherente y desafiante para esos valores.
+4. **FOCO ESTRATÉGICO**: Crea escenarios de estrés que obliguen a debatir sobre las métricas que aparecen en {context_str}.
+
+FORMATO DE SALIDA (JSON ÚNICAMENTE):
+[
+  {{
+    "title": "Título corto que incluya una variable clave",
+    "hypothesis": "Descripción de la hipótesis vinculando columnas reales y el impacto esperado."
+  }}
+]
+
+EJEMPLO BASADO EN DATOS (Si el archivo tuviera 'azucar' y 'calidad'):
+[
+  {{ 
+    "title": "Shock de Azúcar Residual", 
+    "hypothesis": "¿Cómo afectaría un incremento del 20% en el 'azucar_residual' a la percepción de 'calidad' final y al costo de producción?" 
+  }}
+]
+"""
+

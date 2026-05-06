@@ -110,6 +110,7 @@ class Simulation(Base):
     result_report = Column(Text, nullable=True)
     status = Column(String, default="pending") # pending, running, completed, error
     provider = Column(String, default="gemini")
+    current_round = Column(Integer, default=1)
     created_at = Column(DateTime, default=datetime.utcnow)
 
     agents = relationship("SimulationAgent", back_populates="simulation", cascade="all, delete-orphan")
@@ -163,6 +164,11 @@ def init_db():
                 except Exception as e:
                     if "already exists" not in str(e).lower() and "duplicate column" not in str(e).lower():
                         print(f"AVISO: Error migración {table} ({col}): {e}")
+            
+            # Migración específica para current_round
+            try:
+                conn.execute(text("ALTER TABLE simulations ADD COLUMN current_round INTEGER DEFAULT 1"))
+            except: pass
                 
     except Exception as e:
         print(f"ERROR en init_db: {str(e)}")

@@ -173,8 +173,6 @@ def _clean_dataframe(df):
 
     return df
 
-    return df
-
 def load_file_data(file_path):
     """Carga archivos CSV o Excel con detección de encoding robusta."""
     ext = file_path.lower()
@@ -191,10 +189,6 @@ def load_file_data(file_path):
                         df = pd.read_csv(file_path, encoding=encoding, sep=sep, decimal=decimal)
                         
                         if len(df.columns) > 1:
-                            # Verificación rápida de broken characters ()
-                            if any('' in str(c) for c in df.columns):
-                                continue
-                            
                             print(f"[DEBUG] EXITO: CSV ({sep}, {encoding}, {decimal})")
                             return _clean_dataframe(df)
                     except:

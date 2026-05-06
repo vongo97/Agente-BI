@@ -9,22 +9,22 @@ from datetime import datetime
 
 def export_plotly_to_image(fig_json_str: str, format: str = "png"):
     """
-    Convierte un JSON de Plotly a bytes de imagen (PNG) con fallback seguro.
+    Convierte un JSON de Plotly a bytes de imagen (PNG).
     """
     try:
         fig_dict = json.loads(fig_json_str)
         fig = go.Figure(fig_dict)
+        # Forzar un layout limpio para exportación
         fig.update_layout(
             paper_bgcolor='white', 
             plot_bgcolor='white', 
             font={'color': 'black', 'size': 14},
             margin=dict(l=40, r=40, t=60, b=40)
         )
-        # Intentamos usar Kaleido
-        img_bytes = pio.to_image(fig, format=format)
+        img_bytes = pio.to_image(fig, format=format, engine="kaleido")
         return img_bytes
     except Exception as e:
-        print(f"[DEBUG] El motor de imágenes falló, pero el reporte continuará: {e}")
+        print(f"Error exportando imagen: {e}")
         return None
 
 def generate_pdf_report(user_name: str, messages: list):
@@ -107,7 +107,8 @@ def generate_pro_report(title: str, summary: str, user_name: str, items: list):
     
     pdf.set_font("helvetica", '', 11)
     pdf.set_text_color(0, 0, 0)
-    pdf.multi_cell(0, 7, txt=clean_text(summary))
+    summary_clean = summary.encode('latin-1', 'replace').decode('latin-1')
+    pdf.multi_cell(0, 7, txt=summary_clean)
 
     # --- HALLAZGOS Y VISUALIZACIONES ---
     pdf.add_page()
@@ -118,22 +119,25 @@ def generate_pro_report(title: str, summary: str, user_name: str, items: list):
     pdf.ln(10)
 
     for i, item in enumerate(items):
-        # Título del hallazgo
+        # Título del hallazgo (usar título si existe, o extraer primera línea)
         pdf.set_font("helvetica", 'B', 14)
         pdf.set_text_color(20, 80, 160)
         
         item_title = item.get('title')
         if not item_title:
+            # Extraer primera frase o línea como título
             first_line = item['content'].split('\n')[0].strip('# ').strip()
             item_title = first_line if len(first_line) > 5 else f"Análisis de Datos {i+1}"
             
-        pdf.multi_cell(0, 10, txt=clean_text(item_title).upper())
+        pdf.multi_cell(0, 10, txt=item_title.upper())
         pdf.ln(2)
         
         # Explicación
         pdf.set_font("helvetica", '', 10)
         pdf.set_text_color(30, 30, 30)
-        pdf.multi_cell(0, 6, txt=clean_text(item['content']))
+        # Limpieza de caracteres para Latin-1 (FPDF estándar)
+        content = item['content'].encode('latin-1', 'replace').decode('latin-1')
+        pdf.multi_cell(0, 6, txt=content)
         pdf.ln(5)
         
         # Gráfico
