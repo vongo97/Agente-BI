@@ -75,14 +75,23 @@ def generate_ai_content(prompt, api_key, provider="gemini", temperature=0.7, mod
             )
             return response.text
         elif provider == "mistral" and Mistral:
+            logger.info(f"Iniciando generación con Mistral ({MODELS['MISTRAL']})")
             if clean_key not in _clients:
                 _clients[clean_key] = Mistral(api_key=clean_key)
             client = _clients[clean_key]
+            
             resp = client.chat.complete(
                 model=MODELS["MISTRAL"],
                 messages=[{"role": "user", "content": prompt}]
             )
-            return resp.choices[0].message.content
+            
+            if not resp or not resp.choices:
+                logger.error("Mistral devolvió una respuesta vacía o sin opciones.")
+                return "⚠️ Error: Mistral no devolvió contenido válido."
+                
+            content = resp.choices[0].message.content
+            logger.info(f"Generación con Mistral completada. Longitud: {len(content)}")
+            return content
     except Exception as e:
         err = str(e).lower()
         if "429" in err or "quota" in err or "exhausted" in err:
@@ -103,11 +112,15 @@ def analyze_data(data_context, query, api_key, chat_history=[], mode="file", pro
         # Configuración de roles con protección de llaves
         if provider == "hybrid":
             # En modo híbrido: Gemini analiza (ingeniero) y Mistral narra (estratega)
+            if not mistral_key:
+                return "⚠️ Error: Para usar el modo Híbrido necesitas configurar tu Mistral Key en Ajustes."
             eng_provider, eng_key = "gemini", api_key
-            str_provider, str_key = "mistral", (mistral_key or api_key)
+            str_provider, str_key = "mistral", mistral_key
         elif provider == "mistral":
-            eng_provider, eng_key = "mistral", (mistral_key or api_key)
-            str_provider, str_key = "mistral", (mistral_key or api_key)
+            if not mistral_key:
+                return "⚠️ Error: Configura tu Mistral Key en Ajustes para usar este modelo."
+            eng_provider, eng_key = "mistral", mistral_key
+            str_provider, str_key = "mistral", mistral_key
         else: # Default Gemini
             eng_provider, eng_key = "gemini", api_key
             str_provider, str_key = "gemini", api_key
@@ -224,26 +237,37 @@ def detect_anomalies_hybrid(df, api_key, provider="gemini", mistral_key=None):
     return generate_ai_content(prompt, key, provider)
 
 def suggest_questions(data_context, api_key, mode="file", provider="gemini", mistral_key=None):
-    key = (mistral_key or api_key) if provider == "mistral" else api_key
-    
-    # Construir context_str real basado en el tipo de datos
-    context_str = ""
-    if isinstance(data_context, dict):
-        # Pool de DataFrames
-        tables = []
-        for name, df in data_context.items():
-            if hasattr(df, 'columns'):
-                tables.append(f"Tabla '{name}': {df.columns.tolist()}")
-            else:
-                tables.append(f"Fuente '{name}': [Estructura no definida]")
-        context_str = "\n".join(tables)
-    elif hasattr(data_context, 'columns'):
-        # DataFrame único
-        context_str = f"Columnas: {data_context.columns.tolist()}"
+    # Seguridad de llaves: No permitir usar Gemini key para Mistral si no hay mistral_key
+    if provider == "mistral":
+        if not mistral_key:
+            return ["⚠️ Configura tu clave de Mistral en Ajustes."]
+        key = mistral_key
     else:
-        # Probablemente esquema SQL (string)
-        context_str = str(data_context)[:1000]
+        key = api_key
+    
+    # Construir context_str enriquecido con muestras de datos
+    context_parts = []
+    try:
+        if isinstance(data_context, dict):
+            # Pool de DataFrames
+            for name, df in data_context.items():
+                if hasattr(df, 'columns'):
+                    sample = df.head(3).to_dict(orient='records')
+                    context_parts.append(f"### Tabla '{name}'\nColumnas: {df.columns.tolist()}\nMuestra: {json.dumps(sample, cls=SafeJSONEncoder)}")
+                else:
+                    context_parts.append(f"Fuente '{name}': [Estructura no definida]")
+        elif hasattr(data_context, 'columns'):
+            # DataFrame único
+            sample = data_context.head(3).to_dict(orient='records')
+            context_parts.append(f"Columnas: {data_context.columns.tolist()}\nMuestra: {json.dumps(sample, cls=SafeJSONEncoder)}")
+        else:
+            # Probablemente esquema SQL (string)
+            context_parts.append(f"Esquema/Estructura:\n{str(data_context)[:1000]}")
+    except Exception as e:
+        logger.warning(f"Error generando muestra para sugerencias: {e}")
+        context_parts.append(f"Error al leer muestra, usando estructura básica: {str(data_context)[:500]}")
 
+    context_str = "\n\n".join(context_parts)
     p = prompts.BI_SUGGESTIONS_PROMPT.format(context_str=context_str)
     resp = generate_ai_content(p, key, provider)
     

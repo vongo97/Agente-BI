@@ -100,22 +100,25 @@ Formato: Usa Markdown sofisticado con tablas o listas. Sé punzante y profesiona
 
 # Prompt para Sugerencias de Preguntas de BI
 BI_SUGGESTIONS_PROMPT = """
-Como un Consultor Senior de BI, analiza este esquema de datos y propón las 3 preguntas más críticas que un dueño de negocio debería hacerse para obtener valor inmediato.
+Actúa como un Consultor Senior de BI y Estrategia de Negocio. 
 
-Esquema: {context_str}
+Tu misión es analizar el siguiente esquema y MUESTRA de datos para proponer las 3 preguntas más críticas y reveladoras que un directivo debería hacerse para obtener valor estratégico inmediato de este dataset.
 
-REGLAS:
-1. Las preguntas deben ser profundas e INDEPENDIENTES. 
-2. NUNCA dividas una sola pregunta en varios elementos de la lista. Cada elemento debe ser una consulta completa por sí misma.
-3. Responde ÚNICAMENTE con un bloque de código JSON que contenga un array de 3 strings.
-4. PROHIBIDO: No uses formato Markdown (como negritas con **) ni caracteres especiales de formato dentro de los textos de las preguntas.
+CONTEXTO DE DATOS:
+{context_str}
+
+REGLAS DE ORO:
+1. **Profundidad Estratégica**: No sugieras preguntas obvias (ej: "Ver total de ventas"). Busca correlaciones, tendencias de crecimiento o anomalías potenciales basadas en los valores reales que ves en la 'MUESTRA'.
+2. **Independencia**: Cada pregunta debe ser una consulta completa y autónoma.
+3. **Personalización**: Usa los nombres de las columnas reales en tus preguntas.
+4. **Formato Estricto**: Responde ÚNICAMENTE con un bloque de código JSON que contenga un array de 3 strings. No uses Markdown adicional ni negritas.
 
 Ejemplo de respuesta válida:
 ```json
 [
-  "¿Cuál es la tendencia de ventas por mes?", 
-  "¿Qué categoría tiene el mayor margen?", 
-  "¿Hay correlación entre el precio y el volumen de ventas?"
+  "¿Cómo ha evolucionado el margen de beneficio en la categoría X durante el último trimestre?", 
+  "¿Existe una correlación directa entre el descuento aplicado y la fidelidad del cliente?", 
+  "¿Qué segmento de productos muestra la mayor desviación respecto a la meta de crecimiento?"
 ]
 ```
 """
