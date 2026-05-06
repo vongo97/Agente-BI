@@ -128,8 +128,22 @@ async def auto_dashboard(
     # El origen puede ser un motor SQL o un diccionario de DataFrames
     data_source_obj = session_data["data"]
     if session_data["type"] == "file":
-        # Usamos el primer DataFrame si hay varios para el dashboard base
-        data_source_obj = next(iter(session_data["data"].values()))
+        # Priorizar el archivo seleccionado (data_source_id) si existe
+        if data_source_id:
+            from src.database import DataSource
+            source_obj = db.query(DataSource).filter(DataSource.id == data_source_id).first()
+            if source_obj:
+                safe_name = "".join([c if c.isalnum() else "_" for c in source_obj.name.split('.')[0]])
+                if safe_name in session_data["data"]:
+                    data_source_obj = session_data["data"][safe_name]
+                else:
+                    # Fallback si no está en memoria por alguna razón
+                    data_source_obj = next(iter(session_data["data"].values()))
+            else:
+                data_source_obj = next(iter(session_data["data"].values()))
+        else:
+            # Usamos el primer DataFrame si hay varios para el dashboard base
+            data_source_obj = next(iter(session_data["data"].values()))
     
     results = generate_auto_dashboard(data_source_obj, api_key, provider, mistral_key)
     from src.utils.common import json_serializable

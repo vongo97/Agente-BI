@@ -236,7 +236,7 @@ def detect_anomalies_hybrid(df, api_key, provider="gemini", mistral_key=None):
     prompt = prompts.ANOMALY_AUDITOR_PROMPT.format(findings_str="Análisis estadístico iniciado...", columns=df.columns.tolist(), sample=df.head(2).to_dict())
     return generate_ai_content(prompt, key, provider)
 
-def suggest_questions(data_context, api_key, mode="file", provider="gemini", mistral_key=None):
+def suggest_questions(data_context, api_key, mode="file", provider="gemini", mistral_key=None, primary_source_name=None):
     # Seguridad de llaves: No permitir usar Gemini key para Mistral si no hay mistral_key
     if provider == "mistral":
         if not mistral_key:
@@ -245,6 +245,10 @@ def suggest_questions(data_context, api_key, mode="file", provider="gemini", mis
     else:
         key = api_key
     
+    # AISLAMIENTO DE CONTEXTO: Si hay una fuente primaria, la priorizamos para las sugerencias
+    if isinstance(data_context, dict) and primary_source_name and primary_source_name in data_context:
+        data_context = {primary_source_name: data_context[primary_source_name]}
+
     # Construir context_str enriquecido con muestras de datos
     context_parts = []
     try:

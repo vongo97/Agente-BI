@@ -180,12 +180,34 @@ def get_suggestions(
     if not session_data:
         raise HTTPException(status_code=404, detail="No hay datos cargados para generar sugerencias.")
     
-    context = session_data["data"]
-    if session_data["type"] == "sql":
-        from src.connectors.data_connectors import get_db_schema
-        context = get_db_schema(session_data["data"])
+    suggestions = []
+    try:
+        context = session_data["data"]
+        
+        # Determinar el nombre de la fuente primaria para el aislamiento de contexto
+        primary_source_name = None
+        if data_source_id:
+            from src.database import DataSource
+            source_obj = db.query(DataSource).filter(DataSource.id == data_source_id).first()
+            if source_obj:
+                primary_source_name = "".join([c if c.isalnum() else "_" for c in source_obj.name.split('.')[0]])
 
-    suggestions = suggest_questions(context, api_key, mode=session_data["type"], provider=provider, mistral_key=mistral_key)
+        if session_data["type"] == "sql":
+            from src.connectors.data_connectors import get_db_schema
+            context = get_db_schema(session_data["data"])
+
+        suggestions = suggest_questions(
+            context, 
+            api_key, 
+            mode=session_data["type"], 
+            provider=provider, 
+            mistral_key=mistral_key,
+            primary_source_name=primary_source_name
+        )
+    except Exception as e:
+        print(f"[ERROR] Suggest Questions: {e}")
+        suggestions = ["¿Qué insights hay en los datos?"]
+        
     return {"suggestions": suggestions}
 
 @router.post("/detect-anomalies")
