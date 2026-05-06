@@ -70,34 +70,40 @@ def get_session_key(user_id: str, chat_id: Optional[int] = None):
     return f"{user_id}_active"
 
 def get_user_data(user_id: str, chat_id: Optional[int] = None):
-    """Obtiene los datos del usuario para un contexto específico (Chat o Sesión Activa)."""
+    """Obtiene los datos del usuario asegurando siempre un formato de diccionario."""
     session_key = get_session_key(user_id, chat_id)
     
-    # 1. Intentar desde memoria (rápido)
-    if session_key in data_store and data_store[session_key] is not None:
-        return data_store[session_key]
+    # 1. Intentar desde memoria
+    if session_key in data_store:
+        data = data_store[session_key]
+        if data is not None:
+            if isinstance(data, pd.DataFrame):
+                data = {"type": "file", "data": {"dataset_1": data}, "sources": []}
+                data_store[session_key] = data
+            return data
     
     # 2. Intentar desde archivo (persistencia)
     try:
         session_file = get_session_file(user_id)
         if os.path.exists(session_file):
             stored_data = pd.read_pickle(session_file)
-            
-            # Si el archivo guardado es un DataFrame pelado, lo envolvemos en el formato esperado
             if isinstance(stored_data, pd.DataFrame):
                 stored_data = {"type": "file", "data": {"dataset_1": stored_data}, "sources": []}
-                
             data_store[session_key] = stored_data
             return stored_data
     except Exception as e:
         logger.error(f"Error cargando sesión persistente para {user_id}: {e}")
     
-    # 3. FALLBACK: Si es un chat nuevo, intentar heredar de la sesión activa
+    # 3. FALLBACK: Heredar de sesión activa
     if chat_id:
         active_key = get_session_key(user_id, None)
-        if active_key in data_store and data_store[active_key] is not None:
-            data_store[session_key] = data_store[active_key]
-            return data_store[session_key]
+        active_data = data_store.get(active_key)
+        if active_data is not None:
+            if isinstance(active_data, pd.DataFrame):
+                active_data = {"type": "file", "data": {"dataset_1": active_data}, "sources": []}
+                data_store[active_key] = active_data
+            data_store[session_key] = active_data
+            return active_data
             
     return None
 

@@ -41,19 +41,19 @@ def analyze(
     print(f"[DEBUG] Analyze Request: user={user_id}, chat={chat_id}, source={data_source_id}, provider={provider}")
     
     session_data = get_user_data(user_id, chat_id)
-    print(f"[DEBUG] Session Data found: {True if session_data else False}")
+    print(f"[DEBUG] Session Data found: {session_data is not None}")
     
-    # VALIDACIÓN DE FUENTE: Si el ID solicitado no está en el pool de la sesión, forzar recarga
-    is_source_in_pool = session_data and data_source_id and (
+    # Verificar si la fuente solicitada está en el pool actual
+    is_source_in_pool = session_data is not None and data_source_id and (
         session_data.get("source_id") == data_source_id or 
         data_source_id in session_data.get("sources", [])
     )
-
-    if session_data and data_source_id and not is_source_in_pool:
+    
+    if session_data is not None and data_source_id and not is_source_in_pool:
         print(f"[DEBUG] Source Mismatch: request={data_source_id} not in pool {session_data.get('sources', [])}")
         session_data = None
         
-    if not session_data:
+    if session_data is None:
         # Intentar auto-cargar desde DataSource si tenemos el ID
         if data_source_id:
             print(f"[DEBUG] Attempting auto-load for source {data_source_id}")
