@@ -100,7 +100,8 @@ def get_safe_environment(var_name=None, context_obj=None):
     def restricted_import(name, globals=None, locals=None, fromlist=(), level=0):
         allowed_packages = {
             'pandas', 'pd', 'numpy', 'np', 'plotly', 'px', 'json', 're',
-            'math', 'datetime', 'collections', 'itertools', 'io', 'six', 'pytz'
+            'math', 'datetime', 'collections', 'itertools', 'io', 'six', 'pytz',
+            'scipy', 'statsmodels'
         }
         root_package = name.split('.')[0]
         if root_package in allowed_packages:

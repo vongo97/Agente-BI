@@ -21,6 +21,8 @@ REGLAS CRÍTICAS DE COLUMNAS:
 
 REGLAS DE SALIDA:
 - Genera código que cree un gráfico con `px` (Plotly Express) y guarda un resumen en `analysis_text`.
+- **Indentación**: Escribe el código empezando siempre en la columna 0. NO añadidas espacios extra al inicio de las líneas fuera de bloques (if/for/def).
+- **Estadística Avanzada**: Tienes permiso para usar `scipy.stats` o `statsmodels` para cálculos de significancia o correlaciones.
 - Si no encuentras una columna, imprime `print("ERROR: Columna no encontrada")` y explica qué columnas ves.
 
 Devuelve SOLO el código Python en un bloque ```python.
