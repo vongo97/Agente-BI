@@ -251,21 +251,22 @@ def suggest_questions(data_context, api_key, mode="file", provider="gemini", mis
     if isinstance(data_context, dict) and primary_source_name and primary_source_name in data_context:
         data_context = {primary_source_name: data_context[primary_source_name]}
 
-    # Construir context_str enriquecido con muestras de datos
+    # Construir context_str enriquecido con muestras de datos (Lógica inspirada en Simulador)
     context_parts = []
     try:
         if isinstance(data_context, dict):
             # Pool de DataFrames
             for name, df in data_context.items():
                 if hasattr(df, 'columns'):
-                    sample = df.head(3).to_dict(orient='records')
-                    context_parts.append(f"### Tabla '{name}'\nColumnas: {df.columns.tolist()}\nMuestra: {json.dumps(sample, cls=SafeJSONEncoder)}")
+                    # Muestra más amplia (10 filas) y en formato tabla (to_string)
+                    sample_str = df.head(10).to_string(index=False)
+                    context_parts.append(f"### Tabla '{name}'\nColumnas: {df.columns.tolist()}\n\nMUESTRA DE DATOS:\n{sample_str}")
                 else:
                     context_parts.append(f"Fuente '{name}': [Estructura no definida]")
         elif hasattr(data_context, 'columns'):
             # DataFrame único
-            sample = data_context.head(3).to_dict(orient='records')
-            context_parts.append(f"Columnas: {data_context.columns.tolist()}\nMuestra: {json.dumps(sample, cls=SafeJSONEncoder)}")
+            sample_str = data_context.head(10).to_string(index=False)
+            context_parts.append(f"Columnas: {data_context.columns.tolist()}\n\nMUESTRA DE DATOS:\n{sample_str}")
         else:
             # Probablemente esquema SQL (string)
             context_parts.append(f"Esquema/Estructura:\n{str(data_context)[:1000]}")
@@ -275,7 +276,25 @@ def suggest_questions(data_context, api_key, mode="file", provider="gemini", mis
 
     context_str = "\n\n".join(context_parts)
     p = prompts.BI_SUGGESTIONS_PROMPT.format(context_str=context_str)
-    resp = generate_ai_content(p, key, provider)
+    
+    # GENERACIÓN CON MODO JSON (Si es Gemini)
+    if provider == "gemini":
+        try:
+            client = get_client(key)
+            response = client.models.generate_content(
+                model=MODELS["GEMINI_SWARM"],
+                contents=p,
+                config=types.GenerateContentConfig(
+                    temperature=0.7,
+                    response_mime_type="application/json"
+                )
+            )
+            resp = response.text
+        except Exception as e:
+            logger.error(f"Error en modo JSON nativo: {e}")
+            resp = generate_ai_content(p, key, provider)
+    else:
+        resp = generate_ai_content(p, key, provider)
     
     # VALIDACIÓN DE SEGURIDAD: Si es un mensaje de error de la IA, no parsear
     if resp.startswith("⚠️") or resp.startswith("Error"):
@@ -283,16 +302,22 @@ def suggest_questions(data_context, api_key, mode="file", provider="gemini", mis
             return [f"Error de Configuración: {resp.split('.')[0]}"]
         return ["La IA está ocupada o saturada. Reintenta en un momento."]
     
-    # Extraer las preguntas del JSON o de las comillas
+    # Extraer las preguntas del JSON
     try:
-        # Intentar parsear como JSON primero (según el prompt)
         import json
-        m_json = re.search(r"```json\n(.*?)\n```", resp, re.DOTALL)
-        if m_json:
-            questions = json.loads(m_json.group(1))
-            if isinstance(questions, list):
-                return [str(q).replace('"', '').replace('*', '') for q in questions if len(str(q)) > 10][:3]
-    except: pass
+        # 1. Intentar limpiar bloques Markdown si existen
+        clean_resp = resp.strip()
+        if "```json" in clean_resp:
+            clean_resp = re.search(r"```json\s*(.*?)\s*```", clean_resp, re.DOTALL).group(1)
+        elif "```" in clean_resp:
+            clean_resp = re.search(r"```\s*(.*?)\s*```", clean_resp, re.DOTALL).group(1)
+        
+        # 2. Parsear el JSON (sea directo o extraído)
+        questions = json.loads(clean_resp)
+        if isinstance(questions, list):
+            return [str(q).replace('"', '').replace('*', '') for q in questions if len(str(q)) > 10][:3]
+    except Exception as e:
+        logger.debug(f"Fallo en parseo JSON de sugerencias: {e}")
     
     # Fallback: buscar comillas
     matches = re.findall(r'["\'](.*?)["\']', resp)

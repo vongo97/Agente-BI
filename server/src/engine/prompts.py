@@ -102,27 +102,25 @@ Formato: Usa Markdown sofisticado con tablas o listas. Sé punzante y profesiona
 
 # Prompt para Sugerencias de Preguntas de BI
 BI_SUGGESTIONS_PROMPT = """
-Actúa como un Consultor Senior de BI y Estrategia de Negocio. 
+Actúa como un Socio Director de Consultoría BI y Estrategia.
 
-Tu misión es analizar el siguiente esquema y MUESTRA de datos para proponer las 3 preguntas más críticas y reveladoras que un directivo debería hacerse para obtener valor estratégico inmediato de este dataset.
+Tu misión es proponer las 3 preguntas analíticas más críticas, REVELADORAS y accionables para este negocio, basándote EXCLUSIVAMENTE en el esquema y la muestra de datos proporcionados.
 
-CONTEXTO DE DATOS:
+CONTEXTO TÉCNICO:
 {context_str}
 
-REGLAS DE ORO:
-1. **Profundidad Estratégica**: No sugieras preguntas obvias (ej: "Ver total de ventas"). Busca correlaciones, tendencias de crecimiento o anomalías potenciales basadas en los valores reales que ves en la 'MUESTRA'.
-2. **Independencia**: Cada pregunta debe ser una consulta completa y autónoma.
-3. **Personalización**: Usa los nombres de las columnas reales en tus preguntas.
-4. **Formato Estricto**: Responde ÚNICAMENTE con un bloque de código JSON que contenga un array de 3 strings. No uses Markdown adicional ni negritas.
+REGLAS DE ORO (INCUMPLIMIENTO = ERROR):
+1. **PROHIBIDO LO GENÉRICO**: No sugieras preguntas como "¿Cuál es la tendencia?" o "¿Cómo van las ventas?". Si no hay una columna de ventas clara, no hables de ventas.
+2. **TERMINOLOGÍA REAL**: Debes usar al menos un nombre de COLUMNA EXACTA del dataset en cada pregunta para demostrar personalización total.
+3. **BASADO EN VALORES**: Observa los rangos y categorías en la 'MUESTRA DE DATOS'. Si ves fechas, propón análisis temporales; si ves categorías, propón comparativas de rendimiento.
+4. **FOCO ESTRATÉGICO**: Busca correlaciones, anomalías o proyecciones que impacten en la toma de decisiones.
 
-Ejemplo de respuesta válida:
-```json
+FORMATO DE SALIDA (JSON ÚNICAMENTE):
 [
-  "¿Cómo ha evolucionado el margen de beneficio en la categoría X durante el último trimestre?", 
-  "¿Existe una correlación directa entre el descuento aplicado y la fidelidad del cliente?", 
-  "¿Qué segmento de productos muestra la mayor desviación respecto a la meta de crecimiento?"
+  "Pregunta 1 usando nombres_columna_reales",
+  "Pregunta 2 usando nombres_columna_reales",
+  "Pregunta 3 usando nombres_columna_reales"
 ]
-```
 """
 
 # Prompt para Data Cleaning con Pandas
