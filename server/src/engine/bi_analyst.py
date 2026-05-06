@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 # Configuración de Modelos
 MODELS = {
-    "GEMINI": "gemini-3.1-pro-preview", # Familia 3.x recomendada (Regla #1)
+    "GEMINI": "gemini-1.5-flash", # Modelo Flash ultra rápido y estable
     "MISTRAL": "mistral-large-latest"
 }
 
@@ -155,8 +155,9 @@ def analyze_data(data_context, query, api_key, chat_history=[], mode="file", pro
         1. Acceso a Datos: Tienes un diccionario llamado 'dfs' que contiene los DataFrames.
            - Ejemplo: df1 = dfs['nombre_tabla_1']
         2. ENFOQUE: Si se te indicó una tabla principal ('{primary_source_name}'), ignora las demás a menos que se pida un cruce explícito.
-        3. Visualización: Genera un gráfico relevante con la variable 'fig'.
-        4. Responde siempre en Español con un tono profesional.
+        3. Columnas Crípticas: Si encuentras columnas con nombres como '2_27' o códigos, analiza los datos de la 'MUESTRA' para deducir su significado y menciónalo en tu análisis.
+        4. Visualización: Genera un gráfico relevante con la variable 'fig'.
+        5. Responde siempre en Español con un tono profesional.
 
         MUESTRA DE DATOS (JSON):
         {json.dumps(head_info, indent=2, cls=SafeJSONEncoder)}

@@ -79,7 +79,15 @@ class SmartDataContext(dict):
         if self.main_key and key.lower() in self._aliases:
             return self.raw_data[self.main_key]
         
-        # 3. Fallo informativo
+        # 3. Intento vía similitud (Fuzzy Match para Typos de la IA)
+        import difflib
+        available = list(self.raw_data.keys())
+        matches = difflib.get_close_matches(key, available, n=1, cutoff=0.6)
+        if matches:
+            print(f"[DEBUG] Tabla '{key}' no encontrada. Usando la más parecida: '{matches[0]}'")
+            return self.raw_data[matches[0]]
+        
+        # 4. Fallo informativo
         available = list(self.raw_data.keys())
         msg = f"No existe la tabla '{key}'. "
         if self.main_key:
