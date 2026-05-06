@@ -206,6 +206,18 @@ export async function suggestQuestions(userId: string, apiKey: string, dataSourc
   return handleResponse(response);
 }
 
+export async function removeSessionSource(userId: string, sourceId: number) {
+  const formData = new FormData();
+  formData.append("user_id", userId);
+  formData.append("source_id", sourceId.toString());
+
+  const response = await fetch(`${API_URL}/remove-session-source`, {
+    method: "POST",
+    body: formData,
+  });
+  return handleResponse(response);
+}
+
 export const getPdfExportUrl = (chatId: number, userId: string) => 
   `${API_URL}/export/pdf/${chatId}?user_id=${userId}`;
 

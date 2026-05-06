@@ -3,7 +3,7 @@
 import { useSession, signOut } from "next-auth/react";
 import { Upload, Settings, Database, LogOut, ChevronDown, Activity, CheckCircle2, AlertCircle, FileText, X, Menu, Brain, Sparkles, Zap } from "lucide-react";
 import { useState, useEffect } from "react";
-import { validateApiKey, uploadFile, connectSql, connectGoogleSheets, getHistory, getChatDetails, getPdfExportUrl, getDataSources, saveDataSource, deleteDataSource } from "@/lib/api";
+import { validateApiKey, uploadFile, connectSql, connectGoogleSheets, getHistory, getChatDetails, getPdfExportUrl, getDataSources, saveDataSource, deleteDataSource, removeSessionSource } from "@/lib/api";
 import { useDashboard } from "@/context/DashboardContext";
 import { History, MessageSquare, Clock } from "lucide-react";
 import { ThemeToggle } from "./ThemeToggle";
@@ -200,6 +200,17 @@ export function Sidebar() {
         }
     };
 
+    const handleRemoveActiveSource = async (source: any) => {
+        if (source.id) {
+            try {
+                await removeSessionSource(userId, source.id);
+            } catch (err) {
+                console.error("Error removing from session:", err);
+            }
+        }
+        removeDataSource(source.filename);
+    };
+
     return (
         <>
             {/* Overlay para móvil */}
@@ -311,7 +322,7 @@ export function Sidebar() {
                                             <p className="text-[9px] text-blue-400/80 font-bold uppercase">{source.columns.length} Cols</p>
                                         </div>
                                         <button 
-                                            onClick={() => removeDataSource(source.filename)}
+                                            onClick={() => handleRemoveActiveSource(source)}
                                             className="p-1 text-blue-400/30 hover:text-red-400 transition-colors"
                                         >
                                             <X className="w-3.5 h-3.5" />

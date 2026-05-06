@@ -140,10 +140,36 @@ async def connect_gsheets(user_id: str = Form(...), url: str = Form(...), db: Se
 async def clear_session(user_id: str = Form(...)):
     if user_id in data_store:
         del data_store[user_id]
+    if f"{user_id}_active" in data_store:
+        del data_store[f"{user_id}_active"]
+        
     session_file = get_session_file(user_id)
     if os.path.exists(session_file):
         os.remove(session_file)
     return {"message": "Pool de datos limpiado."}
+
+@router.post("/remove-session-source")
+async def remove_session_source(user_id: str = Form(...), source_id: int = Form(...), db: Session = Depends(get_db)):
+    session_data = get_user_data(user_id)
+    if not session_data:
+        return {"message": "No hay sesión activa."}
+
+    # 1. Quitar el ID de la lista de fuentes activas
+    if "sources" in session_data and source_id in session_data["sources"]:
+        session_data["sources"].remove(source_id)
+    
+    # 2. Limpiar el pool de datos actual para forzar recarga limpia
+    # (Esto evita que queden restos de DataFrames viejos en memoria)
+    session_data["data"] = {}
+    
+    # 3. Recargar solo las fuentes que quedaron
+    from src.utils.common import load_source_to_session
+    for sid in session_data.get("sources", []):
+        source = db.query(DataSource).filter(DataSource.id == sid).first()
+        if source:
+            load_source_to_session(user_id, source)
+            
+    return {"message": f"Fuente {source_id} eliminada de la sesión activa."}
 
 @router.post("/clean-data")
 async def clean_data(

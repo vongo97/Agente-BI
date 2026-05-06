@@ -119,38 +119,49 @@ def promote_active_session(user_id: str, chat_id: int):
     return False
 
 def load_source_to_session(user_id: str, source, chat_id: Optional[int] = None) -> bool:
-    """Carga una fuente de datos específica al contexto de memoria (Chat o Activo)."""
+    """Carga una fuente de datos específica al contexto de memoria (Chat o Activo) de forma aditiva."""
     session_key = get_session_key(user_id, chat_id)
     try:
         # Asegurar sincronización con la nube
         if hasattr(source, 'url') and source.url:
             sync_cloud_to_local(source.url)
 
-        # Limpiar contexto previo del chat para evitar mezclas
-        data_store[session_key] = None
+        # 1. Obtener sesión actual para no perder lo que ya estaba
+        session_data = get_user_data(user_id, chat_id)
+        if session_data is None or session_data.get("type") != source.type:
+            session_data = {"type": source.type, "data": {}, "sources": []}
         
         if source.type == 'file':
-            # Si el URL es 'session_memory', cargamos la sesión global del usuario
-            actual_url = get_session_file(user_id) if source.url == "session_memory" else source.url
-            
+            actual_url = source.url
             if os.path.exists(actual_url):
-                stored_data = pd.read_pickle(actual_url)
-                if isinstance(stored_data, pd.DataFrame):
-                    data_store[session_key] = {"type": "file", "data": {"dataset_1": stored_data}, "sources": [source.id]}
-                else:
-                    data_store[session_key] = stored_data
+                from src.connectors.data_connectors import load_file_data
+                df = load_file_data(actual_url)
+                
+                # Nombre seguro para la tabla
+                safe_name = "".join([c if c.isalnum() else "_" for c in source.name.split('.')[0]])
+                session_data["data"][safe_name] = df
+                
+                if source.id not in session_data["sources"]:
+                    session_data["sources"].append(source.id)
+                
+                data_store[session_key] = session_data
                 return True
         elif source.type == 'sql':
             from src.connectors.data_connectors import get_sql_engine, get_db_schema
             engine = get_sql_engine(source.url)
             schema = get_db_schema(engine)
-            data_store[session_key] = {"type": "sql", "data": engine, "schema": schema, "source_id": source.id}
+            session_data = {"type": "sql", "data": engine, "schema": schema, "source_id": source.id}
+            data_store[session_key] = session_data
             return True
         elif source.type == 'gsheets':
             from src.connectors.data_connectors import load_gsheets_data
             df = load_gsheets_data(source.url)
             if df is not None:
-                data_store[session_key] = {"type": "gsheets", "data": {"sheet_1": df}, "source_id": source.id}
+                sheet_key = f"gsheet_{source.id}"
+                session_data["data"][sheet_key] = df
+                if source.id not in session_data["sources"]:
+                    session_data["sources"].append(source.id)
+                data_store[session_key] = session_data
                 return True
     except Exception as e:
         logger.error(f"Error en load_source_to_session ({session_key}): {e}")
