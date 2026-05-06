@@ -37,7 +37,7 @@ async def upload_file(user_id: str = Form(...), file: UploadFile = File(...), db
         
         # 4. Actualizar sesión en memoria
         session_data = get_user_data(user_id)
-        if not session_data or session_data.get("type") != "file":
+        if session_data is None or (not isinstance(session_data, pd.DataFrame) and session_data.get("type") != "file"):
             session_data = {"type": "file", "data": {}, "sources": []}
         
         session_data["data"][safe_filename] = df

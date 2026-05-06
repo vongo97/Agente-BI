@@ -82,6 +82,11 @@ def get_user_data(user_id: str, chat_id: Optional[int] = None):
         session_file = get_session_file(user_id)
         if os.path.exists(session_file):
             stored_data = pd.read_pickle(session_file)
+            
+            # Si el archivo guardado es un DataFrame pelado, lo envolvemos en el formato esperado
+            if isinstance(stored_data, pd.DataFrame):
+                stored_data = {"type": "file", "data": {"dataset_1": stored_data}, "sources": []}
+                
             data_store[session_key] = stored_data
             return stored_data
     except Exception as e:
