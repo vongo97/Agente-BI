@@ -82,9 +82,11 @@ class SmartDataContext(dict):
         # 3. Intento vía similitud (Fuzzy Match para Typos de la IA)
         import difflib
         available = list(self.raw_data.keys())
-        matches = difflib.get_close_matches(key, available, n=1, cutoff=0.6)
+        matches = difflib.get_close_matches(key, available, n=1, cutoff=0.8)
         if matches:
-            print(f"[DEBUG] Tabla '{key}' no encontrada. Usando la más parecida: '{matches[0]}'")
+            # Solo avisamos si el nombre es realmente distinto (no solo mayúsculas/minúsculas)
+            if matches[0].lower() != key.lower():
+                logger.info(f"Tabla '{key}' vinculada a '{matches[0]}' por similitud.")
             return self.raw_data[matches[0]]
         
         # 4. Fallo informativo
@@ -180,7 +182,10 @@ def execute_analysis(context_obj, raw_response, var_name):
     if not code_match:
         return narrative, None
 
+    # 1. Limpieza y preparación del código
+    import textwrap
     clean_code = code_match.group(1).replace(".show()", "")
+    clean_code = textwrap.dedent(clean_code).strip()
 
     try:
         validate_code_safety(clean_code)
