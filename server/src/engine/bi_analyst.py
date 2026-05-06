@@ -177,8 +177,10 @@ def analyze_data(data_context, query, api_key, chat_history=[], mode="file", pro
            - Ejemplo: df1 = dfs['nombre_tabla_1']
         2. ENFOQUE: Si se te indicó una tabla principal ('{primary_source_name}'), ignora las demás a menos que se pida un cruce explícito.
         3. Columnas Crípticas: Si encuentras columnas con nombres como '2_27' o códigos, analiza los datos de la 'MUESTRA' para deducir su significado y menciónalo en tu análisis.
-        4. Visualización: Genera un gráfico relevante con la variable 'fig'.
-        5. Responde siempre en Español con un tono profesional.
+        4. Visualización: Genera SIEMPRE un gráfico relevante con 'plotly.express' (px).
+        5. PROHIBIDO: No uses 'matplotlib' ni 'seaborn'. Solo usamos Plotly para visualizaciones interactivas.
+        6. Variable de Gráfico: Asigna SIEMPRE el gráfico a la variable 'fig'.
+        7. Responde siempre en Español con un tono profesional.
 
         MUESTRA DE DATOS (JSON):
         {json.dumps(head_info, indent=2, cls=SafeJSONEncoder)}

@@ -109,7 +109,7 @@ def get_safe_environment(var_name=None, context_obj=None):
         allowed_packages = {
             'pandas', 'pd', 'numpy', 'np', 'plotly', 'px', 'json', 're',
             'math', 'datetime', 'collections', 'itertools', 'io', 'six', 'pytz',
-            'scipy', 'statsmodels'
+            'scipy', 'statsmodels', 'matplotlib', 'plt'
         }
         root_package = name.split('.')[0]
         if root_package in allowed_packages:
@@ -135,6 +135,16 @@ def get_safe_environment(var_name=None, context_obj=None):
         'pd': pd, 'px': px, 'np': np, 'json': json,
         '__builtins__': safe_builtins
     }
+    
+    # Soporte para Matplotlib en modo no interactivo (Evita 502/Crashes)
+    try:
+        import matplotlib
+        matplotlib.use('Agg')
+        import matplotlib.pyplot as plt
+        env['plt'] = plt
+        env['matplotlib'] = matplotlib
+    except:
+        pass
     
     if var_name:
         env[var_name] = smart_context

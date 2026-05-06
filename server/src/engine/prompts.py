@@ -20,7 +20,9 @@ REGLAS CRÍTICAS DE COLUMNAS:
 3. **Fechas**: Usa `pd.to_datetime(df['columna_fecha'], errors='coerce')`.
 
 REGLAS DE SALIDA:
-- Genera código que cree un gráfico con `px` (Plotly Express) y guarda un resumen en `analysis_text`.
+- Visualización: Genera SIEMPRE un gráfico con `px` (Plotly Express) y asígnalo a la variable `fig`.
+- PROHIBIDO: No uses `matplotlib` ni `seaborn`. Solo usamos Plotly.
+- Resultados: Guarda un resumen textual en `analysis_text`.
 - **Indentación**: Escribe el código empezando siempre en la columna 0. NO añadidas espacios extra al inicio de las líneas fuera de bloques (if/for/def).
 - **Estadística Avanzada**: Tienes permiso para usar `scipy.stats` o `statsmodels` para cálculos de significancia o correlaciones.
 - Si no encuentras una columna, imprime `print("ERROR: Columna no encontrada")` y explica qué columnas ves.

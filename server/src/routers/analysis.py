@@ -81,7 +81,7 @@ def analyze(
             from src.database import DataSource
             source_obj = db.query(DataSource).filter(DataSource.id == data_source_id).first()
             if source_obj:
-                primary_source_name = source_obj.name
+                primary_source_name = "".join([c if c.isalnum() else "_" for c in source_obj.name.split('.')[0]])
         
         # 1. Obtener código de la IA
         raw_response = analyze_data(
