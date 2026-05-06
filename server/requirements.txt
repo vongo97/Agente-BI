@@ -18,9 +18,9 @@ google-auth==2.35.0
 google-auth-oauthlib==1.2.1
 google-auth-httplib2==0.2.0
 google-api-python-client==2.151.0
-statsmodels==0.14.4
+statsmodels
 mistralai==1.1.0
 python-pptx==1.0.2
 supabase==2.10.0
-scipy==1.13.1
-numpy==1.26.4
+scipy
+numpy
