@@ -15,11 +15,15 @@ from src.utils.common import SafeJSONEncoder
 
 logger = logging.getLogger(__name__)
 
-# Configuración de Modelos
+# Configuración de Modelos (Jerarquía Gemini 3.1 - Abril 2026)
 MODELS = {
-    "GEMINI": "gemini-1.5-flash", # Modelo Flash ultra rápido y estable
+    "GEMINI_SWARM": "gemini-3.1-flash",      # Velocidad para agentes y chat diario
+    "GEMINI_ANALYTICS": "gemini-3.1-pro",    # Ventana de 2M tokens para contexto masivo
+    "GEMINI_STRATEGY": "gemini-3-deep-think",# Razonamiento extremo (Chain of Thought)
     "MISTRAL": "mistral-large-latest"
 }
+# Alias para compatibilidad con código existente
+MODELS["GEMINI"] = MODELS["GEMINI_SWARM"]
 
 # Compatibilidad con mistralai
 try:
@@ -52,16 +56,20 @@ def validate_api_key(api_key, provider="gemini"):
             return True, None # Permitimos guardar aunque esté agotada
         return False, str(e)
 
-def generate_ai_content(prompt, api_key, provider="gemini", temperature=0.7):
-    """Generación con manejo amigable de errores de cuota."""
+def generate_ai_content(prompt, api_key, provider="gemini", temperature=0.7, model_level="SWARM"):
+    """Generación con manejo de niveles de potencia (Gemini 3.1)."""
     if not api_key: return "Error: API Key no proporcionada."
     clean_key = api_key.strip()
     
     try:
         if provider == "gemini":
             client = get_client(clean_key)
+            # Determinar qué modelo de la familia 3.1 usar
+            model_key = f"GEMINI_{model_level}"
+            model_name = MODELS.get(model_key, MODELS["GEMINI_SWARM"])
+            
             response = client.models.generate_content(
-                model=MODELS["GEMINI"],
+                model=model_name,
                 contents=prompt,
                 config=types.GenerateContentConfig(temperature=temperature)
             )
