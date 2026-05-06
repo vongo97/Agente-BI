@@ -37,7 +37,7 @@ export function SimulationSandbox() {
 
     useEffect(() => {
         if (dataSources.length > 0) {
-            setSelectedSources(new Set(dataSources.map(ds => ds.id)));
+            setSelectedSources(new Set(dataSources.map(ds => ds.id).filter((id): id is number => id !== undefined)));
         }
     }, [dataSources]);
 
