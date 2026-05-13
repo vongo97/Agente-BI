@@ -30,3 +30,7 @@ exports/
 *.pdf
 *.pptx
 *.png
+
+# Data files
+*.csv
+*.xlsx
