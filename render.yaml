@@ -1,7 +1,3 @@
-databases:
-  - name: agente-bi-db
-    plan: free # Puedes cambiarlo a starter para producción
-
 services:
   - type: web
     name: agente-bi-server
@@ -13,15 +9,13 @@ services:
     healthCheckPath: /
     envVars:
       - key: DATABASE_URL
-        fromDatabase:
-          name: agente-bi-db
-          property: connectionString
+        sync: false # Configurar en el Dashboard de Render con la URL de Supabase
       - key: PORT
         value: 8000
       - key: AUTHORIZED_EMAILS
-        sync: false # Configurar en el Dashboard de Render para restringir acceso
+        sync: false
       - key: GEMINI_API_KEY
-        sync: false # Configurar en el Dashboard de Render
+        sync: false
       - key: PYTHON_VERSION
         value: 3.11.9
 
@@ -40,13 +34,13 @@ services:
           type: web
           property: host
       - key: NEXTAUTH_SECRET
-        sync: false # Generar uno en el Dashboard (openssl rand -base64 32)
+        sync: false
       - key: NEXTAUTH_URL
         fromService:
           name: agente-bi-client
           type: web
           property: host
       - key: GOOGLE_CLIENT_ID
-        sync: false # Configurar para habilitar Login con Google
+        sync: false
       - key: GOOGLE_CLIENT_SECRET
-        sync: false # Configurar para habilitar Login con Google
+        sync: false
