@@ -209,7 +209,8 @@ def execute_analysis(context_obj, raw_response, var_name):
         return final_text, fig
 
     except KeyError as e:
-        return f"### ⚠️ Error de Estructura\n{str(e).strip("'")}", None
+        err_msg = str(e).strip("'")
+        return f"### ⚠️ Error de Estructura\n{err_msg}", None
     except Exception as e:
         logger.error(f"Execution Error: {e}")
         return f"### ⚠️ Error de Análisis\n{str(e)}", None
