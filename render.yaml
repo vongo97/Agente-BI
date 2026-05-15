@@ -22,6 +22,8 @@ services:
         sync: false # Configurar en el Dashboard de Render para restringir acceso
       - key: GEMINI_API_KEY
         sync: false # Configurar en el Dashboard de Render
+      - key: PYTHON_VERSION
+        value: 3.11.9
 
   # 3. Frontend (Next.js)
   - type: web
