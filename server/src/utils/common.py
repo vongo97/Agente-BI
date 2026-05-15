@@ -99,13 +99,21 @@ def get_user_data(user_id: str, chat_id: Optional[int] = None):
         active_key = get_session_key(user_id, None)
         active_data = data_store.get(active_key)
         if active_data is not None:
-            if isinstance(active_data, pd.DataFrame):
-                active_data = {"type": "file", "data": {"dataset_1": active_data}, "sources": []}
-                data_store[active_key] = active_data
             data_store[session_key] = active_data
             return active_data
             
     return None
+
+def save_user_data(user_id: str, data: dict):
+    """Guarda los datos de la sesión en disco para persistencia."""
+    if data is None: return
+    try:
+        session_file = get_session_file(user_id)
+        # Usamos pickle para guardar el diccionario completo de DataFrames
+        pd.to_pickle(data, session_file)
+        logger.info(f"Sesión persistida en disco para {user_id}")
+    except Exception as e:
+        logger.error(f"Error al persistir sesión para {user_id}: {e}")
 
 def promote_active_session(user_id: str, chat_id: int):
     """Vincula los datos de la sesión activa a un chat específico recién creado."""
@@ -145,6 +153,7 @@ def load_source_to_session(user_id: str, source, chat_id: Optional[int] = None) 
                     session_data["sources"].append(source.id)
                 
                 data_store[session_key] = session_data
+                save_user_data(user_id, session_data)
                 return True
         elif source.type == 'sql':
             from src.connectors.data_connectors import get_sql_engine, get_db_schema
@@ -152,6 +161,7 @@ def load_source_to_session(user_id: str, source, chat_id: Optional[int] = None) 
             schema = get_db_schema(engine)
             session_data = {"type": "sql", "data": engine, "schema": schema, "source_id": source.id}
             data_store[session_key] = session_data
+            save_user_data(user_id, session_data)
             return True
         elif source.type == 'gsheets':
             from src.connectors.data_connectors import load_gsheets_data
@@ -162,6 +172,7 @@ def load_source_to_session(user_id: str, source, chat_id: Optional[int] = None) 
                 if source.id not in session_data["sources"]:
                     session_data["sources"].append(source.id)
                 data_store[session_key] = session_data
+                save_user_data(user_id, session_data)
                 return True
     except Exception as e:
         logger.error(f"Error en load_source_to_session ({session_key}): {e}")

@@ -16,10 +16,10 @@ class SwarmEngine:
         self.mistral_key = (mistral_key or api_key).strip()
         self.provider = provider.lower()
         
-        # Modelos conforme a Regla #1 (Familia 3.x) e Informe Abr-2026
-        self.gemini_model = "gemini-3-flash-preview"   # Para el debate (Swarm) - Más cuota
-        self.gemini_pro_model = "gemini-3.1-pro-preview" # Para el reporte final - Más razonamiento
-        self.mistral_model = "mistral-large-latest"
+        # Modelos Gemini 3.x (Optimizado Capa Gratuita)
+        self.gemini_model = "gemini-3-flash-preview"
+        self.gemini_pro_model = "gemini-3.1-pro-preview"
+        self.mistral_model = "mistral-small-latest"
         
         self.g_client = None
         self.m_client = None

@@ -21,6 +21,10 @@ from src.engine.prompts import SIMULATION_SUGGESTIONS_PROMPT
 from google import genai
 from google.genai import types
 
+from src.utils.security import decrypt_key
+from src.utils.common import check_authorization, get_user_data
+from src.database import UserConfig
+
 # Quitamos el prefijo del router para evitar duplicidad con main.py
 router = APIRouter(tags=["Simulation"])
 logger = logging.getLogger(__name__)
@@ -30,7 +34,7 @@ class SimulationRequest(BaseModel):
     title: str
     hypothesis: str
     selected_ids: List[int] = Field(..., alias="selectedIds")
-    api_key: str = Field(..., alias="apiKey")
+    api_key: Optional[str] = Field("", alias="apiKey")
     provider: str = "gemini" # gemini, mistral, hybrid
     mistral_key: Optional[str] = Field(None, alias="mistralKey")
 
@@ -86,7 +90,7 @@ async def process_simulation(sim_id: int, api_key: str, provider: str, mistral_k
         sim.status = "completed"
         db.commit()
     except Exception as e:
-        print(f"[ERROR] [Sim-{sim_id}] FALLO: {str(e)}")
+        logger.error(f"[Sim-{sim_id}] FALLO: {str(e)}", exc_info=True)
         if sim:
             sim.status = "error"
             sim.result_report = f"Error: {str(e)}"
@@ -96,7 +100,17 @@ async def process_simulation(sim_id: int, api_key: str, provider: str, mistral_k
 
 @router.post("/simulation")
 async def create_simulation(req: SimulationRequest, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
-    print(f"[DEBUG] Creando simulación {req.provider} para {req.user_id}")
+    logger.info(f"Creando simulación {req.provider} para {req.user_id}")
+    check_authorization(req.user_id)
+    
+    # [PILAR 2] Recuperar y Descifrar Key si es necesario
+    api_key = req.api_key
+    if not api_key or len(api_key) < 10:
+        config = db.query(UserConfig).filter(UserConfig.user_id == req.user_id).first()
+        if config: api_key = decrypt_key(config.gemini_key)
+    else:
+        api_key = decrypt_key(api_key)
+
     new_sim = Simulation(
         user_id=req.user_id, 
         title=req.title, 
@@ -111,7 +125,7 @@ async def create_simulation(req: SimulationRequest, background_tasks: Background
     background_tasks.add_task(
         process_simulation, 
         new_sim.id, 
-        req.api_key, 
+        api_key, 
         req.provider, 
         req.mistral_key, 
         req.selected_ids
@@ -147,7 +161,7 @@ async def get_messages(sim_id: int, db: Session = Depends(get_db)):
 class SuggestionRequest(BaseModel):
     user_id: str = Field(..., alias="userId")
     selected_ids: List[int] = Field(..., alias="selectedIds")
-    api_key: str = Field(..., alias="apiKey")
+    api_key: Optional[str] = Field("", alias="apiKey")
     provider: str = "gemini"
     mistral_key: Optional[str] = Field(None, alias="mistralKey")
 
@@ -209,8 +223,16 @@ async def get_simulation_suggestions(req: SuggestionRequest, db: Session = Depen
 
         prompt = SIMULATION_SUGGESTIONS_PROMPT.format(context_str=full_context_str, head_str=head_sample)
         
+        # [PILAR 2] Recuperar y Descifrar Key
+        api_key = req.api_key
+        if not api_key or len(api_key) < 10:
+            config = db.query(UserConfig).filter(UserConfig.user_id == req.user_id).first()
+            if config: api_key = decrypt_key(config.gemini_key)
+        else:
+            api_key = decrypt_key(api_key)
+
         prov = req.provider.lower()
-        key = (req.mistral_key or req.api_key) if prov == "mistral" else req.api_key
+        key = (req.mistral_key or api_key) if prov == "mistral" else api_key
         if prov == "hybrid": prov = "gemini"
 
         try:

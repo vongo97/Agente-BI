@@ -1,15 +1,20 @@
 import json
-from fastapi import APIRouter, Depends, Form, HTTPException
+from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from sqlalchemy.orm import Session
 from typing import Optional
-from src.database import get_db, Chat, Message
-from src.engine.bi_analyst import analyze_data, execute_analysis, suggest_questions
+from src.database import get_db, Chat, Message, UserConfig
+from src.engine.bi_analyst import analyze_data, execute_analysis, suggest_questions, validate_data_quality
 from src.utils.common import check_authorization, get_user_data
+from src.utils.security import decrypt_key
+
+from src.utils.limiter import limiter
 
 router = APIRouter(tags=["Analysis"])
 
 @router.post("/analyze")
+@limiter.limit("5/minute")
 def analyze(
+    request: Request,
     query: str = Form(...),
     api_key: str = Form(...),
     user_id: str = Form(...),
@@ -21,15 +26,27 @@ def analyze(
 ):
     check_authorization(user_id)
     
+    # --- AUTO-RECUPERACIÓN DE LLAVES CIFRADAS ---
+    # Si las llaves vienen vacías o cortas, intentamos sacarlas de la DB del usuario
+    if len(api_key) < 10 or (provider == "mistral" and (not mistral_key or len(mistral_key) < 10)):
+        user_config = db.query(UserConfig).filter(UserConfig.user_id == user_id).first()
+        if user_config:
+            if len(api_key) < 10 and user_config.gemini_key:
+                api_key = decrypt_key(user_config.gemini_key)
+            if provider == "mistral" and (not mistral_key or len(mistral_key) < 10) and user_config.mistral_key:
+                mistral_key = decrypt_key(user_config.mistral_key)
+    else:
+        # Si vienen del frontend pero están cifradas (empiezan por gAAAA), las desciframos
+        api_key = decrypt_key(api_key)
+        if mistral_key: mistral_key = decrypt_key(mistral_key)
+    
     # Filtro de saludos
     greetings = ["hola", "hi", "hey", "buenos dias", "buenas tardes", "buenas noches"]
-    if query.lower().strip().replace("!", "").replace("?", "") in greetings:
-        return {
-            "chat_id": None,
-            "analysis": "¡Hola! 👋 Soy tu Analista BI. ¿Qué quieres analizar hoy?",
-            "figure": None,
-            "code": "# Saludo"
-        }
+    if query.strip().lower() in greetings:
+        msg = "¡Hola! Soy Vektra. ¿Qué te gustaría analizar de tus datos hoy?"
+        new_msg = Message(chat_id=chat_id, role="assistant", content=msg)
+        db.add(new_msg); db.commit()
+        return {"analysis": msg, "chat_id": chat_id, "message_id": new_msg.id}
 
     # Si no hay data_source_id pero hay chat_id, intentar recuperarlo del chat
     if chat_id and not data_source_id:
@@ -83,8 +100,16 @@ def analyze(
             if source_obj:
                 primary_source_name = "".join([c if c.isalnum() else "_" for c in source_obj.name.split('.')[0]])
         
-        # 1. Obtener código de la IA
-        raw_response = analyze_data(
+        # --- FILTRO DE CALIDAD ---
+        is_valid, reason = validate_data_quality(session_data["data"])
+        if not is_valid:
+            content = f"### ⚠️ Lo sentimos, archivo no compatible\n{reason}\n\n**Sugerencia:** Por favor, asegúrate de subir un archivo con datos estructurados (filas y columnas) que contenga al menos una columna de números (métricas)."
+            new_msg = Message(chat_id=chat_id, role="assistant", content=content)
+            db.add(new_msg); db.commit()
+            return {"analysis": content, "chat_id": chat_id, "message_id": new_msg.id}
+        
+        # 1. Obtener análisis, gráfico y código de la IA
+        output_text, fig, raw_response = analyze_data(
             session_data["data"], 
             query, 
             api_key, 
@@ -94,10 +119,7 @@ def analyze(
             primary_source_name=primary_source_name
         )
         
-        # 2. Ejecutar análisis final
-        output_text, fig = execute_analysis(session_data["data"], raw_response, data_var)
-        
-        fig_json = json.loads(fig.to_json()) if fig else None
+        fig_json = json.loads(fig.to_json()) if fig and hasattr(fig, 'to_json') else fig
             
         # Persistencia
         if chat_id:
@@ -138,10 +160,15 @@ def analyze(
             "code": raw_response
         })
     except Exception as e:
+        import traceback
+        traceback.print_exc()
+        print(f"[ERROR 500] {type(e).__name__}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/suggest-questions")
+@limiter.limit("10/minute")
 def get_suggestions(
+    request: Request,
     user_id: str = Form(...), 
     api_key: str = Form(...),
     chat_id: Optional[int] = Form(None), # AÑADIDO
@@ -217,7 +244,9 @@ async def detect_anomalies():
     }
 
 @router.post("/generate-report-summary")
+@limiter.limit("5/minute")
 def get_report_summary(
+    request: Request,
     query: str = Form(...),
     api_key: str = Form(...),
     user_id: str = Form(...),

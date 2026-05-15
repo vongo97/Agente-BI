@@ -4,6 +4,7 @@ from typing import Optional
 from src.database import get_db, UserConfig
 from src.engine.bi_analyst import validate_api_key
 from src.utils.common import check_authorization
+from src.utils.security import encrypt_key, decrypt_key
 
 router = APIRouter(tags=["Auth & Config"])
 
@@ -19,9 +20,9 @@ async def get_user_config(user_id: str, db: Session = Depends(get_db)):
     if not config:
         return {"gemini_key": "", "mistral_key": "", "gamma_key": "", "preferred_provider": "gemini"}
     return {
-        "gemini_key": config.gemini_key,
-        "mistral_key": config.mistral_key,
-        "gamma_key": config.gamma_key,
+        "gemini_key": decrypt_key(config.gemini_key),
+        "mistral_key": decrypt_key(config.mistral_key),
+        "gamma_key": decrypt_key(config.gamma_key),
         "preferred_provider": config.preferred_provider or "gemini"
     }
 
@@ -40,9 +41,9 @@ async def set_user_config(
         config = UserConfig(user_id=user_id)
         db.add(config)
     
-    if gemini_key is not None: config.gemini_key = gemini_key
-    if mistral_key is not None: config.mistral_key = mistral_key
-    if gamma_key is not None: config.gamma_key = gamma_key
+    if gemini_key is not None: config.gemini_key = encrypt_key(gemini_key)
+    if mistral_key is not None: config.mistral_key = encrypt_key(mistral_key)
+    if gamma_key is not None: config.gamma_key = encrypt_key(gamma_key)
     if preferred_provider is not None: config.preferred_provider = preferred_provider
     
     db.commit()

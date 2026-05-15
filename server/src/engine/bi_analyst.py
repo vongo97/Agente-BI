@@ -15,15 +15,44 @@ from src.utils.common import SafeJSONEncoder
 
 logger = logging.getLogger(__name__)
 
-# Configuración de Modelos (Jerarquía Gemini 3.1 - Abril 2026)
+# Configuración de Modelos (Gemini 3.x - Optimizado Capa Gratuita)
 MODELS = {
-    "GEMINI_SWARM": "gemini-3.1-flash",      # Velocidad para agentes y chat diario
-    "GEMINI_ANALYTICS": "gemini-3.1-pro",    # Ventana de 2M tokens para contexto masivo
-    "GEMINI_STRATEGY": "gemini-3-deep-think",# Razonamiento extremo (Chain of Thought)
+    "GEMINI_SWARM": "gemini-3-flash-preview",
+    "GEMINI_ANALYTICS": "gemini-3-flash-preview", # Flash para evitar bloqueos de cuota
+    "GEMINI_STRATEGY": "gemini-3.1-pro-preview",   # Solo para reportes finales complejos
     "MISTRAL": "mistral-large-latest"
 }
-# Alias para compatibilidad con código existente
-MODELS["GEMINI"] = MODELS["GEMINI_SWARM"]
+# Alias principal
+MODELS["GEMINI"] = MODELS["GEMINI_ANALYTICS"]
+
+def validate_data_quality(data):
+    """Verifica que el dataset (o pool) sea apto para análisis por IA."""
+    if data is None:
+        return False, "No se proporcionaron datos."
+    
+    # Caso 1: Diccionario de DataFrames (Pool)
+    if isinstance(data, dict):
+        if not data:
+            return False, "El pool de datos está vacío."
+        # Verificar que al menos uno de los DataFrames tenga datos
+        has_any_data = False
+        for df in data.values():
+            if hasattr(df, 'empty') and not df.empty:
+                has_any_data = True
+                break
+        if not has_any_data:
+            return False, "Todas las tablas en el pool están vacías."
+        return True, "OK"
+    
+    # Caso 2: DataFrame único
+    if hasattr(data, 'empty'):
+        if data.empty:
+            return False, "El archivo está completamente vacío."
+        if len(data) < 2:
+            return False, "El archivo tiene muy pocas filas para un análisis real."
+        return True, "OK"
+        
+    return False, "Formato de datos no reconocido para validación."
 
 # Compatibilidad con mistralai
 try:
@@ -74,24 +103,22 @@ def generate_ai_content(prompt, api_key, provider="gemini", temperature=0.7, mod
                 config=types.GenerateContentConfig(temperature=temperature)
             )
             return response.text
-        elif provider == "mistral" and Mistral:
-            logger.info(f"Iniciando generación con Mistral ({MODELS['MISTRAL']})")
-            if clean_key not in _clients:
-                _clients[clean_key] = Mistral(api_key=clean_key)
-            client = _clients[clean_key]
-            
-            resp = client.chat.complete(
-                model=MODELS["MISTRAL"],
-                messages=[{"role": "user", "content": prompt}]
-            )
-            
-            if not resp or not resp.choices:
-                logger.error("Mistral devolvió una respuesta vacía o sin opciones.")
-                return "⚠️ Error: Mistral no devolvió contenido válido."
+        elif provider == "mistral":
+            if not api_key: return "⚠️ Falta API Key de Mistral."
+            try:
+                from mistralai import Mistral
+                clean_key = api_key.strip()
+                if clean_key not in _clients:
+                    _clients[clean_key] = Mistral(api_key=clean_key)
+                client = _clients[clean_key]
                 
-            content = resp.choices[0].message.content
-            logger.info(f"Generación con Mistral completada. Longitud: {len(content)}")
-            return content
+                resp = client.chat.complete(
+                    model=MODELS["MISTRAL"],
+                    messages=[{"role": "user", "content": prompt}]
+                )
+                return resp.choices[0].message.content
+            except Exception as e:
+                raise e
     except Exception as e:
         err = str(e).lower()
         if "429" in err or "quota" in err or "exhausted" in err:
@@ -109,123 +136,106 @@ def generate_ai_content(prompt, api_key, provider="gemini", temperature=0.7, mod
 def analyze_data(data_context, query, api_key, chat_history=[], mode="file", provider="gemini", mistral_key=None, primary_source_name=None):
     """Analista Inteligente con soporte Dual (Híbrido) y Aislamiento de Contexto."""
     try:
-        # Configuración de roles con protección de llaves
+        # 1. Configuración de Roles y Proveedores
         if provider == "hybrid":
-            # En modo híbrido: Gemini analiza (ingeniero) y Mistral narra (estratega)
-            if not mistral_key:
-                return "⚠️ Error: Para usar el modo Híbrido necesitas configurar tu Mistral Key en Ajustes."
+            if not mistral_key: return "⚠️ Error: Configura tu Mistral Key en Ajustes."
             eng_provider, eng_key = "gemini", api_key
             str_provider, str_key = "mistral", mistral_key
         elif provider == "mistral":
-            if not mistral_key:
-                return "⚠️ Error: Configura tu Mistral Key en Ajustes para usar este modelo."
+            if not mistral_key: return "⚠️ Error: Configura tu Mistral Key."
             eng_provider, eng_key = "mistral", mistral_key
             str_provider, str_key = "mistral", mistral_key
-        else: # Default Gemini
+        else:
             eng_provider, eng_key = "gemini", api_key
             str_provider, str_key = "gemini", api_key
 
-        # --- PASO 1: INGENIERÍA (CÓDIGO) ---
-        if mode == "sql":
-            prompt = prompts.SQL_ENGINEER_PROMPT.format(query=query, context_str=data_context["schema"])
-            raw = generate_ai_content(prompt, eng_key, eng_provider)
-            if not raw or "⚠️" in raw: return raw or "⚠️ Error desconocido en el motor SQL de IA."
-            temp_text, _, clean_sql = executor.execute_sql_safe(data_context["data"], raw)
-            real_results = temp_text or "Resultados SQL."
-            fig_code = f"```sql\n{clean_sql}\n```" if clean_sql else ""
-            context_str = f"Schema SQL: {data_context['schema'][:200]}"
-        else:
-            # Caso Pandas (Archivos, GSheets, etc.)
+        # 2. Bucle de Ingeniería (Código) con Reintento y Aislamiento de Contexto
+        retry_count = 0
+        max_retries = 1
+        real_results = ""
+        fig_code = ""
+        
+        while retry_count <= max_retries:
+            # AISLAMIENTO DE CONTEXTO Y GENERACIÓN DE PROMPT
             if isinstance(data_context, dict):
-                # Generar descripción de tablas
                 tables_desc = []
                 head_info = {}
-                
-                # AISLAMIENTO DE CONTEXTO: Si hay una fuente primaria, la priorizamos y aislamos
                 focus_instruction = ""
-                if primary_source_name and primary_source_name in data_context:
-                    focus_instruction = f"⚠️ IMPORTANTE: El usuario se está enfocando en la tabla '{primary_source_name}'. Analiza ESTE archivo principalmente. Solo menciona o cruza con otras tablas si el usuario lo pide explícitamente en su pregunta."
-                    
-                    # Verificamos si el usuario pide comparación
-                    query_lower = query.lower()
-                    comparison_keywords = ["compara", "relaciona", "cruza", "vs", "versus", "correlacion", "unir", "junto"]
-                    wants_comparison = any(word in query_lower for word in comparison_keywords)
-                    
-                    if not wants_comparison:
-                         # Si NO pide comparación, ocultamos el resto del pool para evitar fugas/distracciones
-                         data_context = {primary_source_name: data_context[primary_source_name]}
                 
-                for name, df in data_context.items():
-                    if isinstance(df, pd.DataFrame):
+                # Aislamiento si hay fuente primaria
+                temp_context = data_context
+                if primary_source_name and primary_source_name in temp_context:
+                    focus_instruction = f"⚠️ IMPORTANTE: Enfócate en la tabla '{primary_source_name}'. Analiza este archivo principalmente."
+                    # Si no pide cruces, aislamos
+                    if not any(word in query.lower() for word in ["compara", "cruza", "vs", "relaciona"]):
+                        temp_context = {primary_source_name: temp_context[primary_source_name]}
+                
+                for name, df in temp_context.items():
+                    if hasattr(df, 'columns'):
+                        # Muestra más rica: 5 filas y tipos de datos
                         tables_desc.append(f"- Tabla '{name}': {df.columns.tolist()} ({len(df)} filas)")
-                        head_info[name] = df.head(2).to_dict()
+                        head_info[name] = {
+                            "muestra": df.head(5).to_dict(),
+                            "tipos": df.dtypes.astype(str).to_dict()
+                        }
                 
                 data_info = "\n".join(tables_desc)
                 context_str = data_info
                 
                 p = f"""
-        Eres un Analista BI Experto con capacidades de Data Science.
-        Tu objetivo es analizar los siguientes datos y responder: "{query}"
-
+        Eres un Analista BI Experto. Objetivo: "{query}"
         {focus_instruction}
 
-        ESTRUCTURA DE DATOS DISPONIBLE:
+        ESTRUCTURA:
         {data_info}
 
-        REGLAS CRÍTICAS:
-        1. Acceso a Datos: Tienes un diccionario llamado 'dfs' que contiene los DataFrames.
-           - Ejemplo: df1 = dfs['nombre_tabla_1']
-        2. ENFOQUE: Si se te indicó una tabla principal ('{primary_source_name}'), ignora las demás a menos que se pida un cruce explícito.
-        3. Columnas Crípticas: Si encuentras columnas con nombres como '2_27' o códigos, analiza los datos de la 'MUESTRA' para deducir su significado y menciónalo en tu análisis.
-        4. Visualización: Genera SIEMPRE un gráfico relevante con 'plotly.express' (px).
-        5. PROHIBIDO: No uses 'matplotlib' ni 'seaborn'. Solo usamos Plotly para visualizaciones interactivas.
-        6. Variable de Gráfico: Asigna SIEMPRE el gráfico a la variable 'fig'.
-        7. Responde siempre en Español con un tono profesional.
+        REGLAS:
+        1. Usa el diccionario 'dfs' (ej: df1 = dfs['nombre_tabla']).
+        2. Plotly para gráficos. Asígnalo a 'fig'.
+        3. No uses matplotlib. Responde en Español.
 
-        MUESTRA DE DATOS (JSON):
+        MUESTRA:
         {json.dumps(head_info, indent=2, cls=SafeJSONEncoder)}
 
-        Escribe tu respuesta siguiendo este formato:
-        Explica tu razonamiento estratégico y hallazgos.
-        ```python
-        # Código Python
-        import pandas as pd
-        import plotly.express as px
-        # Tu código aquí usando el diccionario 'dfs'...
-        ```
+        Formato: Razonamiento y ```python ... ```
         """
                 data_var = "dfs"
-            elif isinstance(data_context, pd.DataFrame):
+            else:
                 context_str = f"Columnas: {data_context.columns.tolist()}"
                 p = prompts.ENGINEER_PROMPT_TEMPLATE.format(data_var="df", query=query, context_str=context_str)
                 data_var = "df"
-            else:
-                context_str = f"Contexto: {list(data_context.keys()) if isinstance(data_context, dict) else str(data_context)[:200]}"
-                p = prompts.ENGINEER_PROMPT_TEMPLATE.format(data_var="dfs", query=query, context_str=context_str)
-                data_var = "dfs" if isinstance(data_context, dict) else "df"
 
-            raw = generate_ai_content(p, eng_key, eng_provider)
-            if not raw or "⚠️" in raw: return raw or "⚠️ Error desconocido en el motor de IA."
-            
-            temp_text, _ = executor.execute_analysis(data_context, raw, data_var)
-            
-            # Limpieza de resultados para el Estratega
-            if "### ⚠️" in temp_text or "### 🛡️" in temp_text:
-                real_results = f"ERROR TÉCNICO: {temp_text}."
-            else:
-                real_results = temp_text.split("---")[-1].strip() if "---" in temp_text else temp_text
-            
-            m = re.search(r"```python\n(.*?)```", raw, re.DOTALL)
-            fig_code = f"```python\n{m.group(1)}\n```" if m else ""
+            if retry_count > 0:
+                p += f"\n\n⚠️ **ERROR ANTERIOR**: {real_results}\nCorrige el código. Evita .str en fechas."
 
-        # --- PASO 2: ESTRATEGIA (NARRATIVA) ---
-        p_narrative = prompts.STRATEGIST_PROMPT_TEMPLATE.format(query=query, real_results=real_results, context_str=context_str)
-        final_narrative = generate_ai_content(p_narrative, str_key, str_provider)
+            raw = generate_ai_content(p, eng_key, eng_provider, model_level="ANALYTICS")
+            if not raw or "⚠️" in raw: return raw or "⚠️ Error en IA."
+            
+            temp_text, fig = executor.execute_analysis(data_context, raw, data_var)
+            
+            if "⚠️ Error" in temp_text and retry_count < max_retries:
+                real_results = temp_text
+                retry_count += 1
+                continue
+            
+            real_results = temp_text
+            fig_code = fig
+            break
+
+        # 3. Estrategia (Narrativa)
+        clean_res = real_results.split("---")[-1].strip() if "---" in real_results else real_results
+        if "⚠️ Error" in real_results:
+            clean_res = f"⚠️ Análisis parcial por error: {real_results}"
+
+        p_strat = prompts.STRATEGIST_PROMPT_TEMPLATE.format(query=query, real_results=clean_res, context_str=context_str)
+        final_narrative = generate_ai_content(p_strat, str_key, str_provider, model_level="ANALYTICS")
         
-        return f"{final_narrative}\n\n{fig_code}"
+        # Devolver el trio perfecto: Narrativa, Gráfico y Código
+        return final_narrative, fig_code, raw
 
     except Exception as e:
-        return f"Error en análisis ({provider}): {e}"
+        logger.error(f"Critical Error in analyze_data: {e}")
+        return f"### ❌ Error Crítico\n{str(e)}", None, None
 
 def generate_report_summary(query, api_key, context_data=None, provider="gemini", mistral_key=None):
     key = (mistral_key or api_key) if provider == "mistral" else api_key
@@ -282,7 +292,7 @@ def suggest_questions(data_context, api_key, mode="file", provider="gemini", mis
         try:
             client = get_client(key)
             response = client.models.generate_content(
-                model=MODELS["GEMINI_SWARM"],
+                model=MODELS["GEMINI_ANALYTICS"],
                 contents=p,
                 config=types.GenerateContentConfig(
                     temperature=0.7,

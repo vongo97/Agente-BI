@@ -1,31 +1,45 @@
 import uvicorn
 import logging
+import warnings
 from fastapi import FastAPI
+
+# Silenciar advertencias de formato de fecha
+warnings.filterwarnings("ignore", category=UserWarning)
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 
 # Cargar variables de entorno lo antes posible
 load_dotenv()
 
-# Importar routers y utilidades
+# Importar routers, utilidades y rate limiting
 from src.database import init_db
-from src.routers import auth, data, analysis, dashboard, exports, simulation
-
-# Configuración de Logs
-logging.basicConfig(
-    filename='debug_server.log',
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s',
-    force=True
-)
-logger = logging.getLogger(__name__)
+# Importar routers, utilidades y rate limiting
+from src.database import init_db
+from src.utils.limiter import limiter
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
 
 app = FastAPI(title="Vektra BI API (Modular)")
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
-# Configurar CORS
+from src.routers import auth, data, analysis, dashboard, exports, simulation
+
+# Configuración de Logs Estructurados (Fase 2)
+from src.utils.logging_config import setup_logging
+setup_logging()
+logger = logging.getLogger(__name__)
+
+# Configurar CORS (Seguridad Fase 1)
+ALLOWED_ORIGINS = [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "https://agente-bi.vercel.app", # Ejemplo de dominio prod
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origin_regex=".*",
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -45,13 +59,13 @@ async def catch_exceptions_middleware(request, call_next):
             content={"detail": f"Internal Server Error: {str(e)}", "traceback": error_trace}
         )
 
-# Registrar Routers
-app.include_router(auth.router)
-app.include_router(data.router)
-app.include_router(analysis.router)
-app.include_router(dashboard.router)
-app.include_router(exports.router)
-app.include_router(simulation.router)
+# Registrar Routers con Versionado (Fase 2)
+app.include_router(auth.router, prefix="/api/v1")
+app.include_router(data.router, prefix="/api/v1")
+app.include_router(analysis.router, prefix="/api/v1")
+app.include_router(dashboard.router, prefix="/api/v1")
+app.include_router(exports.router, prefix="/api/v1")
+app.include_router(simulation.router, prefix="/api/v1")
 
 # Inicializar Base de Datos
 init_db()
