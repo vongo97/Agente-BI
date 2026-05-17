@@ -5,26 +5,181 @@ import plotly.graph_objects as go
 from fpdf import FPDF
 import tempfile
 import os
+import re
 from datetime import datetime
 
-def export_plotly_to_image(fig_json_str: str, format: str = "png"):
+def export_plotly_to_image(fig_data: any, format: str = "png"):
     """
-    Convierte un JSON de Plotly a bytes de imagen (PNG).
+    Convierte un objeto/dict de Plotly a bytes de imagen (PNG).
     """
     try:
-        fig_dict = json.loads(fig_json_str)
-        fig = go.Figure(fig_dict)
-        # Forzar un layout limpio para exportación
+        # Si ya es un dict, no necesitamos json.loads
+        fig_dict = fig_data
+        if isinstance(fig_data, str):
+            fig_dict = json.loads(fig_data)
+        
+        # Asegurar que tenemos data y layout
+        if 'data' not in fig_dict:
+            # Si no tiene 'data', quizás es el objeto directo
+            fig = go.Figure(fig_dict)
+        else:
+            fig = go.Figure(data=fig_dict.get('data'), layout=fig_dict.get('layout'))
+            
+        # Forzar un layout limpio y profesional para exportación (Estilo Vektra Light para PDF)
         fig.update_layout(
             paper_bgcolor='white', 
-            plot_bgcolor='white', 
-            font={'color': 'black', 'size': 14},
-            margin=dict(l=40, r=40, t=60, b=40)
+            plot_bgcolor='#f9fafb', 
+            font={'color': '#111827', 'family': 'Helvetica', 'size': 12},
+            margin=dict(l=50, r=50, t=80, b=50),
+            width=800,
+            height=500
         )
-        img_bytes = pio.to_image(fig, format=format, engine="kaleido")
+        
+        # Configurar ejes para que se vean bien en papel
+        fig.update_xaxes(gridcolor='#e5e7eb', zerolinecolor='#d1d5db')
+        fig.update_yaxes(gridcolor='#e5e7eb', zerolinecolor='#d1d5db')
+
+        # Intentar exportar usando kaleido
+        print(f"[DEBUG EXPORT] Intentando kaleido para gráfico con {len(fig.data)} trazas...")
+        img_bytes = pio.to_image(fig, format=format, engine="kaleido", scale=2)
+        print(f"[DEBUG EXPORT] EXITO: {len(img_bytes)} bytes generados con Kaleido")
         return img_bytes
     except Exception as e:
-        print(f"Error exportando imagen: {e}")
+        print(f"[WARNING EXPORT] Kaleido falló: {str(e)}. Intentando Fallback con Matplotlib...")
+        return export_to_image_matplotlib_fallback(fig_dict)
+
+def decode_plotly_array(arr_obj):
+    """
+    Decodifica un arreglo de Plotly, manejando listas normales y objetos binarios (bdata) de JS.
+    """
+    if arr_obj is None: return []
+    
+    if isinstance(arr_obj, (list, tuple)):
+        return list(arr_obj)
+        
+    if isinstance(arr_obj, dict) and 'bdata' in arr_obj:
+        import base64
+        import numpy as np
+        dtype_str = arr_obj.get('dtype', 'float64')
+        bdata = arr_obj.get('bdata')
+        
+        dtype_map = {
+            'float64': np.float64, 'float32': np.float32,
+            'int32': np.int32, 'int16': np.int16, 'int8': np.int8,
+            'uint32': np.uint32, 'uint16': np.uint16, 'uint8': np.uint8,
+        }
+        try:
+            raw_bytes = base64.b64decode(bdata)
+            arr = np.frombuffer(raw_bytes, dtype=dtype_map.get(dtype_str, np.float64))
+            return arr.tolist()
+        except Exception as e:
+            print(f"[ERROR EXPORT] Fallo decodificando bdata: {e}")
+            return []
+            
+    return []
+
+def export_to_image_matplotlib_fallback(fig_dict: dict):
+    """
+    Motor de respaldo avanzado usando Matplotlib.
+    Decodifica directamente del JSON original para evadir la corrupción de go.Figure.
+    """
+    try:
+        import matplotlib.pyplot as plt
+        import seaborn as sns
+        import numpy as np
+        
+        # Estilo premium y mayor espacio horizontal para que no se corten
+        plt.style.use('fast')
+        fig_plt, ax = plt.subplots(figsize=(14, 7))
+        
+        data_list = fig_dict.get('data', [])
+        if not data_list:
+            return None
+            
+        # Contar trazas de barra para calcular desplazamientos (grouped bars)
+        bar_traces = [t for t in data_list if t.get('type', 'scatter') in ['bar', 'histogram']]
+        total_bars = len(bar_traces)
+        bar_width = 0.8 / total_bars if total_bars > 0 else 0.8
+        current_bar = 0
+            
+        for trace in data_list:
+            chart_type = trace.get('type', 'scatter')
+            
+            x = decode_plotly_array(trace.get('x'))
+            y = decode_plotly_array(trace.get('y'))
+            name = trace.get('name', '')
+            
+            if not x or not y: continue
+            
+            # Sincronizar longitudes de X y Y para evitar el error 'shape mismatch' de Matplotlib
+            min_len = min(len(x), len(y))
+            if min_len == 0: continue
+            x = x[:min_len]
+            y = y[:min_len]
+            
+            # Extraer color de la traza si está disponible
+            colors = '#2563eb'
+            marker = trace.get('marker', {})
+            if marker and 'color' in marker:
+                c_val = marker.get('color')
+                if isinstance(c_val, (list, tuple, np.ndarray)):
+                    c_list = list(c_val)
+                    if len(c_list) >= min_len:
+                        colors = c_list[:min_len]
+                    elif len(c_list) > 0:
+                        colors = (c_list * ((min_len // len(c_list)) + 1))[:min_len]
+                elif c_val is not None:
+                    colors = c_val
+            
+            if chart_type in ['bar', 'histogram']:
+                # Agrupar barras lado a lado en lugar de solaparlas
+                x_numeric = np.arange(len(x))
+                offset = (current_bar - total_bars/2 + 0.5) * bar_width
+                
+                bars = ax.bar(x_numeric + offset, y, width=bar_width, label=name, color=colors, alpha=0.85, edgecolor='white', linewidth=0.5)
+                
+                # Configurar las etiquetas del eje X al final
+                if current_bar == total_bars - 1 or total_bars == 1:
+                    ax.set_xticks(x_numeric)
+                    ax.set_xticklabels(x)
+                    
+                current_bar += 1
+            elif chart_type == 'pie':
+                ax.pie(y, labels=x, autopct='%1.1f%%', colors=sns.color_palette("Blues_r"))
+            else:
+                if isinstance(colors, list): colors = colors[0] if colors else '#2563eb'
+                ax.plot(x, y, marker='o', label=name, color=colors, linewidth=2.5, markersize=8)
+
+        # Configuración estética leyendo el layout
+        layout = fig_dict.get('layout', {})
+        raw_title = layout.get('title', {}).get('text', 'Análisis Estratégico') if isinstance(layout.get('title'), dict) else 'Análisis Estratégico'
+        clean_title = re.sub(r'<[^>]*>', '', raw_title) if isinstance(raw_title, str) else 'Análisis Estratégico'
+        
+        ax.set_title(clean_title, fontsize=16, pad=25, fontweight='bold', color='#111827')
+        ax.set_facecolor('#fcfcfc')
+        ax.grid(True, axis='y', linestyle='--', alpha=0.4, color='#cbd5e1')
+        
+        # Etiquetas
+        xaxis_title = layout.get('xaxis', {}).get('title', {}).get('text', '') if isinstance(layout.get('xaxis'), dict) and isinstance(layout.get('xaxis').get('title'), dict) else ''
+        yaxis_title = layout.get('yaxis', {}).get('title', {}).get('text', '') if isinstance(layout.get('yaxis'), dict) and isinstance(layout.get('yaxis').get('title'), dict) else ''
+        
+        if xaxis_title and isinstance(xaxis_title, str): ax.set_xlabel(re.sub(r'<[^>]*>', '', xaxis_title), fontweight='bold')
+        if yaxis_title and isinstance(yaxis_title, str): ax.set_ylabel(re.sub(r'<[^>]*>', '', yaxis_title), fontweight='bold')
+
+        # Rotación inteligente de etiquetas
+        plt.xticks(rotation=45, ha='right', fontsize=9)
+        if len(data_list) > 1:
+            ax.legend(frameon=True, facecolor='white', shadow=True)
+            
+        plt.tight_layout()
+        
+        img_buffer = io.BytesIO()
+        plt.savefig(img_buffer, format='png', dpi=200, bbox_inches='tight')
+        plt.close()
+        
+        return img_buffer.getvalue()
+    except Exception as ex:
+        print(f"[ERROR EXPORT] Fallback crítico: {str(ex)}")
         return None
 
 def generate_pdf_report(user_name: str, messages: list):
@@ -48,12 +203,12 @@ def generate_pdf_report(user_name: str, messages: list):
         
         pdf.set_font("helvetica", size=10)
         pdf.set_text_color(0, 0, 0)
-        content = msg['content'].encode('latin-1', 'replace').decode('latin-1')
+        content = clean_text(msg['content'])
         pdf.multi_cell(0, 6, txt=content)
         pdf.ln(5)
         
         if msg.get('fig'):
-            img_bytes = export_plotly_to_image(json.dumps(msg['fig']))
+            img_bytes = export_plotly_to_image(msg['fig'])
             if img_bytes:
                 with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmp:
                     tmp.write(img_bytes)
@@ -74,28 +229,38 @@ def generate_pro_report(title: str, summary: str, user_name: str, items: list):
     pdf = FPDF()
     pdf.set_auto_page_break(auto=True, margin=20)
     
-    # --- PORTADA ---
+    # --- PORTADA PREMIUM (DARK MODE STYLE) ---
     pdf.add_page()
-    # Fondo decorativo lateral
-    pdf.set_fill_color(20, 80, 160)
-    pdf.rect(0, 0, 10, 297, "F")
+    # Fondo oscuro para la portada
+    pdf.set_fill_color(15, 15, 15)
+    pdf.rect(0, 0, 210, 297, "F")
     
-    pdf.ln(60)
-    pdf.set_font("helvetica", 'B', 32)
-    pdf.set_text_color(33, 33, 33)
-    pdf.multi_cell(0, 15, txt=title.upper(), align='L')
+    # Acento de color lateral (Azul Vektra)
+    pdf.set_fill_color(37, 99, 235)
+    pdf.rect(0, 0, 5, 297, "F")
     
-    pdf.ln(10)
-    pdf.set_font("helvetica", '', 16)
+    pdf.set_y(80)
+    pdf.set_font("helvetica", 'B', 36)
+    pdf.set_text_color(255, 255, 255)
+    pdf.multi_cell(0, 18, txt=title.upper(), align='L')
+    
+    pdf.ln(5)
+    pdf.set_font("helvetica", 'B', 14)
+    pdf.set_text_color(37, 99, 235)
+    pdf.cell(0, 10, txt="DIAGNÓSTICO ESTRATÉGICO DE DATOS", ln=True)
+    
+    pdf.set_y(240)
+    pdf.set_font("helvetica", 'B', 10)
+    pdf.set_text_color(150, 150, 150)
+    pdf.cell(0, 10, txt="PREPARADO POR:", ln=True, align='R')
+    pdf.set_font("helvetica", 'B', 14)
+    pdf.set_text_color(255, 255, 255)
+    pdf.cell(0, 10, txt=user_name.upper(), ln=True, align='R')
+    
+    pdf.ln(5)
+    pdf.set_font("helvetica", 'B', 9)
     pdf.set_text_color(100, 100, 100)
-    pdf.cell(0, 10, txt="INFORME ESTRATÉGICO DE NEGOCIO", ln=True)
-    
-    pdf.set_y(250)
-    pdf.set_font("helvetica", 'B', 12)
-    pdf.set_text_color(20, 80, 160)
-    pdf.cell(0, 10, txt=f"CONSULTOR: {user_name.upper()}", ln=True, align='R')
-    pdf.set_font("helvetica", '', 10)
-    pdf.cell(0, 5, txt=f"GENERADO POR AGENTE BI V2.5", ln=True, align='R')
+    pdf.cell(0, 5, txt=f"VEKTRA BI ENGINE | {datetime.now().strftime('%Y')}", ln=True, align='R')
 
     # --- RESUMEN EJECUTIVO ---
     pdf.add_page()
@@ -107,7 +272,7 @@ def generate_pro_report(title: str, summary: str, user_name: str, items: list):
     
     pdf.set_font("helvetica", '', 11)
     pdf.set_text_color(0, 0, 0)
-    summary_clean = summary.encode('latin-1', 'replace').decode('latin-1')
+    summary_clean = clean_text(summary)
     pdf.multi_cell(0, 7, txt=summary_clean)
 
     # --- HALLAZGOS Y VISUALIZACIONES ---
@@ -129,20 +294,19 @@ def generate_pro_report(title: str, summary: str, user_name: str, items: list):
             first_line = item['content'].split('\n')[0].strip('# ').strip()
             item_title = first_line if len(first_line) > 5 else f"Análisis de Datos {i+1}"
             
-        pdf.multi_cell(0, 10, txt=item_title.upper())
+        pdf.multi_cell(0, 10, txt=clean_text(item_title).upper())
         pdf.ln(2)
         
-        # Explicación
+        # Explicación (Limpia de Markdown)
         pdf.set_font("helvetica", '', 10)
-        pdf.set_text_color(30, 30, 30)
-        # Limpieza de caracteres para Latin-1 (FPDF estándar)
-        content = item['content'].encode('latin-1', 'replace').decode('latin-1')
+        pdf.set_text_color(50, 50, 50)
+        content = clean_text(item['content'])
         pdf.multi_cell(0, 6, txt=content)
         pdf.ln(5)
         
         # Gráfico
         if item.get('fig'):
-            img_bytes = export_plotly_to_image(json.dumps(item['fig']))
+            img_bytes = export_plotly_to_image(item['fig'])
             if img_bytes:
                 with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmp:
                     tmp.write(img_bytes)
@@ -163,10 +327,30 @@ def generate_pro_report(title: str, summary: str, user_name: str, items: list):
     return pdf.output()
 
 def clean_text(text: str):
-    """Limpia el texto para que sea compatible con Latin-1 (fuentes estándar de FPDF)"""
+    """Limpia el texto eliminando artefactos de markdown y caracteres no soportados por latin-1"""
     if not text: return ""
-    # Reemplazar caracteres comunes que dan problemas
-    text = text.replace("•", "-").replace("—", "-").replace("“", '"').replace("”", '"').replace("‘", "'").replace("’", "'")
+    
+    # 1. Eliminar artefactos de Markdown comunes
+    import re
+    # Eliminar #, ##, ### del inicio de las líneas
+    text = re.sub(r'^#+\s*', '', text, flags=re.MULTILINE)
+    # Eliminar ** (negritas)
+    text = text.replace("**", "")
+    # Eliminar * (itálicas o bullets)
+    text = text.replace("* ", " - ")
+    
+    # 2. Reemplazar caracteres especiales por equivalentes seguros
+    replacements = {
+        "•": "-", "—": "-", "–": "-",
+        "“": '"', "”": '"', "‘": "'", "’": "'",
+        "💡": "INFO:", "⚠️": "ATENCION:", "🚀": "TIP:", 
+        "🔍": "ANALISIS:", "🎯": "OBJETIVO:", "⚡": "ALERTA:",
+        "🏁": "ACCION:", "📊": "DATA:"
+    }
+    for char, replacement in replacements.items():
+        text = text.replace(char, replacement)
+        
+    # 3. Codificar de forma segura para FPDF (Latin-1)
     return text.encode('latin-1', 'replace').decode('latin-1')
 
 def generate_simulation_pdf(title: str, hypothesis: str, report: str, debate_messages: list):
