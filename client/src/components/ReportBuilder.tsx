@@ -10,9 +10,10 @@ interface ReportBuilderProps {
     onClose: () => void;
     messages: Message[];
     userId: string;
+    userName: string;
 }
 
-export function ReportBuilder({ isOpen, onClose, messages, userId }: ReportBuilderProps) {
+export function ReportBuilder({ isOpen, onClose, messages, userId, userName }: ReportBuilderProps) {
     const { apiKey } = useDashboard();
     const [title, setTitle] = useState("Informe Ejecutivo de Análisis BI");
     const [summary, setSummary] = useState("");
@@ -65,6 +66,7 @@ export function ReportBuilder({ isOpen, onClose, messages, userId }: ReportBuild
 
             const reportData = {
                 user_id: userId,
+                user_name: userName,
                 title,
                 summary,
                 items

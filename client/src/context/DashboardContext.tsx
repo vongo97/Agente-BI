@@ -49,6 +49,7 @@ interface DashboardContextType {
     filters: Record<string, string | number | null>;
     setFilters: (filters: Record<string, string | number | null> | ((prev: any) => any)) => void;
     userId: string;
+    userName: string;
 }
 
 const DashboardContext = createContext<DashboardContextType | undefined>(undefined);
@@ -56,6 +57,7 @@ const DashboardContext = createContext<DashboardContextType | undefined>(undefin
 export function DashboardProvider({ children }: { children: React.ReactNode }) {
     const { data: session } = useSession();
     const userId = session?.user?.email || "invitado@agente-bi.local";
+    const userName = session?.user?.name || userId;
     const [apiKey, setApiKey] = useState("");
     const [mistralKey, setMistralKey] = useState("");
     const [aiProvider, setAiProvider] = useState<"gemini" | "mistral" | "hybrid">("gemini");
@@ -195,7 +197,7 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
             filters, setFilters,
             showAiSuggestions, setShowAiSuggestions,
             autoSuggestionsEnabled, setAutoSuggestionsEnabled,
-            userId
+            userId, userName
         }}>
             {children}
         </DashboardContext.Provider>

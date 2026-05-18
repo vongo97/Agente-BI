@@ -42,6 +42,7 @@ export function Chat() {
     const scrollRef = useRef<HTMLDivElement>(null);
 
     const userId = session?.user?.email || "default_user";
+    const userName = session?.user?.name || userId;
 
     useEffect(() => {
         if (scrollRef.current) {
@@ -272,6 +273,7 @@ export function Chat() {
                 onClose={() => setReportBuilderOpen(false)}
                 messages={messages}
                 userId={userId}
+                userName={userName}
             />
         </div>
     );

@@ -50,6 +50,7 @@ async def export_pro_report(data: dict):
     Genera un Reporte PDF Profesional basado en los datos curados por el usuario.
     """
     user_id = data.get("user_id", "Invitado")
+    user_name = data.get("user_name", user_id)
     title = data.get("title", "Informe de Análisis BI")
     summary = data.get("summary", "")
     items = data.get("items", []) # Lista de {content, fig}
@@ -57,7 +58,7 @@ async def export_pro_report(data: dict):
     from src.utils.exporter import generate_pro_report
     
     try:
-        pdf_bytes = generate_pro_report(title, summary, user_id, items)
+        pdf_bytes = generate_pro_report(title, summary, user_name, items)
         return Response(
             content=bytes(pdf_bytes),
             media_type="application/pdf",

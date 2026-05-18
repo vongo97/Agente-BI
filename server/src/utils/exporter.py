@@ -255,7 +255,15 @@ def generate_pro_report(title: str, summary: str, user_name: str, items: list):
     pdf.cell(0, 10, txt="PREPARADO POR:", ln=True, align='R')
     pdf.set_font("helvetica", 'B', 14)
     pdf.set_text_color(255, 255, 255)
-    pdf.cell(0, 10, txt=user_name.upper(), ln=True, align='R')
+    
+    # Formatear el nombre por si es un correo
+    formatted_name = user_name
+    if "@" in formatted_name:
+        formatted_name = formatted_name.split("@")[0]
+        formatted_name = re.sub(r'\d+$', '', formatted_name)
+        formatted_name = formatted_name.replace(".", " ").replace("_", " ")
+        
+    pdf.cell(0, 10, txt=formatted_name.upper(), ln=True, align='R')
     
     pdf.ln(5)
     pdf.set_font("helvetica", 'B', 9)
