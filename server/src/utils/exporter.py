@@ -41,7 +41,7 @@ def export_plotly_to_image(fig_data: any, format: str = "png"):
 
         # Intentar exportar usando kaleido
         print(f"[DEBUG EXPORT] Intentando kaleido para gráfico con {len(fig.data)} trazas...")
-        img_bytes = pio.to_image(fig, format=format, engine="kaleido", scale=2)
+        img_bytes = pio.to_image(fig, format=format, engine="kaleido", scale=4)
         print(f"[DEBUG EXPORT] EXITO: {len(img_bytes)} bytes generados con Kaleido")
         return img_bytes
     except Exception as e:
@@ -174,7 +174,7 @@ def export_to_image_matplotlib_fallback(fig_dict: dict):
         plt.tight_layout()
         
         img_buffer = io.BytesIO()
-        plt.savefig(img_buffer, format='png', dpi=200, bbox_inches='tight')
+        plt.savefig(img_buffer, format='png', dpi=400, bbox_inches='tight')
         plt.close()
         
         return img_buffer.getvalue()
