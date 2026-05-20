@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { X, FileText, Download, Sparkles, Loader2, CheckCircle2 } from "lucide-react";
-import { generateReportSummary, exportProfessionalReport } from "@/lib/api";
+import { generateReportSummary, exportProfessionalReport, exportProfessionalPptx } from "@/lib/api";
 import { useDashboard, Message } from "@/context/DashboardContext";
 
 interface ReportBuilderProps {
@@ -19,6 +19,7 @@ export function ReportBuilder({ isOpen, onClose, messages, userId, userName }: R
     const [summary, setSummary] = useState("");
     const [generatingSummary, setGeneratingSummary] = useState(false);
     const [exporting, setExporting] = useState(false);
+    const [exportingPptx, setExportingPptx] = useState(false);
     const [selectedMessageIds, setSelectedMessageIds] = useState<number[]>([]);
 
     if (!isOpen) return null;
@@ -49,13 +50,15 @@ export function ReportBuilder({ isOpen, onClose, messages, userId, userName }: R
         }
     };
 
-    const handleExport = async () => {
+    const handleExport = async (format: 'pdf' | 'pptx' = 'pdf') => {
         if (selectedMessageIds.length === 0) {
             alert("Selecciona al menos un gráfico para el reporte.");
             return;
         }
 
-        setExporting(true);
+        if (format === 'pdf') setExporting(true);
+        else setExportingPptx(true);
+        
         try {
             const items = messages
                 .filter(m => selectedMessageIds.includes(m.id!))
@@ -72,19 +75,26 @@ export function ReportBuilder({ isOpen, onClose, messages, userId, userName }: R
                 items
             };
 
-            const blob = await exportProfessionalReport(reportData);
+            let blob;
+            if (format === 'pdf') {
+                blob = await exportProfessionalReport(reportData);
+            } else {
+                blob = await exportProfessionalPptx(reportData);
+            }
+            
             const url = window.URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = `reporte_profesional_${Date.now()}.pdf`;
+            a.download = `reporte_profesional_${Date.now()}.${format}`;
             document.body.appendChild(a);
             a.click();
             window.URL.revokeObjectURL(url);
             onClose();
         } catch (error) {
-            alert("Error al exportar el reporte profesional");
+            alert(`Error al exportar el reporte profesional a ${format.toUpperCase()}`);
         } finally {
-            setExporting(false);
+            if (format === 'pdf') setExporting(false);
+            else setExportingPptx(false);
         }
     };
 
@@ -174,24 +184,41 @@ export function ReportBuilder({ isOpen, onClose, messages, userId, userName }: R
                     </div>
                 </div>
 
-                <footer className="p-6 bg-white/[0.02] border-t border-white/5 flex items-center justify-end gap-4">
-                    <button onClick={onClose} className="px-6 py-2.5 text-xs font-black text-gray-500 uppercase tracking-widest hover:text-white transition-colors">
+                <footer className="p-6 bg-white/[0.02] border-t border-white/5 flex items-center justify-end gap-3">
+                    <button onClick={onClose} className="px-4 py-2.5 text-xs font-black text-gray-500 uppercase tracking-widest hover:text-white transition-colors">
                         Cancelar
                     </button>
                     <button
-                        onClick={handleExport}
-                        disabled={exporting || selectedMessageIds.length === 0}
-                        className="flex items-center gap-3 bg-blue-600 hover:bg-blue-500 disabled:bg-gray-800 disabled:text-gray-600 text-white font-bold px-8 py-3 rounded-xl shadow-xl shadow-blue-500/20 transition-all font-sans text-xs uppercase tracking-widest"
+                        onClick={() => handleExport('pdf')}
+                        disabled={exporting || exportingPptx || selectedMessageIds.length === 0}
+                        className="flex items-center gap-2 bg-slate-800 hover:bg-slate-700 disabled:bg-gray-800 disabled:text-gray-600 text-white font-bold px-6 py-3 rounded-xl transition-all font-sans text-xs uppercase tracking-widest border border-white/10"
                     >
                         {exporting ? (
                             <>
                                 <Loader2 className="w-4 h-4 animate-spin" />
-                                Generando...
+                                PDF...
                             </>
                         ) : (
                             <>
                                 <Download className="w-4 h-4" />
-                                Exportar Reporte Pro
+                                Exportar PDF
+                            </>
+                        )}
+                    </button>
+                    <button
+                        onClick={() => handleExport('pptx')}
+                        disabled={exporting || exportingPptx || selectedMessageIds.length === 0}
+                        className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 disabled:bg-gray-800 disabled:text-gray-600 text-white font-bold px-6 py-3 rounded-xl shadow-xl shadow-blue-500/20 transition-all font-sans text-xs uppercase tracking-widest"
+                    >
+                        {exportingPptx ? (
+                            <>
+                                <Loader2 className="w-4 h-4 animate-spin" />
+                                PPTX...
+                            </>
+                        ) : (
+                            <>
+                                <Download className="w-4 h-4" />
+                                Exportar PPTX
                             </>
                         )}
                     </button>

@@ -71,15 +71,18 @@ async def export_pro_report(data: dict):
 
 @router.post("/export-pptx")
 async def export_pptx(data: dict):
-    content = data.get("content")
-    if not content:
+    title = data.get("title", "Reporte Ejecutivo")
+    summary = data.get("summary", "")
+    items = data.get("items", [])
+    
+    if not items:
         raise HTTPException(status_code=400, detail="Contenido no proporcionado")
     
     import tempfile
     with tempfile.NamedTemporaryFile(delete=False, suffix=".pptx") as tmp:
         temp_path = tmp.name
     
-    success, result = create_presentation(content, temp_path)
+    success, result = create_presentation(title, summary, items, temp_path)
     
     if not success:
         if os.path.exists(temp_path): os.remove(temp_path)

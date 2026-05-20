@@ -174,6 +174,16 @@ export async function exportProfessionalReport(reportData: any) {
   return response.blob();
 }
 
+export async function exportProfessionalPptx(reportData: any) {
+  const response = await fetch(`${API_URL}/export-pptx`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(reportData),
+  });
+  if (!response.ok) throw new Error("Error exportando PPTX profesional");
+  return response.blob();
+}
+
 export async function generateAutoDashboard(apiKey: string, userId: string, dataSourceId?: number, chatId?: number, provider?: "gemini" | "mistral" | "hybrid", mistralKey?: string) {
   const formData = new FormData();
   formData.append("api_key", apiKey);
