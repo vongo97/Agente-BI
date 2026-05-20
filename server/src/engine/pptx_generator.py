@@ -34,10 +34,15 @@ def create_presentation(title, summary, items, output_path, template_path="templ
             cover = prs.slides[0]
             if cover.shapes.title:
                 cover.shapes.title.text = title
+                # Bajar tamaño si el título es muy largo
+                if len(title) > 30 and len(cover.shapes.title.text_frame.paragraphs) > 0:
+                    cover.shapes.title.text_frame.paragraphs[0].font.size = Pt(36)
             # Buscar placeholders para el resumen
             for shape in cover.placeholders:
                 if shape.shape_type == 14 and shape != cover.shapes.title: # Placeholder de texto
                     shape.text = summary
+                    if len(shape.text_frame.paragraphs) > 0:
+                        shape.text_frame.paragraphs[0].font.size = Pt(14)
                     break
         else:
             # Crear portada por defecto si la plantilla está totalmente vacía
@@ -51,7 +56,7 @@ def create_presentation(title, summary, items, output_path, template_path="templ
             content_text = item.get("content", "")
             fig_data = item.get("fig")
             
-            # Usar layout 5 (Title Only)
+            # Usar layout 5 (Title Only) o el 1 (Title and Content)
             layout = prs.slide_layouts[5] if len(prs.slide_layouts) > 5 else prs.slide_layouts[1]
             slide = prs.slides.add_slide(layout)
             
@@ -65,9 +70,12 @@ def create_presentation(title, summary, items, output_path, template_path="templ
                     
             if slide.shapes.title:
                 slide.shapes.title.text = slide_title
+                # IMPORTANTE: Forzar el tamaño de la fuente para que no aplaste el resto (28 Pt)
+                for paragraph in slide.shapes.title.text_frame.paragraphs:
+                    paragraph.font.size = Pt(28)
                 
-            # Insertar Texto a la izquierda
-            txBox = slide.shapes.add_textbox(Inches(0.5), Inches(1.5), Inches(4), Inches(5))
+            # Insertar Texto a la izquierda (Movido más abajo a Y=2.2)
+            txBox = slide.shapes.add_textbox(Inches(0.5), Inches(2.2), Inches(4.0), Inches(4.5))
             tf = txBox.text_frame
             tf.word_wrap = True
             
@@ -79,7 +87,7 @@ def create_presentation(title, summary, items, output_path, template_path="templ
                 p.font.size = Pt(12)
                 p.font.color.rgb = RGBColor(100, 116, 139) # Slate 500 para legibilidad
                 
-            # Insertar Gráfico a la derecha
+            # Insertar Gráfico a la derecha (Movido más abajo a Y=2.2)
             if fig_data:
                 img_bytes = export_plotly_to_image(fig_data)
                 if img_bytes:
@@ -87,8 +95,8 @@ def create_presentation(title, summary, items, output_path, template_path="templ
                         tmp.write(img_bytes)
                         tmp_path = tmp.name
                     try:
-                        # Insertar imagen (ancho de 8 pulgadas max para encajar)
-                        slide.shapes.add_picture(tmp_path, Inches(4.8), Inches(1.5), width=Inches(8))
+                        # Insertar imagen alineada con el texto (ancho máx 8)
+                        slide.shapes.add_picture(tmp_path, Inches(4.8), Inches(2.2), width=Inches(8))
                     finally:
                         if os.path.exists(tmp_path):
                             os.remove(tmp_path)

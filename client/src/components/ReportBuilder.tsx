@@ -19,7 +19,9 @@ export function ReportBuilder({ isOpen, onClose, messages, userId, userName }: R
     const [summary, setSummary] = useState("");
     const [generatingSummary, setGeneratingSummary] = useState(false);
     const [exporting, setExporting] = useState(false);
+    const [exporting, setExporting] = useState(false);
     const [exportingPptx, setExportingPptx] = useState(false);
+    const [selectedTemplate, setSelectedTemplate] = useState<"general" | "legal">("general");
     const [selectedMessageIds, setSelectedMessageIds] = useState<number[]>([]);
 
     if (!isOpen) return null;
@@ -72,7 +74,8 @@ export function ReportBuilder({ isOpen, onClose, messages, userId, userName }: R
                 user_name: userName,
                 title,
                 summary,
-                items
+                items,
+                template: selectedTemplate
             };
 
             let blob;
@@ -184,44 +187,58 @@ export function ReportBuilder({ isOpen, onClose, messages, userId, userName }: R
                     </div>
                 </div>
 
-                <footer className="p-6 bg-white/[0.02] border-t border-white/5 flex items-center justify-end gap-3">
-                    <button onClick={onClose} className="px-4 py-2.5 text-xs font-black text-gray-500 uppercase tracking-widest hover:text-white transition-colors">
-                        Cancelar
-                    </button>
-                    <button
-                        onClick={() => handleExport('pdf')}
-                        disabled={exporting || exportingPptx || selectedMessageIds.length === 0}
-                        className="flex items-center gap-2 bg-slate-800 hover:bg-slate-700 disabled:bg-gray-800 disabled:text-gray-600 text-white font-bold px-6 py-3 rounded-xl transition-all font-sans text-xs uppercase tracking-widest border border-white/10"
-                    >
-                        {exporting ? (
-                            <>
-                                <Loader2 className="w-4 h-4 animate-spin" />
-                                PDF...
-                            </>
-                        ) : (
-                            <>
-                                <Download className="w-4 h-4" />
-                                Exportar PDF
-                            </>
-                        )}
-                    </button>
-                    <button
-                        onClick={() => handleExport('pptx')}
-                        disabled={exporting || exportingPptx || selectedMessageIds.length === 0}
-                        className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 disabled:bg-gray-800 disabled:text-gray-600 text-white font-bold px-6 py-3 rounded-xl shadow-xl shadow-blue-500/20 transition-all font-sans text-xs uppercase tracking-widest"
-                    >
-                        {exportingPptx ? (
-                            <>
-                                <Loader2 className="w-4 h-4 animate-spin" />
-                                PPTX...
-                            </>
-                        ) : (
-                            <>
-                                <Download className="w-4 h-4" />
-                                Exportar PPTX
-                            </>
-                        )}
-                    </button>
+                <footer className="p-6 bg-white/[0.02] border-t border-white/5 flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-3">
+                        <label className="text-xs font-bold text-gray-400 uppercase tracking-widest">Plantilla PPTX:</label>
+                        <select 
+                            value={selectedTemplate}
+                            onChange={(e) => setSelectedTemplate(e.target.value as "general" | "legal")}
+                            className="bg-slate-800 border border-white/10 text-white text-xs font-bold rounded-lg px-3 py-2 outline-none focus:border-blue-500 transition-colors"
+                        >
+                            <option value="general">Vektra General</option>
+                            <option value="legal">Firma Legal</option>
+                        </select>
+                    </div>
+                    
+                    <div className="flex items-center gap-3">
+                        <button onClick={onClose} className="px-4 py-2.5 text-xs font-black text-gray-500 uppercase tracking-widest hover:text-white transition-colors">
+                            Cancelar
+                        </button>
+                        <button
+                            onClick={() => handleExport('pdf')}
+                            disabled={exporting || exportingPptx || selectedMessageIds.length === 0}
+                            className="flex items-center gap-2 bg-slate-800 hover:bg-slate-700 disabled:bg-gray-800 disabled:text-gray-600 text-white font-bold px-6 py-3 rounded-xl transition-all font-sans text-xs uppercase tracking-widest border border-white/10"
+                        >
+                            {exporting ? (
+                                <>
+                                    <Loader2 className="w-4 h-4 animate-spin" />
+                                    PDF...
+                                </>
+                            ) : (
+                                <>
+                                    <Download className="w-4 h-4" />
+                                    Exportar PDF
+                                </>
+                            )}
+                        </button>
+                        <button
+                            onClick={() => handleExport('pptx')}
+                            disabled={exporting || exportingPptx || selectedMessageIds.length === 0}
+                            className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 disabled:bg-gray-800 disabled:text-gray-600 text-white font-bold px-6 py-3 rounded-xl shadow-xl shadow-blue-500/20 transition-all font-sans text-xs uppercase tracking-widest"
+                        >
+                            {exportingPptx ? (
+                                <>
+                                    <Loader2 className="w-4 h-4 animate-spin" />
+                                    PPTX...
+                                </>
+                            ) : (
+                                <>
+                                    <Download className="w-4 h-4" />
+                                    Exportar PPTX
+                                </>
+                            )}
+                        </button>
+                    </div>
                 </footer>
             </div>
         </div>
