@@ -138,11 +138,11 @@ def analyze_data(data_context, query, api_key, chat_history=[], mode="file", pro
     try:
         # 1. Configuración de Roles y Proveedores
         if provider == "hybrid":
-            if not mistral_key: return "⚠️ Error: Configura tu Mistral Key en Ajustes."
+            if not mistral_key: return "⚠️ Error: Configura tu Mistral Key en Ajustes.", None, None
             eng_provider, eng_key = "gemini", api_key
             str_provider, str_key = "mistral", mistral_key
         elif provider == "mistral":
-            if not mistral_key: return "⚠️ Error: Configura tu Mistral Key."
+            if not mistral_key: return "⚠️ Error: Configura tu Mistral Key.", None, None
             eng_provider, eng_key = "mistral", mistral_key
             str_provider, str_key = "mistral", mistral_key
         else:
@@ -209,7 +209,7 @@ def analyze_data(data_context, query, api_key, chat_history=[], mode="file", pro
                 p += f"\n\n⚠️ **ERROR ANTERIOR**: {real_results}\nCorrige el código. Evita .str en fechas."
 
             raw = generate_ai_content(p, eng_key, eng_provider, model_level="ANALYTICS")
-            if not raw or "⚠️" in raw: return raw or "⚠️ Error en IA."
+            if not raw or "⚠️" in raw: return raw or "⚠️ Error en IA.", None, None
             
             temp_text, fig = executor.execute_analysis(data_context, raw, data_var)
             
