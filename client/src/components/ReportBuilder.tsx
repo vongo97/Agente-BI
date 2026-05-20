@@ -19,7 +19,6 @@ export function ReportBuilder({ isOpen, onClose, messages, userId, userName }: R
     const [summary, setSummary] = useState("");
     const [generatingSummary, setGeneratingSummary] = useState(false);
     const [exporting, setExporting] = useState(false);
-    const [exporting, setExporting] = useState(false);
     const [exportingPptx, setExportingPptx] = useState(false);
     const [selectedTemplate, setSelectedTemplate] = useState<"general" | "legal">("general");
     const [selectedMessageIds, setSelectedMessageIds] = useState<number[]>([]);
