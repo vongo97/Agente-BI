@@ -19,13 +19,19 @@ export function ChatInput({
         <div className="p-4 lg:p-8 pb-8 lg:pb-12 bg-gradient-to-t from-[var(--bg-primary)] via-[var(--bg-primary)] to-transparent">
             <div className="max-w-4xl mx-auto relative group">
                 <div className="absolute -inset-1 bg-gradient-to-r from-blue-600 to-indigo-600 rounded-2xl blur opacity-20 group-hover:opacity-40 transition duration-1000 group-focus-within:opacity-50"></div>
-                <input
+                <textarea
                     value={input}
                     onChange={(e) => setInput(e.target.value)}
-                    onKeyDown={(e) => e.key === 'Enter' && handleSend()}
-                    placeholder={dataSourcesCount > 0 ? "Escribe tu pregunta estratégica..." : "Suba un archivo para comenzar..."}
+                    onKeyDown={(e) => {
+                        if (e.key === 'Enter' && !e.shiftKey) {
+                            e.preventDefault();
+                            handleSend();
+                        }
+                    }}
+                    rows={2}
+                    placeholder={dataSourcesCount > 0 ? "Escribe tu pregunta estratégica (Shift+Enter para nueva línea)..." : "Suba un archivo para comenzar..."}
                     disabled={dataSourcesCount === 0 || loading}
-                    className="relative w-full bg-[var(--bg-secondary)] border border-[var(--border-color)] rounded-2xl px-6 py-5 pr-16 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-tertiary)] focus:outline-none focus:border-blue-500/50 transition-all shadow-3xl disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="relative w-full resize-none custom-scrollbar bg-[var(--bg-secondary)] border border-[var(--border-color)] rounded-2xl px-6 py-4 pr-16 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-tertiary)] focus:outline-none focus:border-blue-500/50 transition-all shadow-3xl disabled:opacity-50 disabled:cursor-not-allowed"
                 />
                 <button
                     onClick={handleSend}
