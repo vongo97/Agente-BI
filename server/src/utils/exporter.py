@@ -12,11 +12,25 @@ def export_plotly_to_image(fig_data: any, format: str = "png"):
     """
     Convierte un objeto/dict de Plotly a bytes de imagen (PNG).
     """
+    import unicodedata
+
+    def remove_accents(obj):
+        if isinstance(obj, dict):
+            return {k: remove_accents(v) for k, v in obj.items()}
+        elif isinstance(obj, list):
+            return [remove_accents(i) for i in obj]
+        elif isinstance(obj, str):
+            return ''.join(c for c in unicodedata.normalize('NFD', obj) if unicodedata.category(c) != 'Mn')
+        return obj
+
     try:
         # Si ya es un dict, no necesitamos json.loads
         fig_dict = fig_data
         if isinstance(fig_data, str):
             fig_dict = json.loads(fig_data)
+            
+        # Parche UTF-8: Kaleido a veces corrompe tildes en Windows con ciertas fuentes
+        fig_dict = remove_accents(fig_dict)
         
         # Asegurar que tenemos data y layout
         if 'data' not in fig_dict:
@@ -29,7 +43,7 @@ def export_plotly_to_image(fig_data: any, format: str = "png"):
         fig.update_layout(
             paper_bgcolor='white', 
             plot_bgcolor='#f9fafb', 
-            font={'color': '#111827', 'family': 'Helvetica', 'size': 12},
+            font={'color': '#111827', 'family': 'Arial, sans-serif', 'size': 12},
             margin=dict(l=50, r=50, t=80, b=50),
             width=800,
             height=500
@@ -305,12 +319,46 @@ def generate_pro_report(title: str, summary: str, user_name: str, items: list):
         pdf.multi_cell(0, 10, txt=clean_text(item_title).upper())
         pdf.ln(2)
         
-        # Explicación (Limpia de Markdown)
-        pdf.set_font("helvetica", '', 10)
-        pdf.set_text_color(50, 50, 50)
+        # Explicación y Tablas
         content = clean_text(item['content'])
-        pdf.multi_cell(0, 6, txt=content)
-        pdf.ln(5)
+        lines = content.split('\n')
+        text_block = []
+        
+        for line in lines:
+            line_str = line.strip()
+            # Detectar fila de tabla markdown
+            if line_str.startswith('|') and line_str.endswith('|'):
+                # Imprimir el bloque de texto acumulado
+                if text_block:
+                    pdf.set_font("helvetica", '', 10)
+                    pdf.set_text_color(50, 50, 50)
+                    pdf.multi_cell(0, 6, txt='\n'.join(text_block))
+                    pdf.ln(3)
+                    text_block = []
+                
+                cells = [c.strip() for c in line_str.split('|')[1:-1]]
+                # Ignorar separadores como |---|---|
+                if all(c.replace('-', '').replace(':', '').strip() == '' for c in cells if c):
+                    continue
+                
+                # Renderizar fila de tabla
+                pdf.set_font("helvetica", '', 8)
+                pdf.set_text_color(20, 20, 20)
+                col_w = (pdf.w - 2 * pdf.l_margin) / max(1, len(cells))
+                
+                # Intentar limpiar más cada celda por seguridad (sin pipes raros)
+                for cell in cells:
+                    pdf.cell(col_w, 6, txt=cell[:45], border=1) # Truncar a 45 chars para que quepa en la celda FPDF
+                pdf.ln(6)
+            else:
+                text_block.append(line)
+                
+        # Imprimir bloque restante
+        if text_block:
+            pdf.set_font("helvetica", '', 10)
+            pdf.set_text_color(50, 50, 50)
+            pdf.multi_cell(0, 6, txt='\n'.join(text_block))
+            pdf.ln(5)
         
         # Gráfico
         if item.get('fig'):
@@ -340,6 +388,9 @@ def clean_text(text: str):
     
     # 1. Eliminar artefactos de Markdown comunes
     import re
+    # Eliminar etiquetas internas del sistema y sus subtítulos (ej: "DATA: Diagnóstico Estratégico:")
+    text = re.sub(r'^(DATA|ANALISIS|INFO|REGLA DE ORO|RECOMENDACIONES):\s*([^\n]*?:\s*)?', '', text, flags=re.MULTILINE|re.IGNORECASE)
+    
     # Eliminar #, ##, ### del inicio de las líneas
     text = re.sub(r'^#+\s*', '', text, flags=re.MULTILINE)
     # Eliminar ** (negritas)
