@@ -186,18 +186,20 @@ def analyze_data(data_context, query, api_key, chat_history=[], mode="file", pro
         Eres un Analista BI Experto. Objetivo: "{query}"
         {focus_instruction}
 
-        ESTRUCTURA:
+        ESTRUCTURA DE DATOS:
         {data_info}
 
-        REGLAS:
-        1. Usa el diccionario 'dfs' (ej: df1 = dfs['nombre_tabla']).
-        2. Plotly para gráficos. Asígnalo a 'fig'.
-        3. No uses matplotlib. Responde en Español.
-
-        MUESTRA:
+        REGLAS CRÍTICAS PARA GENERACIÓN DE CÓDIGO:
+        1. DEBES usar el diccionario 'dfs' (ej: df1 = dfs['nombre_tabla']).
+        2. Visualización: Genera SIEMPRE un gráfico interactivo con Plotly Express (`px`) y guárdalo obligatoriamente en la variable `fig`.
+        3. NO uses matplotlib.
+        
+        MUESTRA DE DATOS:
         {json.dumps(head_info, indent=2, cls=SafeJSONEncoder)}
 
-        Formato: Razonamiento y ```python ... ```
+        OUTPUT REQUERIDO:
+        Devuelve ÚNICAMENTE el código Python dentro de un bloque ```python
+        NO devuelvas texto explicativo, solo el bloque de código.
         """
                 data_var = "dfs"
             else:
