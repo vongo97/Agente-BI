@@ -27,6 +27,7 @@ REGLAS DE SALIDA:
 - Resultados: Guarda un resumen textual en `analysis_text`.
 - **Indentación**: Escribe el código empezando siempre en la columna 0. NO añadidas espacios extra al inicio de las líneas fuera de bloques (if/for/def).
 - **Estadística Avanzada**: Tienes permiso para usar `scipy.stats` o `statsmodels` para cálculos de significancia o correlaciones.
+- **FIDELIDAD DE EJES**: Al hacer gráficas de barras (bar) o líneas (line), usa EXACTAMENTE el nombre de la columna para 'x' e 'y'. NO asumas que 'Patrimonio' es 'Ingresos'.
 - Si no encuentras una columna, imprime `print("ERROR: Columna no encontrada")` y explica qué columnas ves.
 
 Devuelve SOLO el código Python en un bloque ```python.
@@ -173,6 +174,7 @@ IMPORTANTE:
 - Crea la figura en la variable `fig`.
 - Usa `template='plotly_dark'`.
 - NO hagas `fig.show()`.
+- **ANTI-ALUCINACIÓN DE DATOS**: Al mapear `x` e `y` o `color`, DEBES usar EXACTAMENTE las columnas que existen en `df`. Si graficas 'Ingresos', asegúrate de pasar la columna de ingresos reales (ej: 'Ingresos Operacionales') y NO la de 'Patrimonio' o 'Pérdida Neta'. Revisa el nombre exacto de la columna antes de graficar.
 - Al final, convierte a JSON: `fig_json = fig.to_json()`
 - Solo imprime el JSON final: `print(fig_json)`
 """
