@@ -182,6 +182,15 @@ def analyze_data(data_context, query, api_key, chat_history=[], mode="file", pro
                 data_info = "\n".join(tables_desc)
                 context_str = data_info
                 
+                # Hint de nombres exactos de tablas para evitar KeyError en el código generado
+                table_names_hint = "NOMBRES EXACTOS PARA ACCEDER A LAS TABLAS (cópialos literalmente):\n" + \
+                                   "\n".join([f"  dfs['{name}']" for name in temp_context.keys()])
+                
+                # Hint de tabla primaria si hay una fuente seleccionada
+                primary_hint = ""
+                if primary_source_name and primary_source_name in temp_context:
+                    primary_hint = f"\n⭐ TABLA PRINCIPAL PARA ESTA CONSULTA: dfs['{primary_source_name}']"
+                
                 p = f"""
         Eres un Analista BI Experto. Objetivo: "{query}"
         {focus_instruction}
@@ -189,8 +198,10 @@ def analyze_data(data_context, query, api_key, chat_history=[], mode="file", pro
         ESTRUCTURA DE DATOS:
         {data_info}
 
+        {table_names_hint}{primary_hint}
+
         REGLAS CRÍTICAS PARA GENERACIÓN DE CÓDIGO:
-        1. DEBES usar el diccionario 'dfs' (ej: df1 = dfs['nombre_tabla']).
+        1. DEBES usar el diccionario 'dfs' con los nombres EXACTOS de la lista anterior (ej: df1 = dfs['nombre_tabla']).
         2. Visualización: Genera SIEMPRE un gráfico interactivo con Plotly Express (`px`) y guárdalo obligatoriamente en la variable `fig`.
         3. NO uses matplotlib.
         

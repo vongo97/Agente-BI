@@ -274,6 +274,25 @@ export function Sidebar() {
                         </button>
                     </div>
 
+                    {process.env.NEXT_PUBLIC_ENABLE_VISUAL_SUMMARY === 'true' && (
+                        <button
+                            onClick={() => setView('visual-summary')}
+                            className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl border mb-6 transition-all ${
+                                view === 'visual-summary'
+                                    ? 'bg-blue-600/10 border-blue-500/30 text-blue-400 shadow-md shadow-blue-500/5'
+                                    : 'bg-gradient-to-r from-blue-600/10 to-indigo-600/5 border-blue-500/10 text-gray-400 hover:text-white hover:border-blue-500/20'
+                            }`}
+                        >
+                            <div className="p-1.5 bg-blue-600/20 rounded-lg text-blue-400">
+                                <Sparkles className="w-4 h-4 animate-pulse" />
+                            </div>
+                            <div className="flex-1 text-left">
+                                <span className="text-[10px] font-black uppercase tracking-wider block">Resumen Visual</span>
+                                <span className="text-[8px] text-gray-500 font-bold block">EXPERIMENTO NAPKIN AI</span>
+                            </div>
+                        </button>
+                    )}
+
                     <div className="bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-2xl p-4 flex items-center gap-3 hover:bg-[var(--bg-primary)] transition-colors">
                         <img src={session?.user?.image || ""} className="w-10 h-10 rounded-full border-2 border-blue-600/30" alt="Profile" />
                         <div className="overflow-hidden">

@@ -78,11 +78,29 @@ class SmartDataContext(dict):
         
         import difflib
         available = list(self.raw_data.keys())
-        matches = difflib.get_close_matches(key, available, n=1, cutoff=0.8)
+
+        # NUEVO: Búsqueda por prefijo (maneja '11_P1' vs '11_P1_regiones_top5_departamentos')
+        key_lower = key.lower()
+        prefix_matches = [
+            k for k in available
+            if k.lower().startswith(key_lower) or key_lower.startswith(k.lower())
+        ]
+        if prefix_matches:
+            logger.info(f"Tabla '{key}' vinculada a '{prefix_matches[0]}' por prefijo.")
+            return self.raw_data[prefix_matches[0]]
+
+        # Fuzzy matching con cutoff reducido (era 0.8, ahora 0.5)
+        matches = difflib.get_close_matches(key, available, n=1, cutoff=0.5)
         if matches:
             if matches[0].lower() != key.lower():
                 logger.info(f"Tabla '{key}' vinculada a '{matches[0]}' por similitud.")
             return self.raw_data[matches[0]]
+        
+        # Fallback final: si solo hay una tabla en el pool, devolverla directamente
+        if len(self.raw_data) == 1:
+            only_key = list(self.raw_data.keys())[0]
+            logger.info(f"Tabla '{key}' no encontrada. Usando única tabla disponible: '{only_key}'.")
+            return self.raw_data[only_key]
         
         available = list(self.raw_data.keys())
         msg = f"No existe la tabla '{key}'. "

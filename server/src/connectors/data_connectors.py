@@ -63,7 +63,7 @@ def get_db_schema(engine):
     return schema_info
 
 def _clean_dataframe(df):
-    """Limpieza total y robusta para archivos financieros complejos."""
+    """Limpieza robusta con detección inteligente de header válido."""
     import re
     import unicodedata
 
@@ -74,38 +74,36 @@ def _clean_dataframe(df):
         name = re.sub(r'_+', '_', name).strip('_')
         return name if name else "nan"
 
-    # 1. Limpieza inicial: Eliminar todo lo que esté vacío
-    df = df.dropna(how='all').dropna(axis=1, how='all')
-    
-    # 2. Localizar el Bloque de Datos y el Header
-    if df.shape[0] > 1:
-        # Buscamos la primera fila que tenga al menos un número o fecha
-        for i in range(min(25, len(df))):
-            # Usar vectorización para evitar errores de iteración en floats
+    # 1. Limpieza inicial: Eliminar filas/columnas vacías
+    df = df.dropna(how='all').dropna(axis=1, how='all').reset_index(drop=True)
+    if df.empty:
+        return df
+
+    # 2. Detección de Header:
+    #    - Si las columnas actuales de pandas son strings con letras (caso CSV estándar con header),
+    #      solo slugificamos y seguimos. NO tocamos las filas de datos.
+    #    - Si las columnas son índices numéricos (0, 1, 2...) o son datos mezclados
+    #      (Excel sin header), buscamos el header dentro de las filas.
+    cols_are_numeric = all(
+        str(c).strip().lstrip('-').replace('.', '', 1).isdigit()
+        for c in df.columns
+    )
+
+    if not cols_are_numeric:
+        # ✅ Caso normal: CSV con header correcto → solo normalizar nombres
+        df.columns = [slugify_column(c) for c in df.columns]
+    else:
+        # 🔧 Caso Excel/CSV sin header: buscar la fila que actúa como cabecera
+        for i in range(min(10, len(df))):
             row_as_str = df.iloc[i].astype(str)
-            if row_as_str.str.contains(r'\d').any():
-                # Encontramos datos. Vamos a reconstruir el header fusionando las filas superiores
-                header_rows = []
-                for j in range(max(0, i-3), i):
-                    header_rows.append(df.iloc[j].fillna("").astype(str).tolist())
-                
-                if header_rows:
-                    final_headers = []
-                    num_cols = df.shape[1]
-                    for col_idx in range(num_cols):
-                        # Unir piezas de texto de las filas de cabecera para esta columna
-                        parts = [row[col_idx] for row in header_rows if row[col_idx].strip() and row[col_idx].lower() != 'nan']
-                        full_name = " ".join(parts).strip()
-                        final_headers.append(slugify_column(full_name))
-                    
-                    df.columns = final_headers
-                else:
-                    df.columns = [slugify_column(c) for c in df.iloc[i-1]]
-                
-                df = df.iloc[i:].reset_index(drop=True)
+            # La primera fila con texto puro (sin números) es el header
+            if row_as_str.str.contains(r'[a-zA-Z]').any() and not row_as_str.str.match(r'^\d+\.?\d*$').all():
+                header_data = df.iloc[i].fillna("").astype(str)
+                df.columns = [slugify_column(c) for c in header_data]
+                df = df.iloc[i + 1:].reset_index(drop=True)
                 break
 
-    # 3. Forzar Nombres Únicos
+    # 3. Forzar Nombres Únicos (por si hay columnas duplicadas)
     cols = []
     seen = {}
     for c in df.columns:
@@ -118,58 +116,29 @@ def _clean_dataframe(df):
             cols.append(c_str)
     df.columns = cols
 
-    # 4. RESCATE DE FECHA (Prioridad Máxima)
-    date_col_found = None
+    # 4. Limpieza de datos: convertir columnas numéricas y de fecha
     for col in df.columns:
-        sample = df[col].dropna().head(15)
-        if not sample.empty:
+        if df[col].dtype == 'object':
+            # Intentar conversión numérica
+            cleaned = df[col].astype(str).str.replace(r'[^-0-9,.]', '', regex=True).str.replace(',', '.')
+            num_series = pd.to_numeric(cleaned, errors='coerce')
+            if num_series.notnull().sum() > (len(df) * 0.5):
+                df[col] = num_series
+
+        # Conversión de fecha por nombre de columna
+        if 'fecha' in col.lower() or 'date' in col.lower() or 'mes' in col.lower():
             try:
-                converted = pd.to_datetime(sample, errors='coerce')
-                if converted.notnull().sum() > (len(sample) * 0.6):
-                    if 'fecha' not in str(col).lower():
-                        df = df.rename(columns={col: 'fecha_mes_ano'})
-                        date_col_found = 'fecha_mes_ano'
-                    else:
-                        date_col_found = col
-                    break
-            except: pass
+                df[col] = pd.to_datetime(df[col], errors='coerce')
+            except Exception:
+                pass
 
-    # 5. Limpieza Numérica
-    for col in df.columns:
-        if col == date_col_found: continue
-        try:
-            col_data = df[col]
-            if col_data.dtype == 'object':
-                cleaned = col_data.astype(str).str.replace(r'[^-0-9,.]', '', regex=True).str.replace(',', '.')
-                num_series = pd.to_numeric(cleaned, errors='coerce')
-                if num_series.notnull().sum() > (len(df) * 0.4):
-                    df[col] = num_series
-        except: pass
-
-    # 6. Eliminar columnas que se llamen 'nan' y que estén vacías
-    cols_to_keep = [c for c in df.columns if 'nan' not in str(c).lower() or df[c].notnull().sum() > 0]
-    df = df[cols_to_keep]
-    
-    # 7. Eliminar filas de Metadatos / Notas (Footers)
-    if not df.empty:
-        # Si una fila tiene una celda con más de 50 caracteres y el resto casi vacío, es una nota
+    # 5. Eliminar filas tipo "nota de pie" (texto largo en pocas celdas)
+    if not df.empty and len(df) > 1:
         def is_metadata_note(row):
             text_cells = [str(val) for val in row if len(str(val)) > 50]
-            # Si hay una celda muy larga y pocas celdas con datos reales
             return len(text_cells) >= 1 and row.count() <= 3
-            
         mask = df.apply(is_metadata_note, axis=1)
         df = df[~mask].reset_index(drop=True)
-
-    # 8. Si la primera fila es igual al header, la borramos
-    if not df.empty:
-        try:
-            first_row = df.iloc[0].astype(str).str.lower().tolist()
-            headers = [str(c).lower() for c in df.columns]
-            matches = sum(1 for r, h in zip(first_row, headers) if h in r or r in h)
-            if matches >= (len(df.columns) * 0.6):
-                df = df.iloc[1:].reset_index(drop=True)
-        except: pass
 
     return df
 

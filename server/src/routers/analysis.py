@@ -68,8 +68,14 @@ def analyze(
     
     if session_data is not None and data_source_id and not is_source_in_pool:
         print(f"[DEBUG] Source Mismatch: request={data_source_id} not in pool {session_data.get('sources', [])}")
-        session_data = None
-        
+        # Solo descartar la sesión si el pool está completamente vacío.
+        # Si hay datos cargados (múltiples archivos), mantenerlos para que el agente los use.
+        has_data = bool(session_data.get("data"))
+        if not has_data:
+            session_data = None
+        # Si has_data == True, conservamos session_data para que la segunda pregunta
+        # pueda acceder a los archivos que ya estaban en el pool.
+
     if session_data is None:
         # Intentar auto-cargar desde DataSource si tenemos el ID
         if data_source_id:

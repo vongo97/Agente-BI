@@ -8,6 +8,7 @@ import { Chat } from "@/components/Chat";
 import { DashboardView } from "@/components/DashboardView";
 import { SettingsView } from "@/components/SettingsView";
 import { SimulationSandbox } from "@/components/SimulationSandbox";
+import { VisualSummaryView } from "@/features/visual-summary/VisualSummaryView";
 import { useDashboard } from "@/context/DashboardContext";
 import { Loader2 } from "lucide-react";
 
@@ -38,6 +39,7 @@ export default function Home() {
       case 'dashboard': return <DashboardView />;
       case 'settings': return <SettingsView />;
       case 'simulation': return <SimulationSandbox />;
+      case 'visual-summary': return <VisualSummaryView />;
       default: return <Chat />;
     }
   };

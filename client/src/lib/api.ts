@@ -345,3 +345,29 @@ export async function retrySimulation(simId: number) {
   });
   return handleResponse(response);
 }
+
+export async function generateVisualSummary(
+  text: string,
+  apiKey: string,
+  userId: string,
+  provider: string = "gemini",
+  mistralKey?: string,
+  visualType?: string,
+  mode: string = "rapido"
+) {
+  const formData = new FormData();
+  formData.append("text", text);
+  formData.append("api_key", apiKey);
+  formData.append("user_id", userId);
+  formData.append("provider", provider);
+  if (mistralKey) formData.append("mistral_key", mistralKey);
+  if (visualType) formData.append("visual_type", visualType);
+  formData.append("mode", mode);
+
+  const response = await fetch(`${API_URL}/visual-summary`, {
+    method: "POST",
+    body: formData,
+  });
+  return handleResponse(response);
+}
+

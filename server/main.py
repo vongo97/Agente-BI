@@ -23,7 +23,7 @@ app = FastAPI(title="Vektra BI API (Modular)")
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
-from src.routers import auth, data, analysis, dashboard, exports, simulation
+from src.routers import auth, data, analysis, dashboard, exports, simulation, visual_summary
 
 # Configuración de Logs Estructurados (Fase 2)
 from src.utils.logging_config import setup_logging
@@ -32,8 +32,8 @@ logger = logging.getLogger(__name__)
 
 # Configurar CORS (Seguridad Fase 1)
 ALLOWED_ORIGINS = [
-    "http://localhost:3000",
-    "http://127.0.0.1:3000",
+    "http://localhost:3001",
+    "http://127.0.0.1:3001",
     "https://agente-bi.vercel.app", # Ejemplo de dominio prod
 ]
 
@@ -66,6 +66,7 @@ app.include_router(analysis.router, prefix="/api/v1")
 app.include_router(dashboard.router, prefix="/api/v1")
 app.include_router(exports.router, prefix="/api/v1")
 app.include_router(simulation.router, prefix="/api/v1")
+app.include_router(visual_summary.router, prefix="/api/v1")
 
 # Inicializar Base de Datos
 init_db()

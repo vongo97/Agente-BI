@@ -34,8 +34,8 @@ interface DashboardContextType {
     setMessages: (messages: Message[] | ((prev: Message[]) => Message[])) => void;
     activeChatId: number | null;
     setActiveChatId: (id: number | null) => void;
-    view: 'chat' | 'dashboard' | 'settings' | 'simulation';
-    setView: (view: 'chat' | 'dashboard' | 'settings' | 'simulation') => void;
+    view: 'chat' | 'dashboard' | 'settings' | 'simulation' | 'visual-summary';
+    setView: (view: 'chat' | 'dashboard' | 'settings' | 'simulation' | 'visual-summary') => void;
     showAiSuggestions: boolean;
     setShowAiSuggestions: (show: boolean) => void;
     autoSuggestionsEnabled: boolean;
@@ -65,7 +65,7 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
     const [isSidebarOpen, setSidebarOpen] = useState(false);
     const [messages, setMessages] = useState<Message[]>([]);
     const [activeChatId, setActiveChatId] = useState<number | null>(null);
-    const [view, setView] = useState<'chat' | 'dashboard' | 'settings' | 'simulation'>('chat');
+    const [view, setView] = useState<'chat' | 'dashboard' | 'settings' | 'simulation' | 'visual-summary'>('chat');
     const [showAiSuggestions, setShowAiSuggestions] = useState(true);
     const [autoSuggestionsEnabled, setAutoSuggestionsEnabled] = useState(false);
     const [isServerHealthy, setIsServerHealthy] = useState<boolean | null>(null);
