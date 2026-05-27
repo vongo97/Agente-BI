@@ -218,12 +218,31 @@ def execute_analysis(context_obj, raw_response, var_name):
         
         code_stdout = redirected_output.getvalue().strip()
         fig = exec_globals.get('fig', None)
-        
+
+        # Capturar analysis_text y result_data que el LLM escribe en el código
+        analysis_text = exec_globals.get('analysis_text', None)
+        result_data   = exec_globals.get('result_data', None)
+
         final_text = narrative
-        if code_stdout:
+
+        # Prioridad 1: analysis_text (la variable principal de resultados)
+        if analysis_text:
+            final_text += f"\n\n---\n{str(analysis_text)}"
+        # Prioridad 2: result_data como tabla formateada
+        elif result_data is not None:
+            try:
+                import pandas as _pd
+                if isinstance(result_data, _pd.DataFrame):
+                    final_text += f"\n\n---\n{result_data.to_string(index=False)}"
+                else:
+                    final_text += f"\n\n---\n{str(result_data)}"
+            except Exception:
+                final_text += f"\n\n---\n{str(result_data)}"
+        # Prioridad 3: stdout (print() statements)
+        elif code_stdout:
             if not any(x in code_stdout.lower() for x in ["<class", "memory usage", "object at 0x"]):
                 final_text += f"\n\n---\n{code_stdout}"
-        
+
         return final_text, fig
 
     except KeyError as e:

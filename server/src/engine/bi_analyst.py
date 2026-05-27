@@ -202,15 +202,19 @@ def analyze_data(data_context, query, api_key, chat_history=[], mode="file", pro
 
         REGLAS CRÍTICAS PARA GENERACIÓN DE CÓDIGO:
         1. DEBES usar el diccionario 'dfs' con los nombres EXACTOS de la lista anterior (ej: df1 = dfs['nombre_tabla']).
-        2. Visualización: Genera SIEMPRE un gráfico interactivo con Plotly Express (`px`) y guárdalo obligatoriamente en la variable `fig`.
+        2. Visualización: Genera SIEMPRE un gráfico interactivo con Plotly Express (`px`) y guárdalo en la variable `fig`.
         3. NO uses matplotlib.
+        4. RESULTADOS TEXTUALES (OBLIGATORIO): Guarda un resumen de los hallazgos en la variable `analysis_text`.
+           - Ejemplo: analysis_text = f"Top 5 departamentos:\\n{{df_resultado.to_string(index=False)}}"
+           - Incluye los VALORES REALES: nombres, cifras, rankings. No describas columnas, muestra los datos.
+           - El estratega solo ve `analysis_text`, así que debe contener los números y etiquetas exactos del resultado.
         
         MUESTRA DE DATOS:
         {json.dumps(head_info, indent=2, cls=SafeJSONEncoder)}
 
         OUTPUT REQUERIDO:
         Devuelve ÚNICAMENTE el código Python dentro de un bloque ```python
-        NO devuelvas texto explicativo, solo el bloque de código.
+        NO devuelvas texto explicativo fuera del bloque de código.
         """
                 data_var = "dfs"
             else:

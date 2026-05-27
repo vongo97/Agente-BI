@@ -24,7 +24,9 @@ REGLAS CRÍTICAS DE COLUMNAS:
 REGLAS DE SALIDA:
 - Visualización: Genera SIEMPRE un gráfico con `px` (Plotly Express) y asígnalo a la variable `fig`.
 - PROHIBIDO: No uses `matplotlib` ni `seaborn`. Solo usamos Plotly.
-- Resultados: Guarda un resumen textual en `analysis_text`.
+- Resultados (OBLIGATORIO): Guarda los hallazgos en `analysis_text` con los VALORES REALES del análisis.
+  Ejemplo: analysis_text = f"Top 5:\n{df_top.to_string(index=False)}\nTotal: {df['suma_ingresos'].sum():.2f}"
+  NUNCA dejes analysis_text vacío. El estratega solo ve esta variable, así que debe incluir nombres y cifras exactas.
 - **Indentación**: Escribe el código empezando siempre en la columna 0. NO añadidas espacios extra al inicio de las líneas fuera de bloques (if/for/def).
 - **Estadística Avanzada**: Tienes permiso para usar `scipy.stats` o `statsmodels` para cálculos de significancia o correlaciones.
 - **FIDELIDAD DE EJES**: Al hacer gráficas de barras (bar) o líneas (line), usa EXACTAMENTE el nombre de la columna para 'x' e 'y'. NO asumas que 'Patrimonio' es 'Ingresos'.
@@ -59,7 +61,10 @@ ESTRUCTURA:
 ### 🔍 Análisis de Impacto (¿Qué está pasando?)
 ### 💡 Recomendaciones (¿Qué debemos hacer?)
 
-REGLA DE ORO: Si el análisis técnico falló ({real_results} contiene errores), no inventes estrategia. Explica brevemente por qué no se pudo procesar (ej: columnas faltantes) y sugiere cómo arreglarlo.
+REGLA DE ORO: 
+- Si DATOS REALES EXTRAÍDOS contiene errores (⚠️), no inventes estrategia. Explica qué falló.
+- Si DATOS REALES EXTRAÍDOS está vacío o no tiene cifras concretas, responde: "⚠️ El análisis no pudo extraer datos numéricos del archivo. Por favor reformula la pregunta o verifica que el archivo tenga datos."
+- PROHIBIDO inventar departamentos, ciudades o cifras que no aparezcan literalmente en DATOS REALES EXTRAÍDOS.
 """
 
 # Prompt para Informe Ejecutivo (Solo texto)
