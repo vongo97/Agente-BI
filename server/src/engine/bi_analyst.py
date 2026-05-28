@@ -165,10 +165,8 @@ def analyze_data(data_context, query, api_key, chat_history=[], mode="file", pro
                 # Aislamiento si hay fuente primaria
                 temp_context = data_context
                 if primary_source_name and primary_source_name in temp_context:
-                    focus_instruction = f"⚠️ IMPORTANTE: Enfócate en la tabla '{primary_source_name}'. Analiza este archivo principalmente."
-                    # Si no pide cruces, aislamos
-                    if not any(word in query.lower() for word in ["compara", "cruza", "vs", "relaciona"]):
-                        temp_context = {primary_source_name: temp_context[primary_source_name]}
+                    focus_instruction = f"⚠️ IMPORTANTE: Enfócate principalmente en la tabla '{primary_source_name}' si la pregunta no especifica otra, pero tienes acceso a todas las listadas abajo."
+
                 
                 for name, df in temp_context.items():
                     if hasattr(df, 'columns'):
