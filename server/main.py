@@ -84,4 +84,12 @@ async def root():
 if __name__ == "__main__":
     import os
     port = int(os.environ.get("PORT", 8000))
-    uvicorn.run("main:app", host="0.0.0.0", port=port, reload=True)
+    
+    # Optimización de Memoria (Evitar OOM en Render 512MB)
+    # RENDER es una variable de entorno definida automáticamente por la plataforma Render
+    is_render = os.environ.get("RENDER", "false").lower() == "true"
+    reload_enabled = not is_render
+    
+    print(f"Starting server in {'PRODUCTION' if is_render else 'DEVELOPMENT'} mode (reload={reload_enabled})...")
+    uvicorn.run("main:app", host="0.0.0.0", port=port, reload=reload_enabled)
+
