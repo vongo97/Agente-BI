@@ -29,6 +29,10 @@ def create_presentation(title, summary, items, output_path, template_path="templ
             print(f"Warning: Template {full_template_path} not found. Using default.")
             prs = Presentation()
             
+        # Forzar tamaño 16:9 Widescreen para dar protagonismo a los gráficos BI
+        prs.slide_width = Inches(13.33)
+        prs.slide_height = Inches(7.5)
+            
         # Portada (Modificar primera diapositiva)
         if len(prs.slides) > 0:
             cover = prs.slides[0]
@@ -74,20 +78,28 @@ def create_presentation(title, summary, items, output_path, template_path="templ
                 for paragraph in slide.shapes.title.text_frame.paragraphs:
                     paragraph.font.size = Pt(28)
                 
-            # Insertar Texto a la izquierda (Movido más abajo a Y=2.2)
-            txBox = slide.shapes.add_textbox(Inches(0.5), Inches(2.2), Inches(4.0), Inches(4.5))
+            # Insertar Texto a la izquierda (Ajustado al formato 16:9)
+            txBox = slide.shapes.add_textbox(Inches(0.5), Inches(2.2), Inches(4.5), Inches(4.8))
             tf = txBox.text_frame
             tf.word_wrap = True
+            
+            # Calcular longitud para hacer el texto responsivo
+            texto_total_longitud = sum(len(line) for line in lines if not line.strip().startswith("#"))
+            font_size = Pt(13)
+            if texto_total_longitud > 350:
+                font_size = Pt(11)
+            elif texto_total_longitud > 550:
+                font_size = Pt(9.5)
             
             for line in lines:
                 if line.strip().startswith("#"): continue
                 if not line.strip(): continue
                 p = tf.add_paragraph()
-                p.text = line.replace("*", "").strip()
-                p.font.size = Pt(12)
+                p.text = "• " + line.replace("**", "").replace("*", "").strip()
+                p.font.size = font_size
                 p.font.color.rgb = RGBColor(100, 116, 139) # Slate 500 para legibilidad
                 
-            # Insertar Gráfico a la derecha (Movido más abajo a Y=2.2)
+            # Insertar Gráfico a la derecha
             if fig_data:
                 img_bytes = export_plotly_to_image(fig_data)
                 if img_bytes:
@@ -95,8 +107,8 @@ def create_presentation(title, summary, items, output_path, template_path="templ
                         tmp.write(img_bytes)
                         tmp_path = tmp.name
                     try:
-                        # Insertar imagen alineada con el texto (ancho máx 8)
-                        slide.shapes.add_picture(tmp_path, Inches(4.8), Inches(2.2), width=Inches(8))
+                        # Insertar imagen alineada con el texto en posición 5.2 (ancho 8)
+                        slide.shapes.add_picture(tmp_path, Inches(5.2), Inches(2.2), width=Inches(8))
                     finally:
                         if os.path.exists(tmp_path):
                             os.remove(tmp_path)

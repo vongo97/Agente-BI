@@ -256,7 +256,7 @@ def generate_pro_report(title: str, summary: str, user_name: str, items: list):
     pdf.set_y(80)
     pdf.set_font("helvetica", 'B', 36)
     pdf.set_text_color(255, 255, 255)
-    pdf.multi_cell(0, 18, txt=title.upper(), align='L')
+    pdf.multi_cell(0, 18, txt=clean_text(title).upper(), align='L')
     
     pdf.ln(5)
     pdf.set_font("helvetica", 'B', 14)
@@ -277,7 +277,7 @@ def generate_pro_report(title: str, summary: str, user_name: str, items: list):
         formatted_name = re.sub(r'\d+$', '', formatted_name)
         formatted_name = formatted_name.replace(".", " ").replace("_", " ")
         
-    pdf.cell(0, 10, txt=formatted_name.upper(), ln=True, align='R')
+    pdf.cell(0, 10, txt=clean_text(formatted_name).upper(), ln=True, align='R')
     
     pdf.ln(5)
     pdf.set_font("helvetica", 'B', 9)

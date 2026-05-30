@@ -32,6 +32,8 @@ logger = logging.getLogger(__name__)
 
 # Configurar CORS (Seguridad Fase 1)
 ALLOWED_ORIGINS = [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
     "http://localhost:3001",
     "http://127.0.0.1:3001",
     "https://agente-bi.vercel.app", # Ejemplo de dominio prod

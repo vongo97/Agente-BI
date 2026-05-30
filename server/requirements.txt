@@ -27,3 +27,6 @@ numpy>=2.0.0
 alembic==1.13.3
 slowapi==0.1.9
 cryptography==43.0.1
+matplotlib>=3.8.0
+seaborn>=0.13.0
+
