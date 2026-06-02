@@ -105,13 +105,22 @@ def get_user_data(user_id: str, chat_id: Optional[int] = None):
     return None
 
 def save_user_data(user_id: str, data: dict):
-    """Guarda los datos de la sesión en disco para persistencia."""
+    """Guarda los datos de la sesión en disco para persistencia y nube."""
     if data is None: return
     try:
         session_file = get_session_file(user_id)
         # Usamos pickle para guardar el diccionario completo de DataFrames
         pd.to_pickle(data, session_file)
         logger.info(f"Sesión persistida en disco para {user_id}")
+        
+        # Sincronización en la Nube
+        try:
+            remote_path = f"sessions/{os.path.basename(session_file)}"
+            upload_file_to_cloud(session_file, remote_path)
+            logger.info(f"Sesión persistida en la nube para {user_id}")
+        except Exception as upload_err:
+            logger.error(f"Error al subir sesión a la nube para {user_id}: {upload_err}")
+            
     except Exception as e:
         logger.error(f"Error al persistir sesión para {user_id}: {e}")
 

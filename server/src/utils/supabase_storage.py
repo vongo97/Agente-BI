@@ -75,6 +75,6 @@ def sync_cloud_to_local(local_path: str):
     if "sessions_cache" in local_path:
         remote_path = f"sessions/{remote_path}"
     elif "data_sources" in local_path:
-        remote_path = f"sources/{remote_path}"
+        remote_path = f"data_sources/{remote_path}"
         
     return download_file_from_cloud(remote_path, local_path)

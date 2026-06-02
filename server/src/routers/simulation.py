@@ -53,13 +53,24 @@ async def process_simulation(sim_id: int, api_key: str, provider: str, mistral_k
         for src_id in selected_ids:
             src = db.query(DataSource).filter(DataSource.id == src_id).first()
             file_path = getattr(src, 'path', getattr(src, 'url', None))
-            if file_path and os.path.exists(file_path):
+            if not file_path:
+                continue
+            
+            # Intentar recuperar de la nube si no existe localmente
+            from src.utils.supabase_storage import sync_cloud_to_local
+            sync_cloud_to_local(file_path)
+            
+            if os.path.exists(file_path):
                 df = None
                 try:
-                    df = pd.read_csv(file_path) if file_path.endswith('.csv') else pd.read_excel(file_path)
-                except: pass
+                    from src.connectors.data_connectors import load_file_data
+                    df = load_file_data(file_path)
+                except:
+                    pass
                 if df is not None:
                     session_data[src.name] = df
+            else:
+                logger.warning(f"[Sim-{sim_id}] Archivo no encontrado en disco ni en nube: {file_path}")
         
         engine = SwarmEngine(api_key=api_key, provider=provider, mistral_key=mistral_key)
         
@@ -183,6 +194,10 @@ async def get_simulation_suggestions(req: SuggestionRequest, db: Session = Depen
             p = Path(file_path)
             final_path = None
             
+            # 0. Intentar recuperar de la nube si no existe localmente
+            from src.utils.supabase_storage import sync_cloud_to_local
+            sync_cloud_to_local(str(p))
+            
             # 1. Intentar ruta absoluta/original
             if p.exists():
                 final_path = p
@@ -192,8 +207,10 @@ async def get_simulation_suggestions(req: SuggestionRequest, db: Session = Depen
                 if local_p.exists():
                     final_path = local_p
                 else:
-                    # 3. Intentar buscar en las carpetas comunes
+                    # 3. Intentar buscar en las carpetas comunes incluyendo data_sources configurado
+                    from src.utils.common import DATA_SOURCES_DIR
                     search_dirs = [
+                        Path(DATA_SOURCES_DIR),
                         Path(os.getcwd()) / "uploads",
                         Path(os.getcwd()) / "server" / "uploads",
                         Path(os.getcwd()) / "data_sources",

@@ -64,6 +64,9 @@ async def upload_file(user_id: str = Form(...), file: UploadFile = File(...), db
         # 7. Sincronización Nube (Opcional, no bloqueante ante errores de API)
         try:
             upload_file_to_cloud(permanent_path, f"data_sources/{permanent_name}")
+            # También subimos el pkl de sesión para recuperarlo si el servidor se reinicia
+            import os as _os
+            upload_file_to_cloud(session_file, f"sessions/{_os.path.basename(session_file)}")
         except:
             print(f"AVISO: Falló la subida a la nube para {permanent_name} (pero el archivo se guardó localmente)")
 
