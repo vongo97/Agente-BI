@@ -3,7 +3,7 @@
 import { useSession, signOut } from "next-auth/react";
 import { Upload, Settings, Database, LogOut, ChevronDown, Activity, CheckCircle2, AlertCircle, FileText, X, Menu, Brain, Sparkles, Zap } from "lucide-react";
 import { useState, useEffect } from "react";
-import { validateApiKey, uploadFile, connectSql, connectGoogleSheets, getHistory, getChatDetails, getPdfExportUrl, getDataSources, saveDataSource, deleteDataSource, removeSessionSource, clearSession } from "@/lib/api";
+import { validateApiKey, uploadFile, connectSql, connectGoogleSheets, getHistory, getChatDetails, getDataSources, saveDataSource, deleteDataSource, removeSessionSource, clearSession } from "@/lib/api";
 import { useDashboard } from "@/context/DashboardContext";
 import { History, MessageSquare, Clock } from "lucide-react";
 import { ThemeToggle } from "./ThemeToggle";
