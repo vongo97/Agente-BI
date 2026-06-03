@@ -450,3 +450,15 @@ async def list_data_sources(request: Request, user_id: Optional[str] = None, db:
         from src.utils.logging_config import safe_error_message
         logger.error("Error al obtener sources: %s", safe_error_message(e))
         raise HTTPException(status_code=500, detail="Error al obtener las fuentes de datos.")
+
+@router.get("/sources/clear-force")
+async def clear_force(db: Session = Depends(get_db)):
+    from sqlalchemy import text
+    try:
+        db.execute(text("UPDATE chats SET data_source_id = NULL"))
+        db.execute(text("UPDATE simulations SET data_source_id = NULL"))
+        db.execute(text("DELETE FROM data_sources"))
+        db.commit()
+        return {"status": "success", "message": "Todas las fuentes de la base de datos local han sido eliminadas."}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
