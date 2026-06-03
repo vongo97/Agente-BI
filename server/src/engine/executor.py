@@ -515,23 +515,21 @@ with open(os.path.join(temp_dir, "output.json"), "w", encoding="utf-8") as f:
             f.write(orchestrator_code)
 
         # 3. Invocar al subproceso con entorno mínimo + límites de recursos
-        # En producción (Linux): no incluimos variables de usuario de Windows
-        if _IS_LINUX:
-            env_clean = {
-                "PATH": os.environ.get("PATH", ""),
-                "PYTHONIOENCODING": "utf-8",
-                "MPLBACKEND": "Agg",
-            }
-        else:
-            # Windows/dev: mínimo necesario para que Python funcione
-            env_clean = {
-                "PATH": os.environ.get("PATH", ""),
-                "PYTHONIOENCODING": "utf-8",
-                "MPLBACKEND": "Agg",
-                "SYSTEMROOT": os.environ.get("SYSTEMROOT", ""),
-                "TEMP": os.environ.get("TEMP", ""),
-                "TMP": os.environ.get("TMP", ""),
-            }
+        # 3. Invocar al subproceso con entorno mínimo pero conservando paths de sistema
+        # Esto es vital para Render donde PYTHONPATH, VIRTUAL_ENV y LD_LIBRARY_PATH son necesarios
+        env_clean = os.environ.copy()
+        env_clean["PYTHONIOENCODING"] = "utf-8"
+        env_clean["MPLBACKEND"] = "Agg"
+        
+        # Ocultar secretos del entorno del sandbox por seguridad
+        sensitive_keys = [
+            "DATABASE_URL", "DIRECT_URL", "SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY", 
+            "ENCRYPTION_KEY", "AUTH_SECRET", "GEMINI_API_KEY", "MISTRAL_API_KEY", 
+            "OPENAI_API_KEY", "ANTHROPIC_API_KEY"
+        ]
+        for k in sensitive_keys:
+            if k in env_clean:
+                del env_clean[k]
 
         async with execution_semaphore:
             result = await asyncio.to_thread(
