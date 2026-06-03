@@ -341,7 +341,7 @@ async def execute_analysis(context_obj, raw_response, var_name):
     # Crear directorio temporal único dentro del sandbox_temp
     if not os.path.exists(TEMP_SANDBOX_DIR):
         os.makedirs(TEMP_SANDBOX_DIR, exist_ok=True)
-    temp_dir = tempfile.mkdtemp(dir=TEMP_SANDBOX_DIR)
+    temp_dir = os.path.abspath(tempfile.mkdtemp(dir=TEMP_SANDBOX_DIR))
     
     try:
         # 1. Serializar el contexto de datos (Tablas)
@@ -666,7 +666,7 @@ def safe_exec_cleaning(df, code):
     
     if not os.path.exists(TEMP_SANDBOX_DIR):
         os.makedirs(TEMP_SANDBOX_DIR, exist_ok=True)
-    temp_dir = tempfile.mkdtemp(dir=TEMP_SANDBOX_DIR)
+    temp_dir = os.path.abspath(tempfile.mkdtemp(dir=TEMP_SANDBOX_DIR))
     
     try:
         # Serializar dataframe de entrada con validación de tamaño máximo
