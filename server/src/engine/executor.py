@@ -543,8 +543,8 @@ with open(os.path.join(temp_dir, "output.json"), "w", encoding="utf-8") as f:
         output_path = os.path.join(temp_dir, "output.json")
         if not os.path.exists(output_path):
             stderr_len = len(result.stderr.strip()) if result.stderr else 0
-            logger.error("Sandbox: output.json ausente. returncode=%d stderr_len=%d",
-                         result.returncode, stderr_len)
+            logger.error("Sandbox: output.json ausente. returncode=%d stderr_len=%d\nSTDERR:\n%s",
+                         result.returncode, stderr_len, result.stderr)
             return "### ⚠️ Error de Sandbox\nEl análisis no pudo completarse de forma segura. Por favor revisa el código generado.", None
             
         with open(output_path, "r", encoding="utf-8") as f:
