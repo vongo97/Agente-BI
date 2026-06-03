@@ -309,14 +309,16 @@ export function Sidebar() {
                             <label className="flex items-center gap-2 text-[10px] font-black text-gray-600 uppercase tracking-[0.2em]">
                                 <Database className="w-3.5 h-3.5" /> Pool de Datos ({dataSources.length}/10)
                             </label>
-                            {dataSources.length > 0 && (
+                            {(dataSources.length > 0 || savedSources.length > 0) && (
                                 <button 
                                     onClick={async () => {
                                         try {
                                             await clearSession(userId);
                                             setDataSources([]);
+                                            fetchSources();
                                         } catch (err) {
                                             setDataSources([]);
+                                            fetchSources();
                                         }
                                     }}
                                     className="text-[9px] font-black text-red-500/50 hover:text-red-500 uppercase tracking-tighter transition-colors"
