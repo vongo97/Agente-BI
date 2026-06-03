@@ -53,9 +53,9 @@ async def upload_file(request: Request, user_id: Optional[str] = Form(None), fil
         # Validar MIME type: permitido directo o octet-stream con extensión válida (fallback)
         content_type = (file.content_type or "").split(";")[0].strip().lower()
         if content_type not in _ALLOWED_MIME_TYPES:
-            if content_type == "application/octet-stream" and ext in _ALLOWED_EXTENSIONS:
-                # Fallback condicionado: solo aceptamos si la extensión es válida
-                logger.debug("MIME octet-stream aceptado por extensión válida: %s", ext)
+            if ext in _ALLOWED_EXTENSIONS:
+                # Fallback condicionado: aceptamos si la extensión es válida, dado que los browsers pueden enviar diferentes MIME types
+                logger.debug("MIME %s aceptado por extensión válida: %s", content_type, ext)
             else:
                 raise HTTPException(
                     status_code=400,
