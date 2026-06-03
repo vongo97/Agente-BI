@@ -14,7 +14,7 @@ export function SettingsView() {
         setStatus("saving");
         try {
             // Validar Gemini
-            if (apiKey && apiKey.length > 10) {
+            if (apiKey && apiKey.length > 10 && !apiKey.includes("...")) {
                 const res = await validateApiKey(apiKey, "gemini");
                 if (!res.valid) {
                     throw new Error(res.error || "API Key de Gemini rechazada por el servidor.");
@@ -22,7 +22,7 @@ export function SettingsView() {
             }
             
             // Validar Mistral (opcional)
-            if (mistralKey && mistralKey.length > 10) {
+            if (mistralKey && mistralKey.length > 10 && !mistralKey.includes("...")) {
                 const res = await validateApiKey(mistralKey, "mistral");
                 if (!res.valid) {
                     throw new Error(res.error || "API Key de Mistral rechazada por el servidor.");

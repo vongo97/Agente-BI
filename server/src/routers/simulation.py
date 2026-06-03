@@ -123,7 +123,7 @@ async def create_simulation(request: Request, req: SimulationRequest, background
     try:
         # [PILAR 2] Recuperar y Descifrar Key si es necesario
         api_key = req.api_key
-        if not api_key or len(api_key) < 10:
+        if not api_key or len(api_key) < 10 or "..." in api_key:
             config = db.query(UserConfig).filter(UserConfig.user_id == authenticated_user).first()
             if config: api_key = decrypt_key(config.gemini_key)
         else:
@@ -266,7 +266,7 @@ async def get_simulation_suggestions(request: Request, req: SuggestionRequest, d
         
         # [PILAR 2] Recuperar y Descifrar Key
         api_key = req.api_key
-        if not api_key or len(api_key) < 10:
+        if not api_key or len(api_key) < 10 or "..." in api_key:
             config = db.query(UserConfig).filter(UserConfig.user_id == authenticated_user).first()
             if config: api_key = decrypt_key(config.gemini_key)
         else:

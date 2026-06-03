@@ -32,13 +32,13 @@ async def analyze(
     check_authorization(authenticated_user)
     
     # --- AUTO-RECUPERACIÓN DE LLAVES CIFRADAS ---
-    # Si las llaves vienen vacías o cortas, intentamos sacarlas de la DB del usuario
-    if len(api_key) < 10 or (provider == "mistral" and (not mistral_key or len(mistral_key) < 10)):
+    # Si las llaves vienen vacías, cortas o enmascaradas, intentamos sacarlas de la DB del usuario
+    if len(api_key) < 10 or "..." in api_key or (provider == "mistral" and (not mistral_key or len(mistral_key) < 10 or "..." in mistral_key)):
         user_config = db.query(UserConfig).filter(UserConfig.user_id == authenticated_user).first()
         if user_config:
-            if len(api_key) < 10 and user_config.gemini_key:
+            if (len(api_key) < 10 or "..." in api_key) and user_config.gemini_key:
                 api_key = decrypt_key(user_config.gemini_key)
-            if provider == "mistral" and (not mistral_key or len(mistral_key) < 10) and user_config.mistral_key:
+            if provider == "mistral" and (not mistral_key or len(mistral_key) < 10 or "..." in mistral_key) and user_config.mistral_key:
                 mistral_key = decrypt_key(user_config.mistral_key)
     else:
         # Si vienen del frontend pero están cifradas (empiezan por gAAAA), las desciframos
