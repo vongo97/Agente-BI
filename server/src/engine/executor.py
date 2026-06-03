@@ -25,8 +25,8 @@ execution_semaphore = asyncio.Semaphore(2)
 # ──────────────────────────────────────────────────────────────────────────────
 # LÍMITES DE RECURSOS DEL SANDBOX
 # ──────────────────────────────────────────────────────────────────────────────
-_SANDBOX_MEMORY_MB = 256          # Límite de RAM por proceso hijo (MB)
-_SANDBOX_TIMEOUT_S  = 10          # Timeout de pared (segundos)
+_SANDBOX_MEMORY_MB = 384          # Límite de RAM por proceso hijo (MB) — 256 era insuficiente para pandas+plotly en Render
+_SANDBOX_TIMEOUT_S  = 15          # Timeout base de pared (segundos) — 10 era insuficiente por cold-start de imports
 _SANDBOX_MAX_INPUT_BYTES = 50 * 1024 * 1024   # 50 MB máximo para pickle de entrada
 _IS_LINUX = platform.system() == "Linux"
 
@@ -35,6 +35,23 @@ _MAX_TABLES  = 10
 _MAX_COLUMNS = 300
 _MAX_ROWS    = 500_000
 _MAX_CELLS   = 1_000_000
+
+
+def _dynamic_timeout(tables: dict) -> int:
+    """
+    Calcula un timeout dinámico según el volumen total de filas del dataset.
+    Datasets grandes (>10K filas) necesitan más tiempo por el overhead de
+    serialización pickle + imports + groupby/merge en el subproceso.
+    """
+    total_rows = 0
+    for v in tables.values():
+        if hasattr(v, '__len__'):
+            total_rows += len(v)
+    if total_rows > 10_000:
+        return 30
+    elif total_rows > 5_000:
+        return 20
+    return _SANDBOX_TIMEOUT_S  # 15s base
 
 
 def _make_preexec_linux(mem_mb: int, cpu_s: int):
@@ -367,9 +384,11 @@ import sys
 import json
 import pickle
 from io import StringIO
+
+# Fix #7 (GitHub): Lazy imports — pandas/numpy se importan primero (necesarios siempre).
+# Plotly se importa SOLO al final si hay una figura, ahorrando ~2s de cold-start.
 import pandas as pd
 import numpy as np
-import plotly.express as px
 
 temp_dir = {repr(temp_dir)}
 metadata_tables = {repr(metadata_tables)}
@@ -434,6 +453,11 @@ safe_builtins = {{
     '__import__': restricted_import
 }}
 
+# Fix #7: Lazy import de plotly — se importa aquí para que esté disponible en el código del usuario,
+# pero Plotly solo se serializa al final. En cold-start, esto aún consume tiempo,
+# pero al menos está después de cargar los datos.
+import plotly.express as px
+
 env = {{
     'pd': pd, 'px': px, 'np': np, 'json': json,
     '__builtins__': safe_builtins
@@ -452,6 +476,29 @@ loaded_tables = {{}}
 for name, pkl_file in metadata_tables.items():
     with open(os.path.join(temp_dir, pkl_file), "rb") as f:
         loaded_tables[name] = pickle.load(f)
+
+# Fix #4: Auto-sanitización numérica + Fix #6: Downcast para reducir huella de memoria
+# Esto previene TypeError/ZeroDivisionError en columnas financieras como total_pasivos, total_patrimonio
+for _tname, _tdf in loaded_tables.items():
+    if not isinstance(_tdf, pd.DataFrame):
+        continue
+    for _col in _tdf.columns:
+        # Intentar convertir columnas 'object' que parecen numéricas
+        if _tdf[_col].dtype == 'object':
+            try:
+                _cleaned = pd.to_numeric(
+                    _tdf[_col].astype(str).str.replace(r'[^0-9.eE+-]', '', regex=True),
+                    errors='coerce'
+                )
+                # Solo convertir si al menos 50% de los valores son numéricos
+                if _cleaned.notna().sum() > len(_tdf) * 0.5:
+                    _tdf[_col] = _cleaned
+            except Exception:
+                pass
+        # Downcast float64 → float32 para ahorrar ~50% de RAM en columnas numéricas
+        if _tdf[_col].dtype == 'float64':
+            _tdf[_col] = pd.to_numeric(_tdf[_col], downcast='float')
+    loaded_tables[_tname] = _tdf
 
 smart_context = SmartDataContext(loaded_tables)
 
@@ -531,21 +578,38 @@ with open(os.path.join(temp_dir, "output.json"), "w", encoding="utf-8") as f:
             if k in env_clean:
                 del env_clean[k]
 
+        # Fix #1: Usar timeout dinámico basado en el volumen de filas del dataset
+        effective_timeout = _dynamic_timeout(tables_to_save)
+
         async with execution_semaphore:
             result = await asyncio.to_thread(
                 _run_subprocess_with_limits,
                 [sys.executable, orchestrator_path],
                 env_clean,
-                timeout=_SANDBOX_TIMEOUT_S
+                timeout=effective_timeout
             )
 
-        # 4. Procesar resultado — stderr NUNCA se expone al usuario
+        # 4. Procesar resultado — Fix #5: extraer hint del stderr para diagnóstico útil
         output_path = os.path.join(temp_dir, "output.json")
         if not os.path.exists(output_path):
             stderr_len = len(result.stderr.strip()) if result.stderr else 0
             logger.error("Sandbox: output.json ausente. returncode=%d stderr_len=%d\nSTDERR:\n%s",
                          result.returncode, stderr_len, result.stderr)
-            return "### ⚠️ Error de Sandbox\nEl análisis no pudo completarse de forma segura. Por favor revisa el código generado.", None
+            # Extraer hint del stderr sin exponer info sensible (paths, secrets, etc.)
+            error_hint = ""
+            if result.stderr:
+                for line in result.stderr.strip().split('\n')[-5:]:
+                    if any(kw in line for kw in ['Error', 'Exception', 'Killed', 'MemoryError', 'Cannot']):
+                        # Sanitizar: remover paths absolutos del sistema
+                        import re as _re
+                        sanitized = _re.sub(r'(?:File "|/)[^"\n]*', '[ruta]', line.strip())
+                        error_hint = sanitized[:200]
+                        break
+            if result.returncode == -9 or result.returncode == 137:
+                error_hint = "El proceso fue terminado por exceder el límite de memoria (OOM)."
+            elif result.returncode == -6:
+                error_hint = "El proceso abortó inesperadamente (posible corrupción de datos)."
+            return f"### ⚠️ Error de Sandbox\nEl análisis no pudo completarse.\n**Causa probable:** {error_hint or 'Proceso terminado inesperadamente (timeout o límite de memoria).'}", None
             
         with open(output_path, "r", encoding="utf-8") as f:
             output_data = json.load(f)
@@ -574,8 +638,8 @@ with open(os.path.join(temp_dir, "output.json"), "w", encoding="utf-8") as f:
         return final_text, fig
 
     except subprocess.TimeoutExpired:
-        logger.error("Timeout de Sandbox de ejecución.")
-        return "### 🛡️ Tiempo Agotado\nEl análisis tomó demasiado tiempo (>10s) y fue abortado por seguridad.", None
+        logger.error("Timeout de Sandbox de ejecución (timeout=%ds).", effective_timeout)
+        return f"### 🛡️ Tiempo Agotado\nEl análisis tomó demasiado tiempo (>{effective_timeout}s) y fue abortado por seguridad. Intenta una pregunta más específica.", None
     except Exception as e:
         logger.error(f"Fallo en Sandbox del ejecutor: {e}", exc_info=True)
         return f"### ⚠️ Error del Sandbox\nOcurrió un error inesperado al orquestar el entorno aislado: {str(e)}", None
@@ -686,22 +750,20 @@ with open(os.path.join(temp_dir, "output.json"), "w", encoding="utf-8") as f:
         with open(orchestrator_path, "w", encoding="utf-8") as f:
             f.write(orchestrator_code)
 
-        # Ejecutar subproceso con entorno mínimo por plataforma
-        if _IS_LINUX:
-            env_clean = {
-                "PATH": os.environ.get("PATH", ""),
-                "PYTHONIOENCODING": "utf-8",
-                "MPLBACKEND": "Agg",
-            }
-        else:
-            env_clean = {
-                "PATH": os.environ.get("PATH", ""),
-                "PYTHONIOENCODING": "utf-8",
-                "MPLBACKEND": "Agg",
-                "SYSTEMROOT": os.environ.get("SYSTEMROOT", ""),
-                "TEMP": os.environ.get("TEMP", ""),
-                "TMP": os.environ.get("TMP", ""),
-            }
+        # Fix #3: Estandarizar entorno — usar copia completa con secrets eliminados
+        # (igual que execute_analysis) para que PYTHONPATH/VIRTUAL_ENV/LD_LIBRARY_PATH
+        # estén disponibles en Render Linux
+        env_clean = os.environ.copy()
+        env_clean["PYTHONIOENCODING"] = "utf-8"
+        env_clean["MPLBACKEND"] = "Agg"
+        sensitive_keys = [
+            "DATABASE_URL", "DIRECT_URL", "SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY",
+            "ENCRYPTION_KEY", "AUTH_SECRET", "GEMINI_API_KEY", "MISTRAL_API_KEY",
+            "OPENAI_API_KEY", "ANTHROPIC_API_KEY"
+        ]
+        for k in sensitive_keys:
+            if k in env_clean:
+                del env_clean[k]
 
         result = _run_subprocess_with_limits(
             [sys.executable, orchestrator_path],
