@@ -2,6 +2,7 @@
 
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { useSession } from "next-auth/react";
+import { setApiAuthToken, getUserConfig, setUserConfig } from "@/lib/api";
 
 export type Message = {
     id?: number;
@@ -90,65 +91,96 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
         setDataSources(prev => prev.filter(s => s.filename !== filename));
     };
 
-    // Cargar API Keys y preferencias desde el Backend y LocalStorage
+    // Cargar API Keys y preferencias desde el Backend
     useEffect(() => {
+        // Configurar token de autorización en el API wrapper
+        if (session && (session as any).accessToken) {
+            setApiAuthToken((session as any).accessToken);
+        } else {
+            setApiAuthToken(null);
+        }
+
         const fetchConfig = async () => {
             const userEmail = session?.user?.email || "invitado@agente-bi.local";
             try {
-                const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-                const res = await fetch(`${API_URL}/user-config?user_id=${userEmail}`);
-                if (res.ok) {
-                    const data = await res.json();
-                    if (data.gemini_key) setApiKey(data.gemini_key);
-                    if (data.mistral_key) setMistralKey(data.mistral_key);
-                    if (data.preferred_provider) setAiProvider(data.preferred_provider as any);
+                const data = await getUserConfig(userEmail);
+                if (data.gemini_key) setApiKey(data.gemini_key);
+                if (data.mistral_key) setMistralKey(data.mistral_key);
+                if (data.preferred_provider) setAiProvider(data.preferred_provider as any);
+
+                // Hardening de LocalStorage (Migración única a DB segura)
+                const localGemini = localStorage.getItem("gemini_api_key");
+                const localMistral = localStorage.getItem("mistral_api_key");
+                const localProvider = localStorage.getItem("ai_provider");
+
+                let needsSync = false;
+                let syncGemini = undefined;
+                let syncMistral = undefined;
+                let syncProvider = undefined;
+
+                if (localGemini && !data.gemini_key) {
+                    syncGemini = localGemini;
+                    needsSync = true;
                 }
+                if (localMistral && !data.mistral_key) {
+                    syncMistral = localMistral;
+                    needsSync = true;
+                }
+                if (localProvider && !data.preferred_provider) {
+                    syncProvider = localProvider;
+                    needsSync = true;
+                }
+
+                if (needsSync) {
+                    await setUserConfig(userEmail, syncGemini, syncMistral, undefined, syncProvider);
+                    if (syncGemini) setApiKey(syncGemini);
+                    if (syncMistral) setMistralKey(syncMistral);
+                    if (syncProvider) setAiProvider(syncProvider as any);
+                }
+
+                // Eliminar claves sensibles de LocalStorage
+                localStorage.removeItem("gemini_api_key");
+                localStorage.removeItem("mistral_api_key");
+                localStorage.removeItem("ai_provider");
             } catch (err) {
                 console.error("Error cargando config del server:", err);
             }
         };
 
-        fetchConfig();
-
-        // Fallback local
-        const savedGemini = localStorage.getItem("gemini_api_key");
-        if (savedGemini) setApiKey(savedGemini);
-        const savedMistral = localStorage.getItem("mistral_api_key");
-        if (savedMistral) setMistralKey(savedMistral);
-        const savedProvider = localStorage.getItem("ai_provider") as any;
-        if (savedProvider) setAiProvider(savedProvider);
+        if (session) {
+            fetchConfig();
+        }
     }, [session]);
 
-    // Guardar en Backend y LocalStorage automáticamente
-    const syncConfig = async (key: string, value: string, field: string) => {
+    // Guardar en Backend automáticamente (Hardening: No guardar en LocalStorage)
+    const syncConfig = async (value: string, field: string) => {
         const userEmail = session?.user?.email || "invitado@agente-bi.local";
-        localStorage.setItem(key, value);
+        // Si el valor es una máscara o está vacío, no lo sincronizamos
+        if (!value || value.startsWith("xxxx") || value.includes("...")) return;
         
         try {
-            const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-            const formData = new FormData();
-            formData.append("user_id", userEmail);
-            formData.append(field, value);
-            
-            await fetch(`${API_URL}/user-config`, {
-                method: "POST",
-                body: formData
-            });
+            if (field === "gemini_key") {
+                await setUserConfig(userEmail, value, undefined, undefined, undefined);
+            } else if (field === "mistral_key") {
+                await setUserConfig(userEmail, undefined, value, undefined, undefined);
+            } else if (field === "preferred_provider") {
+                await setUserConfig(userEmail, undefined, undefined, undefined, value);
+            }
         } catch (err) {
             console.error(`Error sincronizando ${field}:`, err);
         }
     };
 
     useEffect(() => {
-        if (apiKey) syncConfig("gemini_api_key", apiKey, "gemini_key");
+        if (apiKey) syncConfig(apiKey, "gemini_key");
     }, [apiKey]);
 
     useEffect(() => {
-        if (mistralKey) syncConfig("mistral_api_key", mistralKey, "mistral_key");
+        if (mistralKey) syncConfig(mistralKey, "mistral_key");
     }, [mistralKey]);
 
     useEffect(() => {
-        syncConfig("ai_provider", aiProvider, "preferred_provider");
+        if (aiProvider) syncConfig(aiProvider, "preferred_provider");
     }, [aiProvider]);
 
     // Verificar salud del servidor (Render Wake-up)

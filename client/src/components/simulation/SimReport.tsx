@@ -1,7 +1,8 @@
 import { Activity, Download, Loader2 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { getSimulationPdfUrl } from "@/lib/api";
+import { exportSimulationPdf } from "@/lib/api";
+import { useState } from "react";
 
 interface SimReportProps {
     activeSim: any;
@@ -10,6 +11,29 @@ interface SimReportProps {
 }
 
 export function SimReport({ activeSim, userId, polling }: SimReportProps) {
+    const [downloadingPdf, setDownloadingPdf] = useState(false);
+
+    const handleDownloadPdf = async () => {
+        if (!activeSim?.id) return;
+        setDownloadingPdf(true);
+        try {
+            const blob = await exportSimulationPdf(activeSim.id, userId);
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = `veredicto_sim_${activeSim.id}.pdf`;
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(url);
+            a.remove();
+        } catch (err) {
+            console.error("Error al descargar PDF de simulación:", err);
+            alert("Error al descargar el veredicto en PDF de forma segura.");
+        } finally {
+            setDownloadingPdf(false);
+        }
+    };
+
     return (
         <div className="col-span-12 lg:col-span-5 h-fit lg:sticky lg:top-0">
             {activeSim.result_report ? (
@@ -21,14 +45,14 @@ export function SimReport({ activeSim, userId, polling }: SimReportProps) {
                             </div>
                             <h2 className="text-[10px] font-black text-purple-400 uppercase tracking-[0.3em]">Veredicto Estratégico</h2>
                         </div>
-                        <a 
-                            href={getSimulationPdfUrl(activeSim.id, userId)} 
-                            target="_blank"
-                            className="p-2 hover:bg-white/5 rounded-lg text-purple-400 transition-all"
+                        <button 
+                            onClick={handleDownloadPdf}
+                            disabled={downloadingPdf}
+                            className="p-2 hover:bg-white/5 rounded-lg text-purple-400 transition-all disabled:opacity-50 cursor-pointer"
                             title="Descargar PDF"
                         >
-                            <Download className="w-4 h-4" />
-                        </a>
+                            {downloadingPdf ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+                        </button>
                     </div>
                     <div className="markdown-content prose prose-invert prose-sm prose-purple max-w-none">
                         <ReactMarkdown remarkPlugins={[remarkGfm]}>

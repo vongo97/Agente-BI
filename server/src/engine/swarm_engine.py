@@ -26,13 +26,13 @@ class SwarmEngine:
 
         if self.provider in ["gemini", "hybrid"]:
             self.g_client = genai.Client(api_key=self.api_key)
-            print(f"[DEBUG] [GEMINI] Motor Activo: {self.gemini_model}")
+            logger.info("[GEMINI] Motor activo: %s", self.gemini_model)
             
         if self.provider in ["mistral", "hybrid"]:
             try:
                 from mistralai import Mistral
                 self.m_client = Mistral(api_key=self.mistral_key)
-                print(f"[DEBUG] [MISTRAL] Motor Activo: {self.mistral_model}")
+                logger.info("[MISTRAL] Motor activo: %s", self.mistral_model)
             except ImportError:
                 logger.error("Librería mistralai no instalada.")
 
@@ -81,7 +81,7 @@ class SwarmEngine:
         # Determinar qué motores ejecutar
         # Si es híbrido, hacemos un único debate cruzado
         if self.provider == "hybrid":
-            print(f"[DEBUG] Iniciando DEBATE CRUZADO (Gemini + Mistral)...")
+            logger.debug("Iniciando DEBATE CRÚCE (Gemini + Mistral)...")
             report, history = await self._execute_hybrid_debate(hypothesis, data_context, on_message)
             return report, history
         
@@ -89,7 +89,7 @@ class SwarmEngine:
         engine_name = "Gemini" if self.provider == "gemini" else "Mistral"
         generator_func = self._generate_gemini if self.provider == "gemini" else self._generate_mistral
         
-        print(f"[DEBUG] Iniciando debate con {engine_name}...")
+        logger.debug("Iniciando debate con %s...", engine_name)
         report, history = await self._execute_debate(
             engine_name, 
             generator_func, 
@@ -153,7 +153,7 @@ class SwarmEngine:
             content = await generator_func(prompt)
             if isinstance(content, str) and any(err in content for err in ["429", "RESOURCE_EXHAUSTED", "rate_limit", "Error"]):
                 attempts += 1
-                print(f"[DEBUG] Reintento {attempts} tras {wait_time}s...")
+                logger.debug("Reintento %d de IA tras %ds (rate limit).", attempts, wait_time)
                 await asyncio.sleep(wait_time)
             else:
                 return content

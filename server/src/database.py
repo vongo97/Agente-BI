@@ -2,9 +2,23 @@ from sqlalchemy import create_engine, Column, Integer, String, Text, ForeignKey,
 from sqlalchemy.orm import sessionmaker, relationship, DeclarativeBase
 from datetime import datetime
 import os
+import re
+import logging
+
+logger = logging.getLogger(__name__)
 
 # Configuración de la base de datos
 DB_URL = os.getenv("DATABASE_URL", "sqlite:///./bi_agent.db")
+
+def sanitize_db_error(msg: str) -> str:
+    """Enmascara contraseñas y credenciales de URLs de bases de datos dentro de mensajes de error."""
+    if not msg:
+        return ""
+    # Enmascarar contraseñas en URLs de tipo dialect+driver://user:password@host:port/db
+    sanitized = re.sub(r'([a-zA-Z0-9+.-]+://)([^:]+):([^@]+)@', r'\1\2:***@', msg)
+    # Por si hay URLs SQL sin dialecto (ej: user:password@host)
+    sanitized = re.sub(r'([^:@]+):([^@]+)@([a-zA-Z0-9.-]+)', r'\1:***@\3', sanitized)
+    return sanitized
 
 # Limpieza básica de la URL
 if DB_URL:
@@ -23,7 +37,8 @@ try:
     else:
         engine = create_engine(DB_URL)
 except Exception as e:
-    print(f"CRITICAL ERROR Engine: {str(e)}. Usando SQLite fallback.")
+    logger.critical("CRITICAL: Fallo al crear engine de DB: %s. Usando SQLite fallback.",
+                    sanitize_db_error(str(e)))
     DB_URL = "sqlite:///./bi_agent.db"
     engine = create_engine(DB_URL, connect_args={"check_same_thread": False})
 
@@ -138,16 +153,16 @@ def init_db():
     """
     try:
         Base.metadata.create_all(bind=engine)
-        print("Tablas sincronizadas con Base.metadata.create_all")
+        logger.info("Tablas sincronizadas con Base.metadata.create_all")
     except Exception as e:
-        print(f"ERROR en init_db: {str(e)}")
+        logger.error("ERROR en init_db: %s", sanitize_db_error(str(e)))
 
 def get_db():
     db = SessionLocal()
     try:
         yield db
     except Exception as e:
-        print(f"Error en sesión de DB: {str(e)}")
+        logger.error("Error en sesión de DB: %s", sanitize_db_error(str(e)))
         raise
     finally:
         db.close()

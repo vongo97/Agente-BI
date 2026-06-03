@@ -18,6 +18,15 @@ services:
         sync: false
       - key: PYTHON_VERSION
         value: 3.11.9
+      # ── Seguridad: obligatorio en producción ──────────────────────────────────
+      # ENVIRONMENT: garantiza que el bypass de desarrollo nunca se active en Render
+      # aunque RENDER no esté seteado en deployments alternativos.
+      - key: ENVIRONMENT
+        value: production
+      # AUTH_SECRET: firma JWT. Configurar en el Dashboard de Render con un secreto
+      # aleatorio seguro (mínimo 32 chars). Ej: openssl rand -hex 32
+      - key: AUTH_SECRET
+        sync: false  # NO poner el valor aquí; configurarlo en el Dashboard de Render
 
   # 3. Frontend (Next.js)
   - type: web

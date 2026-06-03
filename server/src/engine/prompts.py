@@ -32,6 +32,8 @@ REGLAS DE SALIDA:
 - **FIDELIDAD DE EJES**: Al hacer gráficas de barras (bar) o líneas (line), usa EXACTAMENTE el nombre de la columna para 'x' e 'y'. NO asumas que 'Patrimonio' es 'Ingresos'.
 - Si no encuentras una columna, imprime `print("ERROR: Columna no encontrada")` y explica qué columnas ves.
 
+PREGUNTA DEL USUARIO: "{query}"
+
 Devuelve SOLO el código Python en un bloque ```python.
 """
 

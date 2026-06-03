@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { Brain, Download, PlusCircle } from "lucide-react";
 import { useDashboard } from "@/context/DashboardContext";
-import { createSimulation, getSimulations, getSimulationDetails, getSimulationMessages, getSimulationPdfUrl, getDataSources, getSimulationSuggestions } from "@/lib/api";
+import { createSimulation, getSimulations, getSimulationDetails, getSimulationMessages, exportSimulationPdf, getDataSources, getSimulationSuggestions } from "@/lib/api";
 
 // Sub-componentes refactorizados
 import { SimHistory } from "./simulation/SimHistory";
@@ -24,6 +24,28 @@ export function SimulationSandbox() {
     const [allHistoricalSources, setAllHistoricalSources] = useState<any[]>([]);
     const [suggestions, setSuggestions] = useState<any[]>([]);
     const [loadingSuggestions, setLoadingSuggestions] = useState(false);
+    const [downloadingPdf, setDownloadingPdf] = useState(false);
+
+    const handleDownloadPdf = async () => {
+        if (!activeSim?.id) return;
+        setDownloadingPdf(true);
+        try {
+            const blob = await exportSimulationPdf(activeSim.id, userId);
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = `veredicto_sim_${activeSim.id}.pdf`;
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(url);
+            a.remove();
+        } catch (err) {
+            console.error("Error al descargar PDF de simulación:", err);
+            alert("Error al descargar el veredicto en PDF de forma segura.");
+        } finally {
+            setDownloadingPdf(false);
+        }
+    };
 
     useEffect(() => {
         fetchSimulations();
@@ -170,13 +192,14 @@ export function SimulationSandbox() {
                             </button>
 
                             {activeSim?.status === 'completed' && (
-                                <a 
-                                    href={getSimulationPdfUrl(activeSim.id, userId)} 
-                                    target="_blank"
-                                    className="flex items-center gap-2 px-6 py-2.5 bg-purple-600 hover:bg-purple-500 text-white rounded-xl text-[10px] font-black uppercase tracking-widest shadow-xl shadow-purple-600/20 transition-all"
+                                <button 
+                                    onClick={handleDownloadPdf}
+                                    disabled={downloadingPdf}
+                                    className="flex items-center gap-2 px-6 py-2.5 bg-purple-600 hover:bg-purple-500 text-white rounded-xl text-[10px] font-black uppercase tracking-widest shadow-xl shadow-purple-600/20 transition-all disabled:opacity-50 cursor-pointer"
                                 >
-                                    <Download className="w-3.5 h-3.5" /> Exportar Veredicto
-                                </a>
+                                    <Download className="w-3.5 h-3.5" /> 
+                                    <span>{downloadingPdf ? "Exportando..." : "Exportar Veredicto"}</span>
+                                </button>
                             )}
                         </div>
                     </div>

@@ -135,8 +135,8 @@ def _generate_quick_mode(
     try:
         data = json.loads(clean_resp)
     except Exception as e:
-        logger.error(f"Error parseando JSON del LLM para Visual Summary. Raw response: {resp_text}")
-        raise ValueError(f"La respuesta de la IA no pudo parsearse como JSON: {str(e)}")
+        logger.error("Error parseando JSON del LLM para Visual Summary: %s", type(e).__name__)
+        raise ValueError(f"La respuesta de la IA no pudo parsearse como JSON: {type(e).__name__}")
         
     return validate_visual_summary_response(data)
 

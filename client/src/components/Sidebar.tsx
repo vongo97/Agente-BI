@@ -3,7 +3,7 @@
 import { useSession, signOut } from "next-auth/react";
 import { Upload, Settings, Database, LogOut, ChevronDown, Activity, CheckCircle2, AlertCircle, FileText, X, Menu, Brain, Sparkles, Zap } from "lucide-react";
 import { useState, useEffect } from "react";
-import { validateApiKey, uploadFile, connectSql, connectGoogleSheets, getHistory, getChatDetails, getPdfExportUrl, getDataSources, saveDataSource, deleteDataSource, removeSessionSource } from "@/lib/api";
+import { validateApiKey, uploadFile, connectSql, connectGoogleSheets, getHistory, getChatDetails, getPdfExportUrl, getDataSources, saveDataSource, deleteDataSource, removeSessionSource, clearSession } from "@/lib/api";
 import { useDashboard } from "@/context/DashboardContext";
 import { History, MessageSquare, Clock } from "lucide-react";
 import { ThemeToggle } from "./ThemeToggle";
@@ -313,10 +313,7 @@ export function Sidebar() {
                                 <button 
                                     onClick={async () => {
                                         try {
-                                            const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-                                            const formData = new FormData();
-                                            formData.append("user_id", userId);
-                                            await fetch(`${API_URL}/clear-session`, { method: "POST", body: formData });
+                                            await clearSession(userId);
                                             setDataSources([]);
                                         } catch (err) {
                                             setDataSources([]);

@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, Form, HTTPException
+from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from sqlalchemy.orm import Session
 from sqlalchemy import desc
 from typing import Optional
@@ -7,22 +7,25 @@ import logging
 from src.database import get_db, Chat, Message, DashboardItem
 from src.engine.bi_analyst import generate_auto_dashboard
 from src.engine.executor import execute_analysis
-from src.utils.common import check_authorization, get_user_data
+from src.utils.common import check_authorization, get_user_data, get_authenticated_user
+from src.utils.limiter import limiter
 import pandas as pd
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["Dashboard"])
 
 @router.get("/history")
-async def get_history(user_id: str, db: Session = Depends(get_db)):
-    check_authorization(user_id)
-    chats = db.query(Chat).filter(Chat.user_id == user_id).order_by(desc(Chat.created_at)).all()
+async def get_history(user_id: Optional[str] = None, db: Session = Depends(get_db)):
+    authenticated_user = get_authenticated_user()
+    check_authorization(authenticated_user)
+    chats = db.query(Chat).filter(Chat.user_id == authenticated_user).order_by(desc(Chat.created_at)).all()
     return [{"id": c.id, "title": c.title, "created_at": c.created_at} for c in chats]
 
 @router.get("/history/{chat_id}")
-async def get_chat_details(chat_id: int, user_id: str, db: Session = Depends(get_db)):
-    check_authorization(user_id)
-    chat = db.query(Chat).filter(Chat.id == chat_id, Chat.user_id == user_id).first()
+async def get_chat_details(chat_id: int, user_id: Optional[str] = None, db: Session = Depends(get_db)):
+    authenticated_user = get_authenticated_user()
+    check_authorization(authenticated_user)
+    chat = db.query(Chat).filter(Chat.id == chat_id, Chat.user_id == authenticated_user).first()
     if not chat:
         raise HTTPException(status_code=404, detail="Chat no encontrado")
     
@@ -54,29 +57,31 @@ async def get_chat_details(chat_id: int, user_id: str, db: Session = Depends(get
 
 @router.post("/dashboard/pin")
 async def pin_to_dashboard(
-    user_id: str = Form(...),
+    user_id: Optional[str] = Form(None),
     chat_id: int = Form(...),
     message_id: int = Form(...),
     db: Session = Depends(get_db)
 ):
-    check_authorization(user_id)
+    authenticated_user = get_authenticated_user()
+    check_authorization(authenticated_user)
     existing = db.query(DashboardItem).filter(
-        DashboardItem.user_id == user_id, 
+        DashboardItem.user_id == authenticated_user, 
         DashboardItem.message_id == message_id
     ).first()
     
     if existing:
         return {"message": "Ya está en el dashboard"}
     
-    new_item = DashboardItem(user_id=user_id, chat_id=chat_id, message_id=message_id)
+    new_item = DashboardItem(user_id=authenticated_user, chat_id=chat_id, message_id=message_id)
     db.add(new_item)
     db.commit()
     return {"message": "Anclado al dashboard con éxito"}
 
 @router.get("/dashboard")
-async def get_dashboard(user_id: str, db: Session = Depends(get_db)):
-    check_authorization(user_id)
-    items = db.query(DashboardItem).filter(DashboardItem.user_id == user_id).all()
+async def get_dashboard(user_id: Optional[str] = None, db: Session = Depends(get_db)):
+    authenticated_user = get_authenticated_user()
+    check_authorization(authenticated_user)
+    items = db.query(DashboardItem).filter(DashboardItem.user_id == authenticated_user).all()
     results = []
     for item in items:
         if not item.chat or not item.message:
@@ -94,116 +99,145 @@ async def get_dashboard(user_id: str, db: Session = Depends(get_db)):
     return results
 
 @router.delete("/dashboard/{item_id}")
-async def unpin_from_dashboard(item_id: int, user_id: str, db: Session = Depends(get_db)):
-    check_authorization(user_id)
-    item = db.query(DashboardItem).filter(DashboardItem.id == item_id, DashboardItem.user_id == user_id).first()
-    if not item:
-        raise HTTPException(status_code=404, detail="Item no encontrado")
-    db.delete(item)
-    db.commit()
-    return {"message": "Eliminado del dashboard"}
+@limiter.limit("15/minute")
+async def unpin_from_dashboard(request: Request, item_id: int, user_id: Optional[str] = None, db: Session = Depends(get_db)):
+    authenticated_user = get_authenticated_user()
+    check_authorization(authenticated_user)
+    try:
+        item = db.query(DashboardItem).filter(DashboardItem.id == item_id, DashboardItem.user_id == authenticated_user).first()
+        if not item:
+            raise HTTPException(status_code=404, detail="Item no encontrado")
+        db.delete(item)
+        db.commit()
+        return {"message": "Eliminado del dashboard"}
+    except HTTPException as he:
+        raise he
+    except Exception as e:
+        from src.utils.logging_config import safe_error_message
+        logger.error("Error al desanclar del dashboard: %s", safe_error_message(e))
+        raise HTTPException(status_code=500, detail="Error interno al desanclar el elemento.")
 
 @router.post("/auto-dashboard")
+@limiter.limit("5/minute")
+@limiter.limit("20/hour")
 async def auto_dashboard(
-    user_id: str = Form(...), 
+    request: Request,
+    user_id: Optional[str] = Form(None), 
     api_key: str = Form(...),
     data_source_id: Optional[int] = Form(None),
     provider: str = Form("gemini"),
     mistral_key: Optional[str] = Form(None),
     db: Session = Depends(get_db)
 ):
-    check_authorization(user_id)
-    session_data = get_user_data(user_id)
+    authenticated_user = get_authenticated_user()
+    check_authorization(authenticated_user)
+    session_data = get_user_data(authenticated_user)
     
     if not session_data and data_source_id:
         from src.database import DataSource
         from src.utils.common import load_source_to_session
-        source = db.query(DataSource).filter(DataSource.id == data_source_id, DataSource.user_id == user_id).first()
-        if source and load_source_to_session(user_id, source):
-            session_data = get_user_data(user_id)
+        source = db.query(DataSource).filter(DataSource.id == data_source_id, DataSource.user_id == authenticated_user).first()
+        if source and load_source_to_session(authenticated_user, source):
+            session_data = get_user_data(authenticated_user)
 
     if not session_data:
          raise HTTPException(status_code=400, detail="Se requieren datos activos (SQL o Archivo) para generar un Auto-Dashboard.")
          
-    # El origen puede ser un motor SQL o un diccionario de DataFrames
-    data_source_obj = session_data["data"]
-    if session_data["type"] == "file":
-        # Priorizar el archivo seleccionado (data_source_id) si existe
-        if data_source_id:
-            from src.database import DataSource
-            source_obj = db.query(DataSource).filter(DataSource.id == data_source_id).first()
-            if source_obj:
-                safe_name = "".join([c if c.isalnum() else "_" for c in source_obj.name.split('.')[0]])
-                if safe_name in session_data["data"]:
-                    data_source_obj = session_data["data"][safe_name]
+    try:
+        # El origen puede ser un motor SQL o un diccionario de DataFrames
+        data_source_obj = session_data["data"]
+        if session_data["type"] == "file":
+            # Priorizar el archivo seleccionado (data_source_id) si existe
+            if data_source_id:
+                from src.database import DataSource
+                source_obj = db.query(DataSource).filter(DataSource.id == data_source_id).first()
+                if source_obj:
+                    safe_name = "".join([c if c.isalnum() else "_" for c in source_obj.name.split('.')[0]])
+                    if safe_name in session_data["data"]:
+                        data_source_obj = session_data["data"][safe_name]
+                    else:
+                        # Fallback si no está en memoria por alguna razón
+                        data_source_obj = next(iter(session_data["data"].values()))
                 else:
-                    # Fallback si no está en memoria por alguna razón
                     data_source_obj = next(iter(session_data["data"].values()))
             else:
+                # Usamos el primer DataFrame si hay varios para el dashboard base
                 data_source_obj = next(iter(session_data["data"].values()))
-        else:
-            # Usamos el primer DataFrame si hay varios para el dashboard base
-            data_source_obj = next(iter(session_data["data"].values()))
-    
-    results = generate_auto_dashboard(data_source_obj, api_key, provider, mistral_key)
-    from src.utils.common import json_serializable
-    return json_serializable({"status": "success", "dashboard": results})
+        
+        results = generate_auto_dashboard(data_source_obj, api_key, provider, mistral_key)
+        from src.utils.common import json_serializable
+        return json_serializable({"status": "success", "dashboard": results})
+    except Exception as e:
+        from src.utils.logging_config import safe_error_message
+        logger.error("Error en auto_dashboard: %s", safe_error_message(e))
+        raise HTTPException(status_code=500, detail="Error interno al generar el panel automático.")
 
 @router.post("/dashboard/filter")
+@limiter.limit("10/minute")
 async def filter_dashboard(
-    user_id: str = Form(...),
+    request: Request,
+    user_id: Optional[str] = Form(None),
     filters_json: str = Form(...), # JSON string: {"col": "val"}
     db: Session = Depends(get_db)
 ):
-    check_authorization(user_id)
+    authenticated_user = get_authenticated_user()
+    check_authorization(authenticated_user)
     try:
         filters = json.loads(filters_json)
     except:
         raise HTTPException(status_code=400, detail="JSON de filtros inválido")
 
-    session_data = get_user_data(user_id)
-    if not session_data:
-        raise HTTPException(status_code=404, detail="No hay datos cargados en la sesión")
+    try:
+        session_data = get_user_data(authenticated_user)
+        if not session_data:
+            raise HTTPException(status_code=404, detail="No hay datos cargados en la sesión")
 
-    context = session_data["data"]
-    data_type = session_data["type"]
-    var_name = "dfs" if data_type == "file" else "engine"
+        context = session_data["data"]
+        data_type = session_data["type"]
+        var_name = "dfs" if data_type == "file" else "engine"
 
-    # Aplicar filtros al contexto (solo para modo file por ahora)
-    if data_type == "file":
-        filtered_context = {}
-        for name, df in context.items():
-            if isinstance(df, pd.DataFrame):
-                new_df = df.copy()
-                for col, val in filters.items():
-                    if col in new_df.columns and val is not None and val != "":
-                        # Soporte para filtrado simple
-                        new_df = new_df[new_df[col] == val]
-                filtered_context[name] = new_df
-            else:
-                filtered_context[name] = df
-    else:
-        # TODO: Implementar filtrado SQL dinámico inyectando cláusulas WHERE
-        filtered_context = context
+        # Aplicar filtros al contexto (solo para modo file por ahora)
+        if data_type == "file":
+            filtered_context = {}
+            for name, df in context.items():
+                if isinstance(df, pd.DataFrame):
+                    new_df = df.copy()
+                    for col, val in filters.items():
+                        if col in new_df.columns and val is not None and val != "":
+                            # Soporte para filtrado simple
+                            new_df = new_df[new_df[col] == val]
+                    filtered_context[name] = new_df
+                else:
+                    filtered_context[name] = df
+        else:
+            # TODO: Implementar filtrado SQL dinámico inyectando cláusulas WHERE
+            filtered_context = context
 
-    items = db.query(DashboardItem).filter(DashboardItem.user_id == user_id).all()
-    results = []
-    
-    for item in items:
-        if not item.message or not item.message.analysis_code:
-            continue
+        items = db.query(DashboardItem).filter(DashboardItem.user_id == authenticated_user).all()
+        results = []
         
-        try:
-            # Re-ejecutar el código original sobre los datos filtrados
-            # execute_analysis espera el raw_response con bloques de código
-            _, fig = execute_analysis(filtered_context, item.message.analysis_code, var_name)
+        for item in items:
+            if not item.message or not item.message.analysis_code:
+                continue
             
-            results.append({
-                "id": item.id,
-                "fig": json.loads(fig.to_json()) if fig else None
-            })
-        except Exception as e:
-            logger.error(f"Error re-filtrando item {item.id}: {e}")
-            continue
+            try:
+                # Re-ejecutar el código original sobre los datos filtrados
+                # execute_analysis espera el raw_response con bloques de código
+                _, fig = await execute_analysis(filtered_context, item.message.analysis_code, var_name)
+                
+                results.append({
+                    "id": item.id,
+                    "fig": json.loads(fig.to_json()) if fig else None
+                })
+            except Exception as e:
+                from src.utils.logging_config import safe_error_message
+                logger.error("Error re-filtrando item %d: %s", item.id, safe_error_message(e))
+                continue
 
-    return {"status": "success", "updated_items": results}
+        return {"status": "success", "updated_items": results}
+    except HTTPException as he:
+        raise he
+    except Exception as e:
+        from src.utils.logging_config import safe_error_message
+        logger.error("Error al filtrar panel: %s", safe_error_message(e))
+        raise HTTPException(status_code=500, detail="Error interno al filtrar el panel.")

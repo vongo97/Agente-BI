@@ -3,14 +3,22 @@ import pandas as pd
 import hashlib
 import logging
 from typing import Optional
-from fastapi import HTTPException
+from fastapi import HTTPException, Request
 from src.utils.supabase_storage import sync_cloud_to_local, upload_file_to_cloud
+from contextvars import ContextVar
+import hmac
+import base64
+import time
+import jwt
 
 # Configuración de Logs
 logger = logging.getLogger(__name__)
 
 # Almacenamiento temporal de datos
 data_store = {}
+
+# ContextVar para almacenar el request actual de forma segura para hilos/corutinas
+request_var: ContextVar[Optional[Request]] = ContextVar("request", default=None)
 
 # --- UTILIDADES DE SERIALIZACIÓN SEGURA ---
 import json
@@ -43,13 +51,108 @@ for d in [SESSIONS_DIR, DATA_SOURCES_DIR]:
     if not os.path.exists(d):
         os.makedirs(d)
 
+def verify_token(token: str, secret: str) -> Optional[dict]:
+    """Valida la firma HMAC-SHA256 y la expiración del token JWT utilizando PyJWT estándar."""
+    try:
+        payload = jwt.decode(token, secret, algorithms=["HS256"])
+        return payload
+    except jwt.ExpiredSignatureError:
+        logger.warning("Token expirado.")
+        return None
+    except jwt.InvalidTokenError as e:
+        logger.warning(f"Token inválido: {e}")
+        return None
+
+def get_authenticated_user() -> str:
+    """Extrae y valida el Bearer token del request actual.
+    Retorna el email del usuario autenticado (user_id).
+    En producción, exige un token JWT estándar válido.
+    En desarrollo local, si no hay token, retorna el test_user por defecto."""
+    request = request_var.get()
+    is_render = os.getenv("RENDER", "false").lower() == "true"
+    is_dev = os.getenv("ENVIRONMENT", "development").lower() == "development"
+    allow_bypass = (not is_render) and is_dev
+    
+    if not request:
+        if not allow_bypass:
+            raise HTTPException(status_code=401, detail="No se encontró contexto de petición.")
+        return "test_user_persistence@example.com"
+        
+    auth_header = request.headers.get("Authorization")
+    if auth_header and auth_header.startswith("Bearer "):
+        token = auth_header.split(" ")[1]
+        secret = os.getenv("AUTH_SECRET") or os.getenv("NEXTAUTH_SECRET")
+        
+        if not secret:
+            if not allow_bypass:
+                raise HTTPException(
+                    status_code=500, 
+                    detail="Error de configuracion de seguridad: falta definir AUTH_SECRET o NEXTAUTH_SECRET en produccion."
+                )
+            secret = "secreto-desarrollo-por-defecto"
+            
+        payload = verify_token(token, secret)
+        if not payload:
+            raise HTTPException(status_code=401, detail="Token de sesión inválido o expirado.")
+            
+        return payload.get("user_id", "").lower()
+        
+    if not allow_bypass:
+        raise HTTPException(status_code=401, detail="Se requiere token de autenticación (Bearer Token) en producción.")
+        
+    return "test_user_persistence@example.com"
+
 def check_authorization(email: str):
+    request = request_var.get()
+    is_render = os.getenv("RENDER", "false").lower() == "true"
+    is_dev = os.getenv("ENVIRONMENT", "development").lower() == "development"
+    allow_bypass = (not is_render) and is_dev
+    
+    # 1. Validar Bearer Token si el request está configurado en el contexto asíncrono
+    if request:
+        auth_header = request.headers.get("Authorization")
+        if auth_header and auth_header.startswith("Bearer "):
+            token = auth_header.split(" ")[1]
+            secret = os.getenv("AUTH_SECRET") or os.getenv("NEXTAUTH_SECRET")
+            
+            if not secret:
+                if not allow_bypass:
+                    raise HTTPException(
+                        status_code=500,
+                        detail="Error de configuracion de seguridad: falta definir AUTH_SECRET o NEXTAUTH_SECRET en produccion."
+                    )
+                secret = "secreto-desarrollo-por-defecto"
+                
+            payload = verify_token(token, secret)
+            if not payload:
+                raise HTTPException(status_code=401, detail="Token de sesión inválido o expirado.")
+            
+            # El email autenticado por el token DEBE coincidir con el email de la consulta
+            token_email = payload.get("user_id", "").lower()
+            if token_email != email.lower():
+                raise HTTPException(status_code=403, detail="El token de sesión no coincide con el usuario solicitado.")
+        else:
+            # Exigir token obligatorio en producción para todos (sin bypass para test_user)
+            if not allow_bypass:
+                raise HTTPException(status_code=401, detail="Se requiere token de autenticación (Bearer Token) en producción.")
+            else:
+                # En desarrollo local se permite omitir el token si es test_user_persistence@example.com
+                if email.lower() == "test_user_persistence@example.com":
+                    return True
+
+    # 2. Comprobar contra lista de emails autorizados
     authorized_env = os.getenv("AUTHORIZED_EMAILS", "")
+    
     if not authorized_env:
+        if not allow_bypass:
+            raise HTTPException(status_code=403, detail="Acceso denegado: AUTHORIZED_EMAILS no configurada en producción.")
         return True
+        
     authorized_list = [e.strip().lower() for e in authorized_env.split(",")]
-    # Permitir usuario de prueba para persistencia o emails en la lista
-    if email.lower() == "test_user_persistence@example.com" or email.lower() in authorized_list:
+    # En producción test_user_persistence NO se exime si no está en la lista blanca
+    if allow_bypass and email.lower() == "test_user_persistence@example.com":
+        return True
+    if email.lower() in authorized_list:
         return True
     raise HTTPException(status_code=403, detail="Usuario no autorizado")
 

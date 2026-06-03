@@ -1,7 +1,9 @@
 import uvicorn
 import logging
+import os
 import warnings
 from fastapi import FastAPI
+from fastapi.responses import JSONResponse
 
 # Silenciar advertencias de formato de fecha
 warnings.filterwarnings("ignore", category=UserWarning)
@@ -13,8 +15,6 @@ load_dotenv()
 
 # Importar routers, utilidades y rate limiting
 from src.database import init_db
-# Importar routers, utilidades y rate limiting
-from src.database import init_db
 from src.utils.limiter import limiter
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
@@ -24,19 +24,20 @@ app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 from src.routers import auth, data, analysis, dashboard, exports, simulation, visual_summary
+from src.utils.common import request_var
 
-# Configuración de Logs Estructurados (Fase 2)
+# Configuración de Logs Estructurados
 from src.utils.logging_config import setup_logging
 setup_logging()
 logger = logging.getLogger(__name__)
 
-# Configurar CORS (Seguridad Fase 1)
+# Configurar CORS
 ALLOWED_ORIGINS = [
     "http://localhost:3000",
     "http://127.0.0.1:3000",
     "http://localhost:3001",
     "http://127.0.0.1:3001",
-    "https://agente-bi.vercel.app", # Ejemplo de dominio prod
+    "https://agente-bi.vercel.app",
 ]
 
 app.add_middleware(
@@ -47,21 +48,50 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# ── Middleware: Security Headers ──────────────────────────────────────────────
+@app.middleware("http")
+async def security_headers_middleware(request, call_next):
+    """Inyecta headers de seguridad en todas las respuestas HTTP."""
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "no-referrer"
+    response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+    return response
+
+# ── Middleware: Request Context (JWT / auth) ──────────────────────────────────
+@app.middleware("http")
+async def set_request_context_middleware(request, call_next):
+    token = request_var.set(request)
+    try:
+        return await call_next(request)
+    finally:
+        request_var.reset(token)
+
+# ── Middleware: Global 500 handler ────────────────────────────────────────────
 @app.middleware("http")
 async def catch_exceptions_middleware(request, call_next):
     try:
         return await call_next(request)
     except Exception as e:
-        import traceback
-        error_trace = traceback.format_exc()
-        logger.error(f"GLOBAL 500 ERROR: {str(e)}\n{error_trace}")
-        from fastapi.responses import JSONResponse
-        return JSONResponse(
-            status_code=500,
-            content={"detail": f"Internal Server Error: {str(e)}", "traceback": error_trace}
-        )
+        is_render = os.environ.get("RENDER", "false").lower() == "true"
 
-# Registrar Routers con Versionado (Fase 2)
+        if is_render:
+            # Producción: solo tipo de error, sin tracebacks ni str(e)
+            logger.error("GLOBAL 500 ERROR [%s]", type(e).__name__)
+            return JSONResponse(
+                status_code=500,
+                content={"detail": "Internal Server Error. Por favor contacta al administrador."}
+            )
+        else:
+            # Desarrollo: traceback completo al logger (pasa por SecretFilter)
+            logger.exception("GLOBAL 500 ERROR [%s]", type(e).__name__)
+            return JSONResponse(
+                status_code=500,
+                content={"detail": f"Internal Server Error: {type(e).__name__}"}
+            )
+
+# Registrar Routers
 app.include_router(auth.router, prefix="/api/v1")
 app.include_router(data.router, prefix="/api/v1")
 app.include_router(analysis.router, prefix="/api/v1")
@@ -76,20 +106,22 @@ init_db()
 @app.get("/")
 async def root():
     return {
-        "status": "online", 
+        "status": "online",
         "message": "Agente BI API is running (Modular Mode)",
         "version": "1.0.0"
     }
 
 if __name__ == "__main__":
-    import os
     port = int(os.environ.get("PORT", 8000))
-    
-    # Optimización de Memoria (Evitar OOM en Render 512MB)
-    # RENDER es una variable de entorno definida automáticamente por la plataforma Render
     is_render = os.environ.get("RENDER", "false").lower() == "true"
     reload_enabled = not is_render
-    
-    print(f"Starting server in {'PRODUCTION' if is_render else 'DEVELOPMENT'} mode (reload={reload_enabled})...")
+
+    logger.info(
+        "Iniciando servidor en modo %s (reload=%s, port=%d)",
+        "PRODUCTION" if is_render else "DEVELOPMENT",
+        reload_enabled,
+        port
+    )
     uvicorn.run("main:app", host="0.0.0.0", port=port, reload=reload_enabled)
+
 

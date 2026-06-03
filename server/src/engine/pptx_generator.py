@@ -1,5 +1,6 @@
 import os
 import tempfile
+import logging
 try:
     from pptx import Presentation
     from pptx.util import Inches, Pt
@@ -8,6 +9,7 @@ try:
 except ImportError:
     Presentation = None
 
+logger = logging.getLogger(__name__)
 from src.utils.exporter import export_plotly_to_image
 
 def create_presentation(title, summary, items, output_path, template_path="templates/template_vektra_general.pptx"):
@@ -23,10 +25,10 @@ def create_presentation(title, summary, items, output_path, template_path="templ
         full_template_path = os.path.join(base_dir, template_path)
         
         if os.path.exists(full_template_path):
-            print(f"Usando plantilla: {full_template_path}")
+            logger.debug("Usando plantilla PPTX: %s", os.path.basename(full_template_path))
             prs = Presentation(full_template_path)
         else:
-            print(f"Warning: Template {full_template_path} not found. Using default.")
+            logger.warning("Plantilla PPTX no encontrada. Usando presentación vacía.")
             prs = Presentation()
             
         # Forzar tamaño 16:9 Widescreen para dar protagonismo a los gráficos BI
@@ -116,7 +118,10 @@ def create_presentation(title, summary, items, output_path, template_path="templ
         prs.save(output_path)
         return True, output_path
     except Exception as e:
-        import traceback
-        traceback.print_exc()
-        return False, str(e)
+        is_render = os.getenv("RENDER", "false").lower() == "true"
+        if not is_render:
+            logger.exception("Fallo en generación PPTX: %s", type(e).__name__)
+        else:
+            logger.error("Fallo en generación PPTX: %s", type(e).__name__)
+        return False, f"Fallo en generación PPTX: {type(e).__name__}"
 

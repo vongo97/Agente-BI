@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from sqlalchemy.orm import Session
 from typing import Optional
 from src.database import get_db, UserConfig
-from src.utils.common import check_authorization
+from src.utils.common import check_authorization, get_authenticated_user
 from src.utils.security import decrypt_key
 from src.engine.visual_summary_engine import generate_visual_summary
 from src.utils.limiter import limiter
@@ -14,11 +14,12 @@ router = APIRouter(tags=["Visual Summary"])
 
 @router.post("/visual-summary")
 @limiter.limit("5/minute")
+@limiter.limit("20/hour")
 def get_visual_summary(
     request: Request,
     text: str = Form(...),
     api_key: str = Form(...),
-    user_id: str = Form(...),
+    user_id: Optional[str] = Form(None),
     provider: str = Form("gemini"),
     mistral_key: Optional[str] = Form(None),
     visual_type: Optional[str] = Form(None),
@@ -33,12 +34,13 @@ def get_visual_summary(
             detail="La funcionalidad experimental de Resumen Visual está desactivada en el servidor."
         )
 
+    authenticated_user = get_authenticated_user()
     # 2. Validar autorización
-    check_authorization(user_id)
+    check_authorization(authenticated_user)
     
     # 3. Auto-recuperación y descifrado de claves API
     if len(api_key) < 10 or (provider == "mistral" and (not mistral_key or len(mistral_key) < 10)):
-        user_config = db.query(UserConfig).filter(UserConfig.user_id == user_id).first()
+        user_config = db.query(UserConfig).filter(UserConfig.user_id == authenticated_user).first()
         if user_config:
             if len(api_key) < 10 and user_config.gemini_key:
                 api_key = decrypt_key(user_config.gemini_key)
@@ -67,5 +69,5 @@ def get_visual_summary(
         logger.error(f"Error generando Visual Summary: {e}", exc_info=True)
         raise HTTPException(
             status_code=500,
-            detail=f"Error en el motor de generación visual: {str(e)}"
+            detail="Error en el motor de generación visual: Ocurrió un error interno al procesar el resumen."
         )

@@ -1,5 +1,6 @@
 import { Menu, Bot, Sparkles, LayoutDashboard, FileText, FileDown, PlusCircle, Loader2 } from "lucide-react";
-import { getPdfExportUrl } from "@/lib/api";
+import { exportPdf } from "@/lib/api";
+import { useState } from "react";
 
 interface ChatHeaderProps {
     setSidebarOpen: (open: boolean) => void;
@@ -30,6 +31,29 @@ export function ChatHeader({
     handleNewChat,
     aiProvider
 }: ChatHeaderProps) {
+    const [downloadingPdf, setDownloadingPdf] = useState(false);
+
+    const handleDownloadPdf = async () => {
+        if (!activeChatId) return;
+        setDownloadingPdf(true);
+        try {
+            const blob = await exportPdf(activeChatId, userId);
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = `reporte_chat_${activeChatId}.pdf`;
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(url);
+            a.remove();
+        } catch (err) {
+            console.error("Error al descargar PDF:", err);
+            alert("Error al descargar el PDF de forma segura.");
+        } finally {
+            setDownloadingPdf(false);
+        }
+    };
+
     return (
         <header className="h-16 border-b border-[var(--border-color)] flex items-center justify-between px-4 lg:px-8 bg-[var(--bg-primary)]/80 backdrop-blur-xl sticky top-0 z-10 w-full">
             <div className="flex items-center gap-3">
@@ -57,7 +81,7 @@ export function ChatHeader({
                             {cleaningData ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3 text-blue-500" />}
                             <span className="hidden sm:inline">{cleaningData ? 'Limpiando...' : 'Magic Clean'}</span>
                         </button>
-
+ 
                         <button
                             onClick={handleAutoDash}
                             disabled={loadingAutoDash}
@@ -80,9 +104,14 @@ export function ChatHeader({
                     </button>
                 )}
                 {activeChatId && (
-                    <a href={getPdfExportUrl(activeChatId, userId)} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 px-3 py-1.5 bg-[var(--bg-secondary)] hover:bg-[var(--bg-tertiary)] rounded-full border border-[var(--border-color)] text-[10px] font-bold text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-all uppercase tracking-tighter">
-                        <FileDown className="w-3.5 h-3.5" /> PDF Simple
-                    </a>
+                    <button
+                        onClick={handleDownloadPdf}
+                        disabled={downloadingPdf}
+                        className="flex items-center gap-2 px-3 py-1.5 bg-[var(--bg-secondary)] hover:bg-[var(--bg-tertiary)] rounded-full border border-[var(--border-color)] text-[10px] font-bold text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-all uppercase tracking-tighter disabled:opacity-50"
+                    >
+                        {downloadingPdf ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FileDown className="w-3.5 h-3.5" />}
+                        <span>{downloadingPdf ? "Descargando..." : "PDF Simple"}</span>
+                    </button>
                 )}
                 <button onClick={handleNewChat} className="flex items-center gap-2 px-3 py-1.5 bg-[var(--bg-secondary)] hover:bg-[var(--bg-tertiary)] rounded-full border border-[var(--border-color)] text-[10px] font-bold text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-all uppercase tracking-tighter">
                     <PlusCircle className="w-3.5 h-3.5" /> Nuevo Chat

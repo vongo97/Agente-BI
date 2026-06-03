@@ -66,6 +66,13 @@ _clients = {}
 
 def get_client(api_key):
     if api_key not in _clients:
+        # Control de fugas de memoria (limitar tamaño a 50)
+        if len(_clients) >= 50:
+            first_key = next(iter(_clients))
+            try:
+                del _clients[first_key]
+            except KeyError:
+                pass
         _clients[api_key] = genai.Client(api_key=api_key)
     return _clients[api_key]
 
@@ -128,12 +135,12 @@ def generate_ai_content(prompt, api_key, provider="gemini", temperature=0.7, mod
         if "invalid" in err or "key" in err or "permission" in err or "401" in err or "403" in err:
             return f"⚠️ **Error de Autenticación con {provider.capitalize()}.**\nTu API Key parece ser inválida. Revísala en Configuración."
         
-        logger.error(f"Error AI ({provider}): {e}")
-        return f"Error técnico ({provider}): {str(e)}"
+        logger.error("Error AI (%s): %s", provider, type(e).__name__)
+        return f"Error técnico ({provider}): {type(e).__name__}"
     
     return f"⚠️ Error: El motor de {provider} no pudo generar una respuesta. Verifica tu API Key."
 
-def analyze_data(data_context, query, api_key, chat_history=[], mode="file", provider="gemini", mistral_key=None, primary_source_name=None):
+async def analyze_data(data_context, query, api_key, chat_history=[], mode="file", provider="gemini", mistral_key=None, primary_source_name=None):
     """Analista Inteligente con soporte Dual (Híbrido) y Aislamiento de Contexto."""
     try:
         # 1. Configuración de Roles y Proveedores
@@ -225,7 +232,7 @@ def analyze_data(data_context, query, api_key, chat_history=[], mode="file", pro
             raw = generate_ai_content(p, eng_key, eng_provider, model_level="ANALYTICS")
             if not raw or "⚠️" in raw: return raw or "⚠️ Error en IA.", None, None
             
-            temp_text, fig = executor.execute_analysis(data_context, raw, data_var)
+            temp_text, fig = await executor.execute_analysis(data_context, raw, data_var)
             
             if "⚠️ Error" in temp_text and retry_count < max_retries:
                 real_results = temp_text
@@ -248,8 +255,8 @@ def analyze_data(data_context, query, api_key, chat_history=[], mode="file", pro
         return final_narrative, fig_code, raw
 
     except Exception as e:
-        logger.error(f"Critical Error in analyze_data: {e}")
-        return f"### ❌ Error Crítico\n{str(e)}", None, None
+        logger.error("Critical Error in analyze_data: %s", type(e).__name__)
+        return f"### ❌ Error Crítico\n{type(e).__name__}", None, None
 
 def generate_report_summary(query, api_key, context_data=None, provider="gemini", mistral_key=None):
     key = (mistral_key or api_key) if provider == "mistral" else api_key
@@ -358,7 +365,7 @@ def ai_data_cleaner(df, api_key, provider="gemini", mistral_key=None):
     m = re.search(r"```python\n(.*?)\n```", raw, re.DOTALL)
     return executor.safe_exec_cleaning(df, m.group(1) if m else raw)
 
-def execute_analysis(c, r, v): return executor.execute_analysis(c, r, v)
+async def execute_analysis(c, r, v): return await executor.execute_analysis(c, r, v)
 def generate_auto_dashboard(ds, ak, pr="gemini", mk=None):
     # Simplificado para mantener flujo
     return {"metrics": [], "charts": []}

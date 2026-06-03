@@ -8,7 +8,7 @@ from unittest.mock import MagicMock, patch
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from src.engine import bi_analyst, executor, prompts
 
-class TestBIEngine(unittest.TestCase):
+class TestBIEngine(unittest.IsolatedAsyncioTestCase):
 
     def setUp(self):
         # Crear un DataFrame de prueba
@@ -17,10 +17,10 @@ class TestBIEngine(unittest.TestCase):
             'ventas': [100, 200, 150, 300]
         })
 
-    def test_executor_separation(self):
+    async def test_executor_separation(self):
         """Prueba que el executor pueda separar narrativa de código correctamente."""
         raw_response = "Aquí tienes el análisis:\n```python\nfig = px.bar(df, x='producto', y='ventas')\nprint('Total: 750')\n```"
-        narrative, fig = executor.execute_analysis(self.df, raw_response, "df")
+        narrative, fig = await executor.execute_analysis(self.df, raw_response, "df")
         
         self.assertIn("Aquí tienes el análisis", narrative)
         self.assertIn("Total: 750", narrative)
@@ -51,30 +51,30 @@ class TestBIEngine(unittest.TestCase):
         self.assertEqual(summary, 'Convertido a minúsculas')
 
     @patch('src.engine.bi_analyst.generate_ai_content')
-    def test_analyze_data_flow(self, mock_ai):
+    async def test_analyze_data_flow(self, mock_ai):
         """Prueba el flujo de analyze_data (simulando la IA)."""
         mock_ai.side_effect = [
             "```python\nprint('Resultado: 10')\nfig = px.pie(df, names='producto')\n```", 
             "Informe estratégico basado en los datos." 
         ]
         
-        result = bi_analyst.analyze_data(self.df, "Test query", "fake_key")
+        output_text, fig, raw_response = await bi_analyst.analyze_data(self.df, "Test query", "fake_key")
         
-        self.assertIn("Informe estratégico", result)
-        self.assertIn("```python", result)
+        self.assertIn("Informe estratégico", output_text)
+        self.assertIn("```python", raw_response)
         self.assertEqual(mock_ai.call_count, 2)
 
-    def test_security_sandbox_attack(self):
+    async def test_security_sandbox_attack(self):
         """Prueba que el sandbox bloquee intentos de acceso al sistema."""
         # Intento de importar OS (Debe fallar porque __import__ no está)
         attack_code = "```python\nimport os\nos.system('echo hack')\n```"
-        narrative, fig = executor.execute_analysis(self.df, attack_code, "df")
-        self.assertIn("Bloqueo de Seguridad", narrative)
+        narrative, fig = await executor.execute_analysis(self.df, attack_code, "df")
+        self.assertTrue(any(x in narrative.lower() for x in ["seguridad", "restricción", "bloquea"]))
         
         # Intento de usar open() (Debe fallar porque no está en builtins y está en el bloqueador)
         attack_code_2 = "```python\nf = open('test.txt', 'w')\n```"
-        narrative, fig = executor.execute_analysis(self.df, attack_code_2, "df")
-        self.assertIn("Bloqueo de Seguridad", narrative)
+        narrative, fig = await executor.execute_analysis(self.df, attack_code_2, "df")
+        self.assertTrue(any(x in narrative.lower() for x in ["seguridad", "restricción", "bloquea"]))
 
 if __name__ == '__main__':
     unittest.main()

@@ -6,6 +6,9 @@ from fpdf import FPDF
 import tempfile
 import os
 import re
+import logging
+
+logger = logging.getLogger(__name__)
 from datetime import datetime
 
 def export_plotly_to_image(fig_data: any, format: str = "png"):
@@ -54,12 +57,12 @@ def export_plotly_to_image(fig_data: any, format: str = "png"):
         fig.update_yaxes(gridcolor='#e5e7eb', zerolinecolor='#d1d5db')
 
         # Intentar exportar usando kaleido
-        print(f"[DEBUG EXPORT] Intentando kaleido para gráfico con {len(fig.data)} trazas...")
+        logger.debug("[EXPORT] Exportando gráfico con %d trazas via Kaleido...", len(fig.data))
         img_bytes = pio.to_image(fig, format=format, engine="kaleido", scale=3)
-        print(f"[DEBUG EXPORT] EXITO: {len(img_bytes)} bytes generados con Kaleido")
+        logger.debug("[EXPORT] Kaleido: %d bytes generados.", len(img_bytes))
         return img_bytes
     except Exception as e:
-        print(f"[WARNING EXPORT] Kaleido falló: {str(e)}. Intentando Fallback con Matplotlib...")
+        logger.warning("[EXPORT] Kaleido falló (%s). Usando fallback Matplotlib.", type(e).__name__)
         return export_to_image_matplotlib_fallback(fig_dict)
 
 def decode_plotly_array(arr_obj):
@@ -87,7 +90,7 @@ def decode_plotly_array(arr_obj):
             arr = np.frombuffer(raw_bytes, dtype=dtype_map.get(dtype_str, np.float64))
             return arr.tolist()
         except Exception as e:
-            print(f"[ERROR EXPORT] Fallo decodificando bdata: {e}")
+            logger.error("[EXPORT] Error decodificando bdata: %s", type(e).__name__)
             return []
             
     return []
@@ -193,7 +196,7 @@ def export_to_image_matplotlib_fallback(fig_dict: dict):
         
         return img_buffer.getvalue()
     except Exception as ex:
-        print(f"[ERROR EXPORT] Fallback crítico: {str(ex)}")
+        logger.error("[EXPORT] Fallback crítico Matplotlib: %s", type(ex).__name__)
         return None
 
 def generate_pdf_report(user_name: str, messages: list):

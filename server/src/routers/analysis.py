@@ -1,35 +1,40 @@
 import json
+import os
+import logging
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from sqlalchemy.orm import Session
 from typing import Optional
 from src.database import get_db, Chat, Message, UserConfig
 from src.engine.bi_analyst import analyze_data, execute_analysis, suggest_questions, validate_data_quality
-from src.utils.common import check_authorization, get_user_data
+from src.utils.common import check_authorization, get_user_data, get_authenticated_user
 from src.utils.security import decrypt_key
 
 from src.utils.limiter import limiter
 
+logger = logging.getLogger(__name__)
 router = APIRouter(tags=["Analysis"])
 
 @router.post("/analyze")
 @limiter.limit("5/minute")
-def analyze(
+@limiter.limit("30/hour")
+async def analyze(
     request: Request,
     query: str = Form(...),
     api_key: str = Form(...),
-    user_id: str = Form(...),
+    user_id: Optional[str] = Form(None),
     chat_id: Optional[int] = Form(None),
     data_source_id: Optional[int] = Form(None),
     provider: str = Form("gemini"),
     mistral_key: Optional[str] = Form(None),
     db: Session = Depends(get_db)
 ):
-    check_authorization(user_id)
+    authenticated_user = get_authenticated_user()
+    check_authorization(authenticated_user)
     
     # --- AUTO-RECUPERACIÓN DE LLAVES CIFRADAS ---
     # Si las llaves vienen vacías o cortas, intentamos sacarlas de la DB del usuario
     if len(api_key) < 10 or (provider == "mistral" and (not mistral_key or len(mistral_key) < 10)):
-        user_config = db.query(UserConfig).filter(UserConfig.user_id == user_id).first()
+        user_config = db.query(UserConfig).filter(UserConfig.user_id == authenticated_user).first()
         if user_config:
             if len(api_key) < 10 and user_config.gemini_key:
                 api_key = decrypt_key(user_config.gemini_key)
@@ -50,15 +55,16 @@ def analyze(
 
     # Si no hay data_source_id pero hay chat_id, intentar recuperarlo del chat
     if chat_id and not data_source_id:
-        db_chat = db.query(Chat).filter(Chat.id == chat_id, Chat.user_id == user_id).first()
+        db_chat = db.query(Chat).filter(Chat.id == chat_id, Chat.user_id == authenticated_user).first()
         if db_chat and db_chat.data_source_id:
             data_source_id = db_chat.data_source_id
-
-    # DIAGNÓSTICO
-    print(f"[DEBUG] Analyze Request: user={user_id}, chat={chat_id}, source={data_source_id}, provider={provider}")
+ 
+    # DIAGNÓSTICO — pasan por el filtro de secretos del logger
+    logger.debug("Analyze Request: user=%s, chat=%s, source=%s, provider=%s",
+                 authenticated_user, chat_id, data_source_id, provider)
     
-    session_data = get_user_data(user_id, chat_id)
-    print(f"[DEBUG] Session Data found: {session_data is not None}")
+    session_data = get_user_data(authenticated_user, chat_id)
+    logger.debug("Session Data found: %s", session_data is not None)
     
     # Verificar si la fuente solicitada está en el pool actual
     is_source_in_pool = session_data is not None and data_source_id and (
@@ -67,9 +73,9 @@ def analyze(
     )
     
     if session_data is not None and data_source_id and not is_source_in_pool:
-        print(f"[DEBUG] Source Mismatch: request={data_source_id} not in pool {session_data.get('sources', [])}")
+        logger.debug("Source Mismatch: request=%s not in pool %s",
+                     data_source_id, session_data.get('sources', []))
         # Solo descartar la sesión si el pool está completamente vacío.
-        # Si hay datos cargados (múltiples archivos), mantenerlos para que el agente los use.
         has_data = bool(session_data.get("data"))
         if not has_data:
             session_data = None
@@ -79,18 +85,18 @@ def analyze(
     if session_data is None:
         # Intentar auto-cargar desde DataSource si tenemos el ID
         if data_source_id:
-            print(f"[DEBUG] Attempting auto-load for source {data_source_id}")
+            logger.debug("Attempting auto-load for source %s", data_source_id)
             from src.database import DataSource
             from src.utils.common import load_source_to_session
-            source = db.query(DataSource).filter(DataSource.id == data_source_id, DataSource.user_id == user_id).first()
+            source = db.query(DataSource).filter(DataSource.id == data_source_id, DataSource.user_id == authenticated_user).first()
             if source:
-                success = load_source_to_session(user_id, source, chat_id)
-                print(f"[DEBUG] Auto-load success: {success}")
+                success = load_source_to_session(authenticated_user, source, chat_id)
+                logger.debug("Auto-load success: %s", success)
                 if success:
-                    session_data = get_user_data(user_id, chat_id)
+                    session_data = get_user_data(authenticated_user, chat_id)
         
         if not session_data:
-            print("[DEBUG] CRITICAL: No session data could be found or loaded.")
+            logger.warning("No session data found or loaded for user (source=%s).", data_source_id)
             raise HTTPException(status_code=400, detail="No hay datos cargados para analizar. Por favor selecciona una fuente de datos.")
     
     try:
@@ -115,7 +121,7 @@ def analyze(
             return {"analysis": content, "chat_id": chat_id, "message_id": new_msg.id}
         
         # 1. Obtener análisis, gráfico y código de la IA
-        output_text, fig, raw_response = analyze_data(
+        output_text, fig, raw_response = await analyze_data(
             session_data["data"], 
             query, 
             api_key, 
@@ -129,10 +135,10 @@ def analyze(
             
         # Persistencia
         if chat_id:
-            db_chat = db.query(Chat).filter(Chat.id == chat_id, Chat.user_id == user_id).first()
+            db_chat = db.query(Chat).filter(Chat.id == chat_id, Chat.user_id == authenticated_user).first()
         else:
             db_chat = Chat(
-                user_id=user_id, 
+                user_id=authenticated_user, 
                 title=query[:50] + "...",
                 data_source_id=data_source_id
             )
@@ -141,7 +147,7 @@ def analyze(
             db.refresh(db_chat)
             # Promocionar los datos de la sesión activa al nuevo chat ID
             from src.utils.common import promote_active_session
-            promote_active_session(user_id, db_chat.id)
+            promote_active_session(authenticated_user, db_chat.id)
         
         user_msg = Message(chat_id=db_chat.id, role="user", content=query)
         db.add(user_msg)
@@ -166,16 +172,21 @@ def analyze(
             "code": raw_response
         })
     except Exception as e:
-        import traceback
-        traceback.print_exc()
-        print(f"[ERROR 500] {type(e).__name__}: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        is_render = os.getenv("RENDER", "false").lower() == "true"
+        from src.utils.logging_config import safe_error_message
+        clean_msg = safe_error_message(e)
+        if not is_render:
+            logger.exception("ERROR 500 /analyze [%s]: %s", type(e).__name__, clean_msg)
+        else:
+            logger.error("ERROR 500 /analyze [%s]: %s", type(e).__name__, clean_msg)
+        raise HTTPException(status_code=500, detail="Error interno del servidor al procesar el análisis de datos.")
 
 @router.post("/suggest-questions")
 @limiter.limit("10/minute")
+@limiter.limit("60/hour")
 def get_suggestions(
     request: Request,
-    user_id: str = Form(...), 
+    user_id: Optional[str] = Form(None), 
     api_key: str = Form(...),
     chat_id: Optional[int] = Form(None), # AÑADIDO
     data_source_id: Optional[int] = Form(None),
@@ -183,32 +194,34 @@ def get_suggestions(
     mistral_key: Optional[str] = Form(None),
     db: Session = Depends(get_db)
 ):
+    authenticated_user = get_authenticated_user()
+    check_authorization(authenticated_user)
     # Si no viene mistral_key, intentar recuperarla de la base de datos
     if not mistral_key:
         from src.database import UserConfig
-        config = db.query(UserConfig).filter(UserConfig.user_id == user_id).first()
+        config = db.query(UserConfig).filter(UserConfig.user_id == authenticated_user).first()
         if config:
             mistral_key = config.mistral_key
-
-    session_data = get_user_data(user_id, chat_id)
+ 
+    session_data = get_user_data(authenticated_user, chat_id)
     
     # VALIDACIÓN DE FUENTE: Si el ID solicitado no está en el pool, forzar recarga
     is_source_in_pool = session_data and data_source_id and (
         session_data.get("source_id") == data_source_id or 
         data_source_id in session_data.get("sources", [])
     )
-
+ 
     if session_data and data_source_id and not is_source_in_pool:
         session_data = None
-
+ 
     if not session_data:
         # Intentar auto-cargar desde DataSource si tenemos el ID
         if data_source_id:
             from src.database import DataSource
             from src.utils.common import load_source_to_session
-            source = db.query(DataSource).filter(DataSource.id == data_source_id, DataSource.user_id == user_id).first()
-            if source and load_source_to_session(user_id, source, chat_id):
-                session_data = get_user_data(user_id, chat_id)
+            source = db.query(DataSource).filter(DataSource.id == data_source_id, DataSource.user_id == authenticated_user).first()
+            if source and load_source_to_session(authenticated_user, source, chat_id):
+                session_data = get_user_data(authenticated_user, chat_id)
 
     if not session_data:
         raise HTTPException(status_code=404, detail="No hay datos cargados para generar sugerencias.")
@@ -238,7 +251,7 @@ def get_suggestions(
             primary_source_name=primary_source_name
         )
     except Exception as e:
-        print(f"[ERROR] Suggest Questions: {e}")
+        logger.warning("Suggest Questions error (non-critical): %s", type(e).__name__)
         suggestions = ["¿Qué insights hay en los datos?"]
         
     return {"suggestions": suggestions}
@@ -255,13 +268,14 @@ def get_report_summary(
     request: Request,
     query: str = Form(...),
     api_key: str = Form(...),
-    user_id: str = Form(...),
+    user_id: Optional[str] = Form(None),
     provider: str = Form("gemini"),
     mistral_key: Optional[str] = Form(None),
     db: Session = Depends(get_db)
 ):
-    check_authorization(user_id)
-    session_data = get_user_data(user_id)
+    authenticated_user = get_authenticated_user()
+    check_authorization(authenticated_user)
+    session_data = get_user_data(authenticated_user)
     
     # Generar el resumen usando el motor de IA
     from src.engine.bi_analyst import generate_report_summary

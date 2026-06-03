@@ -1,5 +1,22 @@
 const API_URL = (process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000") + "/api/v1";
 
+let apiAuthToken: string | null = null;
+
+export function setApiAuthToken(token: string | null) {
+  apiAuthToken = token;
+}
+
+async function securedFetch(url: string, options: RequestInit = {}): Promise<Response> {
+  const headers = options.headers ? { ...options.headers } as Record<string, string> : {};
+  if (apiAuthToken) {
+    headers["Authorization"] = `Bearer ${apiAuthToken}`;
+  }
+  return fetch(url, {
+    ...options,
+    headers,
+  });
+}
+
 async function handleResponse(response: Response) {
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({}));
@@ -13,7 +30,7 @@ export async function validateApiKey(apiKey: string, provider: string = "gemini"
   formData.append("api_key", apiKey);
   formData.append("provider", provider);
 
-  const response = await fetch(`${API_URL}/validate-key`, {
+  const response = await securedFetch(`${API_URL}/validate-key`, {
     method: "POST",
     body: formData,
   });
@@ -25,7 +42,7 @@ export async function uploadFile(file: File, userId: string) {
   formData.append("file", file);
   formData.append("user_id", userId);
 
-  const response = await fetch(`${API_URL}/upload`, {
+  const response = await securedFetch(`${API_URL}/upload`, {
     method: "POST",
     body: formData,
   });
@@ -42,7 +59,7 @@ export async function analyzeData(query: string, apiKey: string, userId: string,
   if (provider) formData.append("provider", provider);
   if (mistralKey) formData.append("mistral_key", mistralKey);
 
-  const response = await fetch(`${API_URL}/analyze`, {
+  const response = await securedFetch(`${API_URL}/analyze`, {
     method: "POST",
     body: formData,
   });
@@ -50,17 +67,17 @@ export async function analyzeData(query: string, apiKey: string, userId: string,
 }
 
 export async function getHistory(userId: string) {
-  const response = await fetch(`${API_URL}/history?user_id=${userId}`);
+  const response = await securedFetch(`${API_URL}/history?user_id=${userId}`);
   return handleResponse(response);
 }
 
 export async function getChatDetails(chatId: number, userId: string) {
-  const response = await fetch(`${API_URL}/history/${chatId}?user_id=${userId}`);
+  const response = await securedFetch(`${API_URL}/history/${chatId}?user_id=${userId}`);
   return handleResponse(response);
 }
 
 export async function getDataSources(userId: string) {
-  const response = await fetch(`${API_URL}/sources?user_id=${userId}`);
+  const response = await securedFetch(`${API_URL}/sources?user_id=${userId}`);
   return handleResponse(response);
 }
 
@@ -69,7 +86,7 @@ export async function connectSql(url: string, userId: string) {
   formData.append("url", url);
   formData.append("user_id", userId);
 
-  const response = await fetch(`${API_URL}/connect-sql`, {
+  const response = await securedFetch(`${API_URL}/connect-sql`, {
     method: "POST",
     body: formData,
   });
@@ -81,7 +98,7 @@ export async function connectGoogleSheets(url: string, userId: string) {
   formData.append("url", url);
   formData.append("user_id", userId);
 
-  const response = await fetch(`${API_URL}/connect-gsheets`, {
+  const response = await securedFetch(`${API_URL}/connect-gsheets`, {
     method: "POST",
     body: formData,
   });
@@ -96,7 +113,7 @@ export async function pinToDashboard(userId: string, chatId: number, messageId: 
   formData.append("chat_id", chatId.toString());
   formData.append("message_id", messageId.toString());
 
-  const response = await fetch(`${API_URL}/dashboard/pin`, {
+  const response = await securedFetch(`${API_URL}/dashboard/pin`, {
     method: "POST",
     body: formData,
   });
@@ -108,7 +125,7 @@ export async function pinCustomDashboardItem(userId: string, item: any) {
   formData.append("user_id", userId);
   formData.append("item_json", JSON.stringify(item));
 
-  const response = await fetch(`${API_URL}/dashboard/pin-custom`, {
+  const response = await securedFetch(`${API_URL}/dashboard/pin-custom`, {
     method: "POST",
     body: formData,
   });
@@ -116,7 +133,7 @@ export async function pinCustomDashboardItem(userId: string, item: any) {
 }
 
 export async function getDashboard(userId: string) {
-  const response = await fetch(`${API_URL}/dashboard?user_id=${userId}`);
+  const response = await securedFetch(`${API_URL}/dashboard?user_id=${userId}`);
   return handleResponse(response);
 }
 
@@ -125,7 +142,7 @@ export async function filterDashboard(userId: string, filters: object) {
   formData.append("user_id", userId);
   formData.append("filters_json", JSON.stringify(filters));
 
-  const response = await fetch(`${API_URL}/dashboard/filter`, {
+  const response = await securedFetch(`${API_URL}/dashboard/filter`, {
     method: "POST",
     body: formData,
   });
@@ -133,14 +150,14 @@ export async function filterDashboard(userId: string, filters: object) {
 }
 
 export async function deleteDashboardItem(itemId: number, userId: string) {
-  const response = await fetch(`${API_URL}/dashboard/${itemId}?user_id=${userId}`, {
+  const response = await securedFetch(`${API_URL}/dashboard/${itemId}?user_id=${userId}`, {
     method: "DELETE",
   });
   return handleResponse(response);
 }
 
 export async function exportChartAsPng(figJson: any) {
-  const response = await fetch(`${API_URL}/export/chart`, {
+  const response = await securedFetch(`${API_URL}/export/chart`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(figJson),
@@ -157,7 +174,7 @@ export async function generateReportSummary(query: string, apiKey: string, userI
   if (provider) formData.append("provider", provider);
   if (mistralKey) formData.append("mistral_key", mistralKey);
 
-  const response = await fetch(`${API_URL}/generate-report-summary`, {
+  const response = await securedFetch(`${API_URL}/generate-report-summary`, {
     method: "POST",
     body: formData,
   });
@@ -165,7 +182,7 @@ export async function generateReportSummary(query: string, apiKey: string, userI
 }
 
 export async function exportProfessionalReport(reportData: any) {
-  const response = await fetch(`${API_URL}/export/report`, {
+  const response = await securedFetch(`${API_URL}/export/report`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(reportData),
@@ -175,7 +192,7 @@ export async function exportProfessionalReport(reportData: any) {
 }
 
 export async function exportProfessionalPptx(reportData: any) {
-  const response = await fetch(`${API_URL}/export-pptx`, {
+  const response = await securedFetch(`${API_URL}/export-pptx`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(reportData),
@@ -193,7 +210,7 @@ export async function generateAutoDashboard(apiKey: string, userId: string, data
   if (provider) formData.append("provider", provider);
   if (mistralKey) formData.append("mistral_key", mistralKey);
 
-  const response = await fetch(`${API_URL}/auto-dashboard`, {
+  const response = await securedFetch(`${API_URL}/auto-dashboard`, {
     method: "POST",
     body: formData,
   });
@@ -209,7 +226,7 @@ export async function suggestQuestions(userId: string, apiKey: string, dataSourc
   if (provider) formData.append("provider", provider);
   if (mistralKey) formData.append("mistral_key", mistralKey);
 
-  const response = await fetch(`${API_URL}/suggest-questions`, {
+  const response = await securedFetch(`${API_URL}/suggest-questions`, {
     method: "POST",
     body: formData,
   });
@@ -221,18 +238,24 @@ export async function removeSessionSource(userId: string, sourceId: number) {
   formData.append("user_id", userId);
   formData.append("source_id", sourceId.toString());
 
-  const response = await fetch(`${API_URL}/remove-session-source`, {
+  const response = await securedFetch(`${API_URL}/remove-session-source`, {
     method: "POST",
     body: formData,
   });
   return handleResponse(response);
 }
 
-export const getPdfExportUrl = (chatId: number, userId: string) => 
-  `${API_URL}/export/pdf/${chatId}?user_id=${userId}`;
+export async function exportPdf(chatId: number, userId: string): Promise<Blob> {
+  const response = await securedFetch(`${API_URL}/export/pdf/${chatId}?user_id=${userId}`);
+  if (!response.ok) throw new Error("Error exportando PDF");
+  return response.blob();
+}
 
-export const getSimulationPdfUrl = (simId: number, userId: string) =>
-  `${API_URL}/export/simulation/${simId}?user_id=${userId}`;
+export async function exportSimulationPdf(simId: number, userId: string): Promise<Blob> {
+  const response = await securedFetch(`${API_URL}/export/simulation/${simId}?user_id=${userId}`);
+  if (!response.ok) throw new Error("Error exportando PDF de simulación");
+  return response.blob();
+}
 
 export async function cleanData(userId: string, apiKey: string, dataSourceId?: number, chatId?: number, provider?: "gemini" | "mistral" | "hybrid", mistralKey?: string) {
   const formData = new FormData();
@@ -243,14 +266,14 @@ export async function cleanData(userId: string, apiKey: string, dataSourceId?: n
   if (provider) formData.append("provider", provider);
   if (mistralKey) formData.append("mistral_key", mistralKey);
 
-  const response = await fetch(`${API_URL}/clean-data`, {
+  const response = await securedFetch(`${API_URL}/clean-data`, {
     method: "POST",
     body: formData,
   });
   return handleResponse(response);
 }
 
-// --- DATA SOURCES (Fase 3.2) ---
+// --- DATA SOURCES ---
 
 export async function saveDataSource(userId: string, name: string, type: 'sql' | 'gsheets' | 'file', url: string, columns?: string[]) {
   const formData = new FormData();
@@ -260,7 +283,7 @@ export async function saveDataSource(userId: string, name: string, type: 'sql' |
   formData.append("url", url);
   if (columns) formData.append("columns", JSON.stringify(columns));
 
-  const response = await fetch(`${API_URL}/data-sources`, {
+  const response = await securedFetch(`${API_URL}/data-sources`, {
     method: "POST",
     body: formData,
   });
@@ -268,7 +291,7 @@ export async function saveDataSource(userId: string, name: string, type: 'sql' |
 }
 
 export async function deleteDataSource(sourceId: number, userId: string) {
-  const response = await fetch(`${API_URL}/data-sources/${sourceId}?user_id=${userId}`, {
+  const response = await securedFetch(`${API_URL}/data-sources/${sourceId}?user_id=${userId}`, {
     method: "DELETE",
   });
   return handleResponse(response);
@@ -286,7 +309,7 @@ export async function createSimulation(
   provider: string = "gemini", 
   mistralKey?: string
 ) {
-  const response = await fetch(`${API_URL}/simulation`, {
+  const response = await securedFetch(`${API_URL}/simulation`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -310,7 +333,7 @@ export async function getSimulationSuggestions(
   provider: string = "gemini", 
   mistralKey?: string
 ) {
-  const response = await fetch(`${API_URL}/simulation/suggestions`, {
+  const response = await securedFetch(`${API_URL}/simulation/suggestions`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -325,22 +348,22 @@ export async function getSimulationSuggestions(
 }
 
 export async function getSimulations(userId: string) {
-  const response = await fetch(`${API_URL}/simulation/user/${userId}`);
+  const response = await securedFetch(`${API_URL}/simulation/user/${userId}`);
   return handleResponse(response);
 }
 
 export async function getSimulationDetails(simId: number) {
-  const response = await fetch(`${API_URL}/simulation/${simId}`);
+  const response = await securedFetch(`${API_URL}/simulation/${simId}`);
   return handleResponse(response);
 }
 
 export async function getSimulationMessages(simId: number) {
-  const response = await fetch(`${API_URL}/simulation/${simId}/messages`);
+  const response = await securedFetch(`${API_URL}/simulation/${simId}/messages`);
   return handleResponse(response);
 }
 
 export async function retrySimulation(simId: number) {
-  const response = await fetch(`${API_URL}/simulation/${simId}/retry`, {
+  const response = await securedFetch(`${API_URL}/simulation/${simId}/retry`, {
     method: "POST",
   });
   return handleResponse(response);
@@ -364,10 +387,48 @@ export async function generateVisualSummary(
   if (visualType) formData.append("visual_type", visualType);
   formData.append("mode", mode);
 
-  const response = await fetch(`${API_URL}/visual-summary`, {
+  const response = await securedFetch(`${API_URL}/visual-summary`, {
     method: "POST",
     body: formData,
   });
   return handleResponse(response);
 }
 
+// --- USER CONFIG ENDPOINTS ---
+
+export async function getUserConfig(userId: string) {
+  const response = await securedFetch(`${API_URL}/user-config?user_id=${userId}`);
+  return handleResponse(response);
+}
+
+export async function setUserConfig(
+  userId: string,
+  geminiKey?: string,
+  mistralKey?: string,
+  gammaKey?: string,
+  preferredProvider?: string
+) {
+  const formData = new FormData();
+  formData.append("user_id", userId);
+  if (geminiKey !== undefined) formData.append("gemini_key", geminiKey);
+  if (mistralKey !== undefined) formData.append("mistral_key", mistralKey);
+  if (gammaKey !== undefined) formData.append("gamma_key", gammaKey);
+  if (preferredProvider !== undefined) formData.append("preferred_provider", preferredProvider);
+
+  const response = await securedFetch(`${API_URL}/user-config`, {
+    method: "POST",
+    body: formData,
+  });
+  return handleResponse(response);
+}
+
+export async function clearSession(userId: string) {
+  const formData = new FormData();
+  formData.append("user_id", userId);
+
+  const response = await securedFetch(`${API_URL}/clear-session`, {
+    method: "POST",
+    body: formData,
+  });
+  return handleResponse(response);
+}
