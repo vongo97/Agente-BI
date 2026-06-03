@@ -4,9 +4,9 @@ const cspHeader = `
   default-src 'self';
   script-src 'self' 'unsafe-eval' 'unsafe-inline';
   style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
-  img-src 'self' blob: data:;
+  img-src 'self' blob: data: https://lh3.googleusercontent.com;
   font-src 'self' https://fonts.gstatic.com;
-  connect-src 'self' ws: wss: http://127.0.0.1:8000 http://localhost:8000 https://agente-bi.onrender.com;
+  connect-src 'self' ws: wss: http://127.0.0.1:8000 http://localhost:8000 https://agente-bi.onrender.com https://agente-bi-server.onrender.com;
   frame-src 'none';
   object-src 'none';
 `.replace(/\s{2,}/g, ' ').trim();
