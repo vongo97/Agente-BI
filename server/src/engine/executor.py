@@ -40,17 +40,17 @@ _MAX_CELLS   = 1_000_000
 def _dynamic_timeout(tables: dict) -> int:
     """
     Calcula un timeout dinámico según el volumen total de filas del dataset.
-    Datasets grandes (>10K filas) necesitan más tiempo por el overhead de
-    serialización pickle + imports + groupby/merge en el subproceso.
+    Render Free Tier tiene una CPU muy limitada (~0.1 vCPU), lo que hace que
+    operaciones normales tomen 10x más tiempo.
     """
     total_rows = 0
     for v in tables.values():
         if hasattr(v, '__len__'):
             total_rows += len(v)
     if total_rows > 10_000:
-        return 30
+        return 60  # 60s para datasets grandes en Render Free
     elif total_rows > 5_000:
-        return 20
+        return 45
     return _SANDBOX_TIMEOUT_S  # 15s base
 
 
@@ -453,13 +453,17 @@ safe_builtins = {{
     '__import__': restricted_import
 }}
 
-# Fix #7: Lazy import de plotly — se importa aquí para que esté disponible en el código del usuario,
-# pero Plotly solo se serializa al final. En cold-start, esto aún consume tiempo,
-# pero al menos está después de cargar los datos.
-import plotly.express as px
+# Fix #7: Strict Lazy import de plotly usando un Proxy
+# Plotly y matplotlib son librerías pesadas. Solo las importamos
+# si el código del usuario realmente invoca `px.alguna_funcion` o `plt`.
+class PlotlyProxy:
+    def __getattr__(self, name):
+        import plotly.express as px
+        return getattr(px, name)
 
 env = {{
-    'pd': pd, 'px': px, 'np': np, 'json': json,
+    'pd': pd, 'np': np, 'json': json,
+    'px': PlotlyProxy(),
     '__builtins__': safe_builtins
 }}
 
