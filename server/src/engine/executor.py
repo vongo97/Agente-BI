@@ -54,26 +54,27 @@ def _dynamic_timeout(tables: dict) -> int:
     return _SANDBOX_TIMEOUT_S  # 15s base
 
 
-def _make_preexec_linux(mem_mb: int, cpu_s: int):
+def _make_preexec_linux(cpu_s: int):
     """
-    Devuelve una función preexec_fn para subprocess.run que fija límites duros
-    de RAM y CPU-time en el proceso hijo (solo Linux / Render).
-    El kernel matará el proceso hijo si supera cualquiera de los límites.
+    Devuelve una función preexec_fn para subprocess.run que fija límite duro
+    de CPU-time en el proceso hijo (solo Linux / Render).
+    NOTA: Se eliminó RLIMIT_AS porque restringe la Memoria Virtual, lo cual
+    hace fallar los mmap() de las librerías dinámicas de pandas/numpy al importar,
+    provocando 'MemoryError' incluso con mucha RAM física libre.
+    El límite de RAM se gestiona midiendo el RSS real con el watchdog.
     """
     def _set_limits():
         try:
             import resource
-            mem_bytes = mem_mb * 1024 * 1024
-            resource.setrlimit(resource.RLIMIT_AS,  (mem_bytes, mem_bytes))  # RAM virtual
-            resource.setrlimit(resource.RLIMIT_CPU, (cpu_s, cpu_s + 2))      # CPU seconds
+            resource.setrlimit(resource.RLIMIT_CPU, (cpu_s, cpu_s + 2))
         except Exception:
             pass  # Si falla (permisos, etc.) continuamos sin límites duros
     return _set_limits
 
 
-def _watchdog_windows(proc: subprocess.Popen, mem_mb: int, stop_event: threading.Event):
+def _watchdog_thread(proc: subprocess.Popen, mem_mb: int, stop_event: threading.Event):
     """
-    Hilo watchdog para Windows: mata el proceso hijo si supera `mem_mb` MB de RAM RSS.
+    Hilo watchdog multiplataforma: mata el proceso hijo si supera `mem_mb` MB de RAM RSS física.
     Se detiene sola cuando stop_event está seteado (proceso terminado).
     """
     try:
@@ -83,7 +84,7 @@ def _watchdog_windows(proc: subprocess.Popen, mem_mb: int, stop_event: threading
             try:
                 rss_mb = ps_proc.memory_info().rss / (1024 * 1024)
                 if rss_mb > mem_mb:
-                    logger.warning("Sandbox OOM: proceso hijo superó %d MB (RSS=%.1f MB). Terminando.",
+                    logger.warning("Sandbox OOM: proceso hijo superó %d MB de RAM física (RSS=%.1f MB). Terminando.",
                                    mem_mb, rss_mb)
                     ps_proc.kill()
                     return
@@ -96,51 +97,44 @@ def _watchdog_windows(proc: subprocess.Popen, mem_mb: int, stop_event: threading
 
 def _run_subprocess_with_limits(cmd, env_clean, timeout=_SANDBOX_TIMEOUT_S):
     """
-    Lanza cmd como subproceso con límites de recursos apropiados para la plataforma:
-    - Linux: preexec_fn (setrlimit) para límites duros de RAM y CPU.
-    - Windows: watchdog thread con psutil para límites blandos de RAM.
+    Lanza cmd como subproceso con límites de recursos apropiados:
+    - Linux: preexec_fn para límite duro de CPU.
+    - Multiplataforma: watchdog thread con psutil para límites de RAM física (RSS).
     Siempre aplica timeout de reloj de pared.
     """
+    kwargs = {
+        "stdout": subprocess.PIPE,
+        "stderr": subprocess.PIPE,
+        "text": True,
+        "env": env_clean,
+        "cwd": os.path.dirname(cmd[1])
+    }
     if _IS_LINUX:
-        return subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            timeout=timeout,
-            env=env_clean,
-            cwd=cmd[1].rsplit('/', 1)[0] if '/' in cmd[1] else None,  # cwd=temp_dir del script
-            preexec_fn=_make_preexec_linux(_SANDBOX_MEMORY_MB, timeout + 2)
-        )
-    else:
-        # Windows: iniciar con Popen + watchdog
-        proc = subprocess.Popen(
-            cmd,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            env=env_clean,
-            cwd=os.path.dirname(cmd[1])   # cwd = temp_dir del script
-        )
-        stop_event = threading.Event()
-        watchdog = threading.Thread(
-            target=_watchdog_windows,
-            args=(proc, _SANDBOX_MEMORY_MB, stop_event),
-            daemon=True
-        )
-        watchdog.start()
-        try:
-            stdout, stderr = proc.communicate(timeout=timeout)
-        except subprocess.TimeoutExpired:
-            proc.kill()
-            stdout, stderr = proc.communicate()
-            raise
-        finally:
-            stop_event.set()
-        # Emular CompletedProcess para compatibilidad con el código existente
-        return subprocess.CompletedProcess(
-            args=cmd, returncode=proc.returncode,
-            stdout=stdout, stderr=stderr
-        )
+        kwargs["preexec_fn"] = _make_preexec_linux(timeout + 2)
+
+    proc = subprocess.Popen(cmd, **kwargs)
+    
+    stop_event = threading.Event()
+    watchdog = threading.Thread(
+        target=_watchdog_thread,
+        args=(proc, _SANDBOX_MEMORY_MB, stop_event),
+        daemon=True
+    )
+    watchdog.start()
+    
+    try:
+        stdout, stderr = proc.communicate(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        proc.kill()
+        stdout, stderr = proc.communicate()
+        raise
+    finally:
+        stop_event.set()
+        
+    return subprocess.CompletedProcess(
+        args=cmd, returncode=proc.returncode,
+        stdout=stdout, stderr=stderr
+    )
 
 def validate_code_safety(code):
     """
