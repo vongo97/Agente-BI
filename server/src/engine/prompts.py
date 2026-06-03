@@ -20,6 +20,7 @@ REGLAS CRÍTICAS DE COLUMNAS:
 3. **Fechas**: Usa `pd.to_datetime(df['columna'], errors='coerce')`.
 4. **ERROR CRÍTICO A EVITAR**: NO uses `.str` (ej: `.str.contains`) en columnas que ya son fechas (`datetime64`). Si necesitas filtrar por año o mes, usa `df['columna'].dt.year` o convierte primero a string con `.astype(str)`.
 5. **Valores Nulos (NaN)**: Si un cálculo resulta en `NaN` o `inf`, no lo ignores. Usa `.fillna(0)` o indica en el texto que los datos no están disponibles. NUNCA muestres '(nan)' al usuario final.
+6. **Limpieza Numérica**: Si realizas cálculos con columnas financieras o numéricas (ej: patrimonio, ingresos), asume que podrían venir como texto (con '$', comas, puntos). ANTES de calcular, límpialas y conviértelas a numérico: `pd.to_numeric(df['col'].astype(str).str.replace(r'[^\d.-]', '', regex=True), errors='coerce')`.
 
 REGLAS DE SALIDA:
 - Visualización: Genera SIEMPRE un gráfico con `px` (Plotly Express) y asígnalo a la variable `fig`.
