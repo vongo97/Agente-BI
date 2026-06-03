@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter(tags=["Data Management"])
 
 # ── Cuotas por usuario ──────────────────────────────────────────────────────────────
-_QUOTA_MAX_SOURCES   = 10              # Máx fuentes activas por usuario
+_QUOTA_MAX_SOURCES   = 100             # Máx fuentes activas por usuario
 _QUOTA_MAX_FILE_MB   = 25             # Máx por archivo (MB)
 _QUOTA_MAX_TOTAL_MB  = 250            # Máx almacenamiento total por usuario (MB)
 
