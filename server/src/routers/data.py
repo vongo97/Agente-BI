@@ -257,7 +257,7 @@ async def connect_gsheets(request: Request, user_id: Optional[str] = Form(None),
 
 @router.post("/clear-session")
 @limiter.limit("10/minute")
-async def clear_session(request: Request, user_id: Optional[str] = Form(None)):
+async def clear_session(request: Request, user_id: Optional[str] = Form(None), db: Session = Depends(get_db)):
     authenticated_user = get_authenticated_user()
     check_authorization(authenticated_user)
     try:
@@ -269,7 +269,20 @@ async def clear_session(request: Request, user_id: Optional[str] = Form(None)):
         session_file = get_session_file(authenticated_user)
         if os.path.exists(session_file):
             os.remove(session_file)
-        return {"message": "Pool de datos limpiado."}
+
+        # Limpiar también los registros de data_sources de la base de datos para liberar la cuota
+        sources = db.query(DataSource).filter(DataSource.user_id == authenticated_user).all()
+        for source in sources:
+            if source.type == "file" and source.url:
+                try:
+                    if os.path.exists(source.url):
+                        os.remove(source.url)
+                except Exception:
+                    pass
+        db.query(DataSource).filter(DataSource.user_id == authenticated_user).delete()
+        db.commit()
+
+        return {"message": "Pool de datos y fuentes limpiados."}
     except Exception as e:
         from src.utils.logging_config import safe_error_message
         logger.error("Error al limpiar sesión: %s", safe_error_message(e))
