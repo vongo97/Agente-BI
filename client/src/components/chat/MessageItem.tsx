@@ -13,12 +13,27 @@ const Plot = dynamic(() => import("react-plotly.js"), {
             <Loader2 className="w-5 h-5 text-[var(--bi-teal)] animate-spin" />
         </div>
     ),
-}) as any;
+}) as React.ComponentType<{
+    data: Record<string, unknown>[];
+    layout: Record<string, unknown>;
+    useResizeHandler?: boolean;
+    style?: React.CSSProperties;
+    config?: Record<string, unknown>;
+}>;
+
+interface PlotlyFigure {
+    data: Record<string, unknown>[];
+    layout: Record<string, unknown> & {
+        showlegend?: boolean;
+        xaxis?: Record<string, unknown>;
+        yaxis?: Record<string, unknown>;
+    };
+}
 
 interface MessageItemProps {
     msg: Message;
     userId: string;
-    handleExportPng: (fig: any, content: string) => void;
+    handleExportPng: (fig: unknown, content: string) => void;
     handlePin: (id: number) => void;
 }
 
@@ -70,74 +85,76 @@ export function MessageItem({ msg, userId, handleExportPng, handlePin }: Message
                 </div>
 
                 {/* Chart */}
-                {msg.fig && (
-                    <div className="bg-[var(--bi-surface-0)] border border-[var(--bi-border)] rounded-lg overflow-hidden shadow-md">
-                        {/* Chart toolbar */}
-                        <div className="flex items-center justify-between px-3 py-2 border-b border-[var(--bi-border)] bg-[var(--bi-surface-0)]/50">
-                            <span className="text-[10px] font-semibold text-[var(--bi-text-3)] uppercase tracking-wider flex items-center gap-1.5">
-                                <span className="w-1.5 h-1.5 rounded-full bg-[var(--bi-teal)]" />
-                                Visualización
-                            </span>
-                            <div className="flex items-center gap-1">
-                                <button
-                                    onClick={() => handleExportPng(msg.fig, msg.content)}
-                                    title="Descargar PNG"
-                                    className="p-1.5 rounded text-[var(--bi-text-3)] hover:text-[var(--bi-text-1)] hover:bg-[var(--bi-surface-2)] transition-colors cursor-pointer"
-                                >
-                                    <Download className="w-3.5 h-3.5" />
-                                </button>
-                                {msg.id && (
+                {(() => {
+                    const fig = msg.fig as PlotlyFigure | undefined;
+                    return fig ? (
+                        <div className="bg-[var(--bi-surface-0)] border border-[var(--bi-border)] rounded-lg overflow-hidden shadow-md">
+                            {/* Chart toolbar */}
+                            <div className="flex items-center justify-between px-3 py-2 border-b border-[var(--bi-border)] bg-[var(--bi-surface-0)]/50">
+                                <span className="text-[10px] font-semibold text-[var(--bi-text-3)] uppercase tracking-wider flex items-center gap-1.5">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-[var(--bi-teal)]" />
+                                    Visualización
+                                </span>
+                                <div className="flex items-center gap-1">
                                     <button
-                                        onClick={() => handlePin(msg.id!)}
-                                        title="Anclar al panel"
-                                        className="p-1.5 rounded text-[var(--bi-text-3)] hover:text-[var(--bi-teal)] hover:bg-[var(--bi-surface-2)] transition-colors cursor-pointer"
+                                        onClick={() => handleExportPng(fig, msg.content)}
+                                        title="Descargar PNG"
+                                        className="p-1.5 rounded text-[var(--bi-text-3)] hover:text-[var(--bi-text-1)] hover:bg-[var(--bi-surface-2)] transition-colors cursor-pointer"
                                     >
-                                        <Pin className="w-3.5 h-3.5" />
+                                        <Download className="w-3.5 h-3.5" />
                                     </button>
-                                )}
+                                    {msg.id && (
+                                        <button
+                                            onClick={() => handlePin(msg.id!)}
+                                            title="Anclar al panel"
+                                            className="p-1.5 rounded text-[var(--bi-text-3)] hover:text-[var(--bi-teal)] hover:bg-[var(--bi-surface-2)] transition-colors cursor-pointer"
+                                        >
+                                            <Pin className="w-3.5 h-3.5" />
+                                        </button>
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* Plot */}
+                            <div className="p-2">
+                                <Plot
+                                    data={fig.data}
+                                    layout={{
+                                        ...fig.layout,
+                                        autosize: true,
+                                        paper_bgcolor: "rgba(0,0,0,0)",
+                                        plot_bgcolor: "rgba(0,0,0,0)",
+                                        font: {
+                                            color: "var(--bi-text-2)",
+                                            family: "Inter, sans-serif",
+                                            size: 11,
+                                        },
+                                        margin: { t: 32, b: 36, l: 48, r: 16 },
+                                        showlegend: fig.layout.showlegend ?? false,
+                                        xaxis: {
+                                            ...(fig.layout.xaxis || {}),
+                                            gridcolor: "var(--bi-border)",
+                                            zerolinecolor: "var(--bi-border)",
+                                        },
+                                        yaxis: {
+                                            ...(fig.layout.yaxis || {}),
+                                            gridcolor: "var(--bi-border)",
+                                            zerolinecolor: "var(--bi-border)",
+                                        },
+                                    }}
+                                    useResizeHandler
+                                    style={{ width: "100%", minHeight: "320px" }}
+                                    config={{ responsive: true, displayModeBar: false }}
+                                />
                             </div>
                         </div>
+                    ) : null;
+                })()}
 
-                        {/* Plot */}
-                        <div className="p-2">
-                            <Plot
-                                data={msg.fig.data}
-                                layout={{
-                                    ...msg.fig.layout,
-                                    autosize: true,
-                                    paper_bgcolor: "rgba(0,0,0,0)",
-                                    plot_bgcolor: "rgba(0,0,0,0)",
-                                    font: {
-                                        color: "var(--bi-text-2)",
-                                        family: "Inter, sans-serif",
-                                        size: 11,
-                                    },
-                                    margin: { t: 32, b: 36, l: 48, r: 16 },
-                                    showlegend: msg.fig.layout.showlegend ?? false,
-                                    xaxis: {
-                                        ...msg.fig.layout.xaxis,
-                                        gridcolor: "var(--bi-border)",
-                                        zerolinecolor: "var(--bi-border)",
-                                    },
-                                    yaxis: {
-                                        ...msg.fig.layout.yaxis,
-                                        gridcolor: "var(--bi-border)",
-                                        zerolinecolor: "var(--bi-border)",
-                                    },
-                                }}
-                                useResizeHandler
-                                style={{ width: "100%", minHeight: "320px" }}
-                                config={{ responsive: true, displayModeBar: false }}
-                            />
-                        </div>
-                    </div>
-                )}
-
-                {/* Auto-Dashboard */}
-                {(msg as any).dashboardData && (
+                {msg.dashboardData && (
                     <AutoDashGrid
-                        items={(msg as any).dashboardData.charts}
-                        metrics={(msg as any).dashboardData.metrics}
+                        items={msg.dashboardData.charts}
+                        metrics={msg.dashboardData.metrics}
                         userId={userId}
                     />
                 )}

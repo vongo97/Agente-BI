@@ -1,9 +1,10 @@
 import { History } from "lucide-react";
+import { Simulation } from "@/types/shared";
 
 interface SimHistoryProps {
-    simulations: any[];
-    activeSim: any;
-    loadSim: (sim: any) => void;
+    simulations: Simulation[];
+    activeSim: Simulation | null;
+    loadSim: (sim: Simulation) => void;
 }
 
 export function SimHistory({ simulations, activeSim, loadSim }: SimHistoryProps) {

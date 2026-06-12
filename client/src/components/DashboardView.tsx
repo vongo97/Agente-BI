@@ -7,6 +7,7 @@ import { getDashboard, deleteDashboardItem, exportChartAsPng, filterDashboard } 
 import { Activity, Trash2, Download, Box, Filter, X, GripVertical, Menu } from "lucide-react";
 import dynamic from "next/dynamic";
 import { Responsive } from "react-grid-layout";
+import { DashboardItem } from "@/types/shared";
 
 // Estilos de react-grid-layout
 import "react-grid-layout/css/styles.css";
@@ -15,16 +16,39 @@ import "react-resizable/css/styles.css";
 const Plot = dynamic(() => import("react-plotly.js"), {
     ssr: false,
     loading: () => <div className="h-64 flex items-center justify-center bg-white/5 animate-pulse rounded-xl">Cargando gráfico...</div>
-}) as any;
+}) as React.ComponentType<{
+    data: Record<string, unknown>[];
+    layout: Record<string, unknown>;
+    useResizeHandler?: boolean;
+    style?: React.CSSProperties;
+    config?: Record<string, unknown>;
+    onClick?: (event: {
+        points?: {
+            label?: string | number;
+            x?: string | number;
+            y?: string | number;
+            fullData?: { name?: string };
+            data?: { name?: string };
+        }[];
+    }) => void;
+}>;
+
+interface PlotlyFigure {
+    data: Record<string, unknown>[];
+    layout: Record<string, unknown> & {
+        xaxis?: Record<string, unknown>;
+        yaxis?: Record<string, unknown>;
+    };
+}
 
 export function DashboardView() {
     const { data: session } = useSession();
     const { setView, filters, setFilters, setSidebarOpen } = useDashboard();
-    const [items, setItems] = useState<any[]>([]);
-    const [originalItems, setOriginalItems] = useState<any[]>([]); // Para resetear sin re-cargar
+    const [items, setItems] = useState<DashboardItem[]>([]);
+    const [originalItems, setOriginalItems] = useState<DashboardItem[]>([]); // Para resetear sin re-cargar
     const [loading, setLoading] = useState(true);
     const [isFiltering, setIsFiltering] = useState(false);
-    const [layouts, setLayouts] = useState<any>({});
+    const [layouts, setLayouts] = useState<Record<string, unknown>>({});
     const [width, setWidth] = useState(1200);
     const containerRef = useRef<HTMLDivElement>(null);
     const userId = session?.user?.email || "default_user";
@@ -67,7 +91,7 @@ export function DashboardView() {
             if (data.status === "success") {
                 // Actualizar solo las figuras de los ítems existentes
                 const updatedItems = items.map(item => {
-                    const update = data.updated_items.find((ui: any) => ui.id === item.id);
+                    const update = (data.updated_items as DashboardItem[]).find((ui) => ui.id === item.id);
                     return update ? { ...item, fig: update.fig } : item;
                 });
                 setItems(updatedItems);
@@ -82,12 +106,12 @@ export function DashboardView() {
     const fetchDashboard = async () => {
         setLoading(true);
         try {
-            const data = await getDashboard(userId);
+            const data = await getDashboard(userId) as DashboardItem[];
             setItems(data);
             setOriginalItems(data);
 
             // Generar layout inicial
-            const initialLayout = data.map((item: any, i: number) => ({
+            const initialLayout = data.map((item, i: number) => ({
                 i: item.id.toString(),
                 x: (i % 2) * 6,
                 y: Math.floor(i / 2) * 6,
@@ -120,7 +144,7 @@ export function DashboardView() {
         }
     };
 
-    const onLayoutChange = (currentLayout: any, allLayouts: any) => {
+    const onLayoutChange = (currentLayout: unknown, allLayouts: Record<string, unknown>) => {
         if (items.length > 0) {
             setLayouts(allLayouts);
             localStorage.setItem(`dashboard_layout_${userId}`, JSON.stringify(allLayouts));
@@ -136,7 +160,7 @@ export function DashboardView() {
         }
     };
 
-    const handleDownload = async (fig: any, name: string) => {
+    const handleDownload = async (fig: unknown, name: string) => {
         try {
             const blob = await exportChartAsPng(fig);
             const url = window.URL.createObjectURL(blob);
@@ -151,21 +175,23 @@ export function DashboardView() {
         }
     };
 
-    const handlePlotClick = (event: any) => {
+    const handlePlotClick = (event: {
+        points?: {
+            label?: string | number;
+            x?: string | number;
+            y?: string | number;
+            fullData?: { name?: string };
+            data?: { name?: string };
+        }[];
+    }) => {
         if (!event || !event.points || event.points.length === 0) return;
         
         const point = event.points[0];
-        // Intentar deducir la columna y el valor del clic
-        // Plotly suele poner el nombre de la columna en 'label' o 'axis'
-        const label = point.label || point.x || point.y;
+        const label = point.label ?? point.x ?? point.y;
+        const possibleColumn = point.fullData?.name ?? point.data?.name ?? "categoria";
         
-        // Buscamos si hay un mapeo de columna. 
-        // Por ahora, asumimos que estamos filtrando por una dimensión categórica
-        // que detectamos en el eje X o en el label (típico en barras/pie)
-        const possibleColumn = point.fullData.name || point.data.name || "categoria";
-        
-        if (label) {
-            setFilters((prev: any) => ({
+        if (label !== undefined) {
+            setFilters((prev: Record<string, string | number | null>) => ({
                 ...prev,
                 [possibleColumn]: label
             }));
@@ -173,7 +199,7 @@ export function DashboardView() {
     };
 
     const clearFilter = (key: string) => {
-        setFilters((prev: any) => {
+        setFilters((prev: Record<string, string | number | null>) => {
             const newFilters = { ...prev };
             delete newFilters[key];
             return newFilters;
@@ -301,31 +327,34 @@ export function DashboardView() {
                                         </div>
 
                                         <div className="flex-1 p-2 bg-[var(--bi-canvas)]/30 min-h-0 relative">
-                                            {item.fig ? (
-                                                <div className="w-full h-full flex items-center justify-center rounded-lg overflow-hidden">
-                                                    <Plot
-                                                        data={item.fig.data}
-                                                        layout={{
-                                                            ...item.fig.layout,
-                                                            autosize: true,
-                                                            paper_bgcolor: 'rgba(0,0,0,0)',
-                                                            plot_bgcolor: 'rgba(0,0,0,0)',
-                                                            font: { color: 'var(--bi-text-2)', size: 9 },
-                                                            margin: { t: 20, b: 20, l: 30, r: 20 },
-                                                            xaxis: { ...item.fig.layout.xaxis, gridcolor: 'var(--bi-border)', zerolinecolor: 'var(--bi-border)' },
-                                                            yaxis: { ...item.fig.layout.yaxis, gridcolor: 'var(--bi-border)', zerolinecolor: 'var(--bi-border)' }
-                                                        }}
-                                                        useResizeHandler={true}
-                                                        style={{ width: "100%", height: "100%" }}
-                                                        config={{ responsive: true, displayModeBar: false }}
-                                                        onClick={handlePlotClick}
-                                                    />
-                                                </div>
-                                            ) : (
-                                                <div className="h-full flex items-center justify-center">
-                                                    <p className="text-[10px] text-[var(--bi-text-3)] font-bold uppercase tracking-widest italic">Solo Tabla</p>
-                                                </div>
-                                            )}
+                                            {(() => {
+                                                const fig = item.fig as PlotlyFigure | undefined;
+                                                return fig ? (
+                                                    <div className="w-full h-full flex items-center justify-center rounded-lg overflow-hidden">
+                                                        <Plot
+                                                            data={fig.data}
+                                                            layout={{
+                                                                ...fig.layout,
+                                                                autosize: true,
+                                                                paper_bgcolor: 'rgba(0,0,0,0)',
+                                                                plot_bgcolor: 'rgba(0,0,0,0)',
+                                                                font: { color: 'var(--bi-text-2)', size: 9 },
+                                                                margin: { t: 20, b: 20, l: 30, r: 20 },
+                                                                xaxis: { ...(fig.layout.xaxis || {}), gridcolor: 'var(--bi-border)', zerolinecolor: 'var(--bi-border)' },
+                                                                yaxis: { ...(fig.layout.yaxis || {}), gridcolor: 'var(--bi-border)', zerolinecolor: 'var(--bi-border)' }
+                                                            }}
+                                                            useResizeHandler={true}
+                                                            style={{ width: "100%", height: "100%" }}
+                                                            config={{ responsive: true, displayModeBar: false }}
+                                                            onClick={handlePlotClick}
+                                                        />
+                                                    </div>
+                                                ) : (
+                                                    <div className="h-full flex items-center justify-center">
+                                                        <p className="text-[10px] text-[var(--bi-text-3)] font-bold uppercase tracking-widest italic">Solo Tabla</p>
+                                                    </div>
+                                                );
+                                            })()}
                                         </div>
                                     </div>
                                 ))}

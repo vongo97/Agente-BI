@@ -120,7 +120,7 @@ export async function pinToDashboard(userId: string, chatId: number, messageId: 
   return handleResponse(response);
 }
 
-export async function pinCustomDashboardItem(userId: string, item: any) {
+export async function pinCustomDashboardItem(userId: string, item: unknown) {
   const formData = new FormData();
   formData.append("user_id", userId);
   formData.append("item_json", JSON.stringify(item));
@@ -156,7 +156,7 @@ export async function deleteDashboardItem(itemId: number, userId: string) {
   return handleResponse(response);
 }
 
-export async function exportChartAsPng(figJson: any) {
+export async function exportChartAsPng(figJson: unknown) {
   const response = await securedFetch(`${API_URL}/export/chart`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -181,7 +181,7 @@ export async function generateReportSummary(query: string, apiKey: string, userI
   return handleResponse(response);
 }
 
-export async function exportProfessionalReport(reportData: any) {
+export async function exportProfessionalReport(reportData: unknown) {
   const response = await securedFetch(`${API_URL}/export/report`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -191,7 +191,7 @@ export async function exportProfessionalReport(reportData: any) {
   return response.blob();
 }
 
-export async function exportProfessionalPptx(reportData: any) {
+export async function exportProfessionalPptx(reportData: unknown) {
   const response = await securedFetch(`${API_URL}/export-pptx`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },

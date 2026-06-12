@@ -107,10 +107,11 @@ export function Chat() {
             setMessages(prev => [...prev, assistantMsg]);
 
             if (!activeChatId && res.chat_id) setActiveChatId(res.chat_id);
-        } catch (error: any) {
+        } catch (error) {
+            const err = error as Error;
             setMessages(prev => [...prev, { 
                 role: 'assistant', 
-                content: `⚠️ Error interno: ${error.message || "Fallo en el procesamiento."}` 
+                content: `⚠️ Error interno: ${err.message || "Fallo en el procesamiento."}` 
             }]);
         } finally {
             setLoading(false);
@@ -128,15 +129,16 @@ export function Chat() {
         try {
             const res = await generateAutoDashboard(apiKey, userId, dataSources[0].id, activeChatId || undefined, aiProvider, mistralKey);
             const { metrics = [], charts = [] } = res;
-            const newMessage: any = { 
+            const newMessage: Message = { 
                 role: 'assistant',
                 content: `### 🚀 Auto-Dashboard Generado\n\nHe diseñado ${charts.length} gráficos estratégicos y ${metrics.length} métricas clave.`,
                 id: Date.now(),
                 dashboardData: { metrics, charts }
             };
             setMessages(prev => [...prev, newMessage]);
-        } catch (err: any) {
-            alert("Error generando dashboard: " + (err.message || "Desconocido"));
+        } catch (err) {
+            const error = err as Error;
+            alert("Error generando dashboard: " + (error.message || "Desconocido"));
         } finally {
             setLoadingAutoDash(false);
             setLoadingMessage("");
@@ -157,8 +159,9 @@ export function Chat() {
                 id: Date.now()
             };
             setMessages(prev => [...prev, newMessage]);
-        } catch (err: any) {
-            alert("Error en la limpieza de datos: " + (err.message || "Desconocido"));
+        } catch (err) {
+            const error = err as Error;
+            alert("Error en la limpieza de datos: " + (error.message || "Desconocido"));
         } finally {
             setCleaningData(false);
         }
@@ -174,7 +177,7 @@ export function Chat() {
         }
     };
 
-    const handleExportPng = async (fig: any, name: string) => {
+    const handleExportPng = async (fig: unknown, name: string) => {
         try {
             const blob = await exportChartAsPng(fig);
             const url = window.URL.createObjectURL(blob);

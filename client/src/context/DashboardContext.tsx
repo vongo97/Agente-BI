@@ -1,21 +1,18 @@
-'use client';
-
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { useSession } from "next-auth/react";
 import { setApiAuthToken, getUserConfig, setUserConfig } from "@/lib/api";
+import { ChatMessage, DataSource } from '@/types/shared';
 
-export type Message = {
-    id?: number;
-    role: 'user' | 'assistant';
-    content: string;
-    fig?: any;
-};
+export type Message = ChatMessage;
+export type { DataSource };
 
-export interface DataSource {
-    id?: number;
-    filename: string;
-    columns: string[];
-    type?: 'file' | 'sql' | 'gsheets';
+interface ExtendedSession {
+    user?: {
+        name?: string | null;
+        email?: string | null;
+        image?: string | null;
+    };
+    accessToken?: string;
 }
 
 interface DashboardContextType {
@@ -48,7 +45,7 @@ interface DashboardContextType {
     loadingSuggestions: boolean;
     setLoadingSuggestions: (loading: boolean) => void;
     filters: Record<string, string | number | null>;
-    setFilters: (filters: Record<string, string | number | null> | ((prev: any) => any)) => void;
+    setFilters: React.Dispatch<React.SetStateAction<Record<string, string | number | null>>>;
     userId: string;
     userName: string;
 }
@@ -56,7 +53,8 @@ interface DashboardContextType {
 const DashboardContext = createContext<DashboardContextType | undefined>(undefined);
 
 export function DashboardProvider({ children }: { children: React.ReactNode }) {
-    const { data: session } = useSession();
+    const { data: sessionData } = useSession();
+    const session = sessionData as ExtendedSession | null;
     const userId = session?.user?.email || "invitado@agente-bi.local";
     const userName = session?.user?.name || userId;
     const [apiKey, setApiKey] = useState("");
@@ -94,8 +92,8 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
     // Cargar API Keys y preferencias desde el Backend
     useEffect(() => {
         // Configurar token de autorización en el API wrapper
-        if (session && (session as any).accessToken) {
-            setApiAuthToken((session as any).accessToken);
+        if (session && session.accessToken) {
+            setApiAuthToken(session.accessToken);
         } else {
             setApiAuthToken(null);
         }
@@ -106,7 +104,7 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
                 const data = await getUserConfig(userEmail);
                 if (data.gemini_key) setApiKey(data.gemini_key);
                 if (data.mistral_key) setMistralKey(data.mistral_key);
-                if (data.preferred_provider) setAiProvider(data.preferred_provider as any);
+                if (data.preferred_provider) setAiProvider(data.preferred_provider as "gemini" | "mistral" | "hybrid");
 
                 // Hardening de LocalStorage (Migración única a DB segura)
                 const localGemini = localStorage.getItem("gemini_api_key");
@@ -135,7 +133,7 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
                     await setUserConfig(userEmail, syncGemini, syncMistral, undefined, syncProvider);
                     if (syncGemini) setApiKey(syncGemini);
                     if (syncMistral) setMistralKey(syncMistral);
-                    if (syncProvider) setAiProvider(syncProvider as any);
+                    if (syncProvider) setAiProvider(syncProvider as "gemini" | "mistral" | "hybrid");
                 }
 
                 // Eliminar claves sensibles de LocalStorage

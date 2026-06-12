@@ -13,6 +13,7 @@ import {
     removeSessionSource, clearSession
 } from "@/lib/api";
 import { useDashboard } from "@/context/DashboardContext";
+import { ChatSession, DataSource } from "@/types/shared";
 import { ThemeToggle } from "./ThemeToggle";
 
 /* ── Navigation items ─────────────────────────────── */
@@ -41,10 +42,9 @@ export function Sidebar() {
     const [showGSheetsInput, setShowGSheetsInput] = useState(false);
     const [sqlUrl, setSqlUrl] = useState("");
     const [gsheetsUrl, setGsheetsUrl] = useState("");
-    // saveConnection UI was removed from the redesigned Sidebar; kept as false constant to preserve handler logic
     const saveConnection = false;
-    const [history, setHistory] = useState<any[]>([]);
-    const [savedSources, setSavedSources] = useState<any[]>([]);
+    const [history, setHistory] = useState<ChatSession[]>([]);
+    const [savedSources, setSavedSources] = useState<DataSource[]>([]);
 
     const userId = session?.user?.email || "invitado@agente-bi.local";
 
@@ -68,11 +68,12 @@ export function Sidebar() {
             setMessages(res.messages);
             setActiveChatId(id);
             if (res.data_sources && Array.isArray(res.data_sources)) {
-                setDataSources(res.data_sources.map((s: any) => ({
-                    id: s.id, filename: s.name, columns: s.columns || []
+                setDataSources((res.data_sources as DataSource[]).map((s) => ({
+                    id: s.id, filename: s.name || s.filename, columns: s.columns || []
                 })));
             } else if (res.data_source) {
-                setDataSources([{ id: res.data_source.id, filename: res.data_source.name, columns: res.data_source.columns || [] }]);
+                const ds = res.data_source as DataSource;
+                setDataSources([{ id: ds.id, filename: ds.name || ds.filename, columns: ds.columns || [] }]);
             }
             setView('chat');
             if (window.innerWidth < 1024) setSidebarOpen(false);
@@ -86,13 +87,14 @@ export function Sidebar() {
         const files = Array.from(e.target.files);
         try {
             for (const file of files) {
-                const res = await uploadFile(file, userId);
-                addDataSource({ id: (res as any).id, filename: res.filename, columns: res.columns, type: 'file' });
+                const res = await uploadFile(file, userId) as { id: number; filename: string; columns: string[] };
+                addDataSource({ id: res.id, filename: res.filename, columns: res.columns, type: 'file' });
             }
             fetchSources();
             setView('chat');
-        } catch (err: any) {
-            alert("Error al subir archivos: " + (err.message || "Error desconocido"));
+        } catch (err) {
+            const error = err as Error;
+            alert("Error al subir archivos: " + (error.message || "Error desconocido"));
         } finally {
             setUploading(false);
             if (e.target) e.target.value = '';
@@ -106,8 +108,9 @@ export function Sidebar() {
             await connectSql(url || sqlUrl, userId);
             addDataSource({ filename: "Base de Datos SQL", columns: ["SQL Engine Active"], type: 'sql' });
             setShowSqlInput(false); setSqlUrl("");
-        } catch (err: any) {
-            alert("Error SQL: " + (err.message || "Error de conexión"));
+        } catch (err) {
+            const error = err as Error;
+            alert("Error SQL: " + (error.message || "Error de conexión"));
         } finally { setUploading(false); }
     };
 
@@ -118,13 +121,14 @@ export function Sidebar() {
             const res = await connectGoogleSheets(url || gsheetsUrl, userId);
             addDataSource({ filename: "Google Sheet", columns: res.columns, type: 'gsheets' });
             setShowGSheetsInput(false); setGsheetsUrl("");
-        } catch (err: any) {
-            alert("Error Google Sheets: " + (err.message || "Verifica que la hoja sea pública"));
+        } catch (err) {
+            const error = err as Error;
+            alert("Error Google Sheets: " + (error.message || "Verifica que la hoja sea pública"));
         } finally { setUploading(false); }
     };
 
 
-    const handleRemoveActiveSource = async (source: any) => {
+    const handleRemoveActiveSource = async (source: DataSource) => {
         if (source.id) {
             try { await removeSessionSource(userId, source.id); }
             catch (err) { console.error("Error removing from session:", err); }

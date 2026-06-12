@@ -32,9 +32,10 @@ export function SettingsView() {
             setStatus("success");
             setMsg("Configuración guardada correctamente");
             setTimeout(() => setStatus("idle"), 3000);
-        } catch (err: any) {
+        } catch (err) {
+            const error = err as Error;
             setStatus("error");
-            setMsg(err.message || "Error al validar llaves");
+            setMsg(error.message || "Error al validar llaves");
         }
     };
 
@@ -79,7 +80,7 @@ export function SettingsView() {
                                 return (
                                     <button
                                         key={p.id}
-                                        onClick={() => setAiProvider(p.id as any)}
+                                        onClick={() => setAiProvider(p.id as 'gemini' | 'mistral' | 'hybrid')}
                                         className={`p-5 rounded-lg border text-left transition-all ${
                                             isActive 
                                             ? p.activeClass 

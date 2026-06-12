@@ -4,8 +4,10 @@ import remarkGfm from "remark-gfm";
 import { exportSimulationPdf } from "@/lib/api";
 import { useState } from "react";
 
+import { Simulation } from "@/types/shared";
+
 interface SimReportProps {
-    activeSim: any;
+    activeSim: Simulation;
     userId: string;
     polling: boolean;
 }

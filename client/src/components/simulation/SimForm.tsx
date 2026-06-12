@@ -1,20 +1,21 @@
 import { Sparkles, Brain, Activity, ChevronRight, FileText, AlertCircle, Loader2 } from "lucide-react";
+import { DataSource } from "@/types/shared";
 
 interface SimFormProps {
     aiProvider: string;
-    setAiProvider: (p: any) => void;
+    setAiProvider: (p: 'gemini' | 'mistral' | 'hybrid') => void;
     title: string;
     setTitle: (t: string) => void;
     hypothesis: string;
     setHypothesis: (h: string) => void;
-    suggestions: any[];
+    suggestions: { title: string; hypothesis: string }[];
     fetchSuggestions: () => void;
     loadingSuggestions: boolean;
-    applySuggestion: (s: any) => void;
-    allHistoricalSources: any[];
+    applySuggestion: (s: { title: string; hypothesis: string }) => void;
+    allHistoricalSources: DataSource[];
     selectedSources: Set<number>;
     toggleSource: (id: number) => void;
-    dataSources: any[];
+    dataSources: DataSource[];
     handleStart: () => void;
     loading: boolean;
 }
@@ -38,7 +39,7 @@ export function SimForm({
                     ].map((p) => (
                         <button
                             key={p.id}
-                            onClick={() => setAiProvider(p.id as any)}
+                            onClick={() => setAiProvider(p.id as 'gemini' | 'mistral' | 'hybrid')}
                             className={`flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg border text-[10px] font-semibold uppercase tracking-wider transition-all cursor-pointer ${
                                 aiProvider === p.id 
                                 ? 'bg-[var(--sim-accent-soft)] border-[var(--sim-accent)] text-[var(--bi-text-1)] ring-1 ring-[var(--sim-accent)] shadow-lg shadow-[var(--sim-accent-soft)]' 
@@ -121,12 +122,12 @@ export function SimForm({
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-48 overflow-y-auto pr-2 custom-scrollbar">
                     {allHistoricalSources.length > 0 ? (
                         allHistoricalSources.map((src) => {
-                            const isSelected = selectedSources.has(src.id);
+                            const isSelected = src.id !== undefined && selectedSources.has(src.id);
                             const isCurrentSession = dataSources.some(ds => ds.id === src.id);
                             return (
                                 <button 
                                     key={src.id} 
-                                    onClick={() => toggleSource(src.id)}
+                                    onClick={() => src.id !== undefined && toggleSource(src.id)}
                                     className={`flex items-center justify-between gap-2 px-3.5 py-3 rounded-lg border transition-all text-left cursor-pointer ${
                                         isSelected 
                                         ? 'bg-[var(--sim-accent-soft)] border-[var(--sim-accent)] text-[var(--bi-text-1)]' 
@@ -138,7 +139,7 @@ export function SimForm({
                                         <div className="flex flex-col">
                                             <span className="text-[10px] font-semibold tracking-tight truncate max-w-[140px] text-[var(--bi-text-1)]">{src.name}</span>
                                             <span className="text-[8px] text-[var(--bi-text-3)] font-medium">
-                                                {new Date(src.created_at).toLocaleDateString()}
+                                                {src.created_at ? new Date(src.created_at).toLocaleDateString() : ""}
                                             </span>
                                         </div>
                                     </div>

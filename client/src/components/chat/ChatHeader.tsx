@@ -1,15 +1,16 @@
 import { Menu, Bot, Sparkles, LayoutDashboard, FileText, FileDown, Plus, Loader2 } from "lucide-react";
 import { exportPdf } from "@/lib/api";
 import { useState } from "react";
+import { ChatMessage, DataSource } from "@/types/shared";
 
 interface ChatHeaderProps {
     setSidebarOpen: (open: boolean) => void;
-    dataSources: any[];
+    dataSources: DataSource[];
     cleaningData: boolean;
     handleCleanData: () => void;
     loadingAutoDash: boolean;
     handleAutoDash: () => void;
-    messages: any[];
+    messages: ChatMessage[];
     setReportBuilderOpen: (open: boolean) => void;
     activeChatId: number | null;
     userId: string;

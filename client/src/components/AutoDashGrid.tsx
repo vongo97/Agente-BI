@@ -18,13 +18,21 @@ import {
 import { useState } from 'react';
 import { pinCustomDashboardItem } from '@/lib/api';
 
+import { Metric, AutoDashItem } from '@/types/shared';
+
 const Plot = dynamic(() => import("react-plotly.js"), {
     ssr: false,
     loading: () => <div className="h-64 bg-[var(--bg-tertiary)] rounded-xl animate-pulse"></div>
-});
+}) as React.ComponentType<{
+    data: Record<string, unknown>[];
+    layout: Record<string, unknown>;
+    useResizeHandler?: boolean;
+    style?: React.CSSProperties;
+    config?: Record<string, unknown>;
+}>;
 
 // Mapeo de iconos comunes para métricas
-const ICON_MAP: Record<string, any> = {
+const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
     'trending-up': TrendingUp,
     'users': Users,
     'dollar': DollarSign,
@@ -34,18 +42,12 @@ const ICON_MAP: Record<string, any> = {
     'layers': Layers,
 };
 
-interface Metric {
-    label: string;
-    value: string | number;
-    description?: string;
-    icon?: string;
-}
-
-interface AutoDashItem {
-    title: string;
-    fig?: any;
-    insight?: string;
-    error?: string;
+interface PlotlyFigure {
+    data: Record<string, unknown>[];
+    layout: Record<string, unknown> & {
+        xaxis?: Record<string, unknown>;
+        yaxis?: Record<string, unknown>;
+    };
 }
 
 interface AutoDashGridProps {
@@ -123,70 +125,73 @@ export default function AutoDashGrid({ items, metrics = [], userId }: AutoDashGr
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        {items.map((item, idx) => (
-                            <div key={idx} className="relative bg-[var(--bg-secondary)] border border-[var(--border-color)] rounded-lg overflow-hidden shadow-2xl p-4 flex flex-col hover:border-[var(--bi-blue-border)] transition-all group">
-                                
-                                <div className="absolute top-4 right-4 z-20 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                    <button
-                                        onClick={() => handlePin(item, idx)}
-                                        disabled={pinnedIndices.includes(idx)}
-                                        className={`p-2 rounded-lg shadow-lg backdrop-blur-md border transition-all ${pinnedIndices.includes(idx)
-                                                ? 'bg-green-500/20 border-green-500/30 text-green-400'
-                                                : 'bg-white/10 hover:bg-white/20 border-white/10 text-white'
-                                            }`}
-                                        title="Anclar al Dashboard personal"
-                                    >
-                                        {pinnedIndices.includes(idx) ? <Check className="w-4 h-4" /> : <Pin className="w-4 h-4" />}
-                                    </button>
-                                </div>
+                        {items.map((item, idx) => {
+                            const fig = item.fig as PlotlyFigure | undefined;
+                            return (
+                                <div key={idx} className="relative bg-[var(--bg-secondary)] border border-[var(--border-color)] rounded-lg overflow-hidden shadow-2xl p-4 flex flex-col hover:border-[var(--bi-blue-border)] transition-all group">
+                                    
+                                    <div className="absolute top-4 right-4 z-20 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                        <button
+                                            onClick={() => handlePin(item, idx)}
+                                            disabled={pinnedIndices.includes(idx)}
+                                            className={`p-2 rounded-lg shadow-lg backdrop-blur-md border transition-all ${pinnedIndices.includes(idx)
+                                                    ? 'bg-green-500/20 border-green-500/30 text-green-400'
+                                                    : 'bg-white/10 hover:bg-white/20 border-white/10 text-white'
+                                                }`}
+                                            title="Anclar al Dashboard personal"
+                                        >
+                                            {pinnedIndices.includes(idx) ? <Check className="w-4 h-4" /> : <Pin className="w-4 h-4" />}
+                                        </button>
+                                    </div>
 
-                                <div className="mb-4 px-2 pr-12">
-                                    <h4 className="font-bold text-sm text-[var(--text-primary)] tracking-tight truncate" title={item.title}>{item.title}</h4>
-                                </div>
+                                    <div className="mb-4 px-2 pr-12">
+                                        <h4 className="font-bold text-sm text-[var(--text-primary)] tracking-tight truncate" title={item.title}>{item.title}</h4>
+                                    </div>
 
-                                <div className="flex-1 min-h-[300px] relative rounded-lg overflow-hidden bg-[var(--bg-primary)]/50 border border-[var(--border-color)]/50">
-                                    {item.fig ? (
-                                        <Plot
-                                            data={item.fig.data}
-                                            layout={{
-                                                ...item.fig.layout,
-                                                width: undefined,
-                                                height: undefined,
-                                                autosize: true,
-                                                paper_bgcolor: 'transparent',
-                                                plot_bgcolor: 'transparent',
-                                                font: { 
-                                                    color: 'var(--text-tertiary)',
-                                                    family: 'Inter, sans-serif'
-                                                },
-                                                margin: { l: 40, r: 20, t: 40, b: 40 },
-                                                xaxis: { ...(item.fig.layout.xaxis || {}), gridcolor: 'var(--bi-border)' },
-                                                yaxis: { ...(item.fig.layout.yaxis || {}), gridcolor: 'var(--bi-border)' },
-                                            }}
-                                            style={{ width: '100%', height: '100%' }}
-                                            useResizeHandler={true}
-                                            config={{ displayModeBar: false, responsive: true }}
-                                        />
-                                    ) : (
-                                        <div className="absolute inset-0 flex items-center justify-center flex-col text-[var(--text-tertiary)] gap-3">
-                                            <div className="w-12 h-12 bg-[var(--bg-tertiary)] rounded-lg flex items-center justify-center border border-[var(--border-color)]">
-                                                <AlertTriangle className="w-6 h-6 opacity-40 text-orange-500" />
+                                    <div className="flex-1 min-h-[300px] relative rounded-lg overflow-hidden bg-[var(--bg-primary)]/50 border border-[var(--border-color)]/50">
+                                        {fig ? (
+                                            <Plot
+                                                data={fig.data}
+                                                layout={{
+                                                    ...fig.layout,
+                                                    width: undefined,
+                                                    height: undefined,
+                                                    autosize: true,
+                                                    paper_bgcolor: 'transparent',
+                                                    plot_bgcolor: 'transparent',
+                                                    font: { 
+                                                        color: 'var(--text-tertiary)',
+                                                        family: 'Inter, sans-serif'
+                                                    },
+                                                    margin: { l: 40, r: 20, t: 40, b: 40 },
+                                                    xaxis: { ...(fig.layout.xaxis || {}), gridcolor: 'var(--bi-border)' },
+                                                    yaxis: { ...(fig.layout.yaxis || {}), gridcolor: 'var(--bi-border)' },
+                                                }}
+                                                style={{ width: '100%', height: '100%' }}
+                                                useResizeHandler={true}
+                                                config={{ displayModeBar: false, responsive: true }}
+                                            />
+                                        ) : (
+                                            <div className="absolute inset-0 flex items-center justify-center flex-col text-[var(--text-tertiary)] gap-3">
+                                                <div className="w-12 h-12 bg-[var(--bg-tertiary)] rounded-lg flex items-center justify-center border border-[var(--border-color)]">
+                                                    <AlertTriangle className="w-6 h-6 opacity-40 text-orange-500" />
+                                                </div>
+                                                <span className="text-[10px] uppercase font-bold tracking-widest">{item.error || 'Fallo en renderizado'}</span>
                                             </div>
-                                            <span className="text-[10px] uppercase font-bold tracking-widest">{item.error || 'Fallo en renderizado'}</span>
+                                        )}
+                                    </div>
+
+                                    {item.insight && (
+                                        <div className="mt-4 text-[11px] text-[var(--text-secondary)] bg-[var(--bi-blue-dim)] p-4 rounded-lg border border-[var(--bi-blue-border)] flex gap-3">
+                                            <div className="mt-0.5">
+                                                <Search className="w-3 h-3 text-[var(--bi-blue)] opacity-60" />
+                                            </div>
+                                            <p className="leading-relaxed italic">{item.insight}</p>
                                         </div>
                                     )}
                                 </div>
-
-                                {item.insight && (
-                                    <div className="mt-4 text-[11px] text-[var(--text-secondary)] bg-[var(--bi-blue-dim)] p-4 rounded-lg border border-[var(--bi-blue-border)] flex gap-3">
-                                        <div className="mt-0.5">
-                                            <Search className="w-3 h-3 text-[var(--bi-blue)] opacity-60" />
-                                        </div>
-                                        <p className="leading-relaxed italic">{item.insight}</p>
-                                    </div>
-                                )}
-                            </div>
-                        ))}
+                            );
+                        })}
                     </div>
                 </div>
             )}

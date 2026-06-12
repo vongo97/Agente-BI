@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { Brain, Download, PlusCircle, Menu } from "lucide-react";
 import { useDashboard } from "@/context/DashboardContext";
 import { createSimulation, getSimulations, getSimulationDetails, getSimulationMessages, exportSimulationPdf, getDataSources, getSimulationSuggestions } from "@/lib/api";
+import { Simulation, SimulationMessage, DataSource } from "@/types/shared";
 
 // Sub-componentes refactorizados
 import { SimHistory } from "./simulation/SimHistory";
@@ -16,13 +17,13 @@ export function SimulationSandbox() {
     const [title, setTitle] = useState("");
     const [hypothesis, setHypothesis] = useState("");
     const [loading, setLoading] = useState(false);
-    const [simulations, setSimulations] = useState<any[]>([]);
-    const [activeSim, setActiveSim] = useState<any>(null);
-    const [messages, setMessages] = useState<any[]>([]);
+    const [simulations, setSimulations] = useState<Simulation[]>([]);
+    const [activeSim, setActiveSim] = useState<Simulation | null>(null);
+    const [messages, setMessages] = useState<SimulationMessage[]>([]);
     const [polling, setPolling] = useState(false);
     const [selectedSources, setSelectedSources] = useState<Set<number>>(new Set());
-    const [allHistoricalSources, setAllHistoricalSources] = useState<any[]>([]);
-    const [suggestions, setSuggestions] = useState<any[]>([]);
+    const [allHistoricalSources, setAllHistoricalSources] = useState<DataSource[]>([]);
+    const [suggestions, setSuggestions] = useState<{ title: string; hypothesis: string }[]>([]);
     const [loadingSuggestions, setLoadingSuggestions] = useState(false);
     const [downloadingPdf, setDownloadingPdf] = useState(false);
 
@@ -90,17 +91,17 @@ export function SimulationSandbox() {
         }
     };
 
-    const applySuggestion = (sug: any) => {
+    const applySuggestion = (sug: { title: string; hypothesis: string }) => {
         setTitle(sug.title);
         setHypothesis(sug.hypothesis);
     };
 
     useEffect(() => {
-        let interval: any;
+        let interval: NodeJS.Timeout;
         if (polling && activeSim?.id) {
             interval = setInterval(async () => {
-                const details = await getSimulationDetails(activeSim.id);
-                const msgs = await getSimulationMessages(activeSim.id);
+                const details = await getSimulationDetails(activeSim.id) as Simulation;
+                const msgs = await getSimulationMessages(activeSim.id) as SimulationMessage[];
                 setMessages(msgs);
                 setActiveSim(details);
                 if (details.status === 'completed' || details.status === 'error') {
@@ -114,7 +115,7 @@ export function SimulationSandbox() {
 
     const fetchSimulations = async () => {
         try {
-            const data = await getSimulations(userId);
+            const data = await getSimulations(userId) as Simulation[];
             setSimulations(data);
         } catch (err) {
             console.error("Error fetching simulations", err);
@@ -141,9 +142,9 @@ export function SimulationSandbox() {
         try {
             const ids = Array.from(selectedSources);
             const res = await createSimulation(
-                currentUserId, title, hypothesis, undefined, apiKey, ids as any, aiProvider, mistralKey
+                currentUserId, title, hypothesis, undefined, apiKey, ids, aiProvider, mistralKey
             );
-            const initialDetails = await getSimulationDetails(res.simulation_id);
+            const initialDetails = await getSimulationDetails(res.simulation_id) as Simulation;
             setActiveSim(initialDetails);
             setMessages([]);
             setPolling(true);
@@ -156,9 +157,9 @@ export function SimulationSandbox() {
         }
     };
 
-    const loadSim = async (sim: any) => {
+    const loadSim = async (sim: Simulation) => {
         setActiveSim(sim);
-        const msgs = await getSimulationMessages(sim.id);
+        const msgs = await getSimulationMessages(sim.id) as SimulationMessage[];
         setMessages(msgs);
         setPolling(sim.status === 'running');
     };    return (
