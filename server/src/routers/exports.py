@@ -36,13 +36,13 @@ async def export_chart(request: Request, fig_json: dict):
 @router.get("/export/pdf/{chat_id}")
 @limiter.limit("5/minute")
 @limiter.limit("20/hour")
-async def export_pdf_report(request: Request, chat_id: int, user_id: Optional[str] = None, db: Session = Depends(get_db)):
+async def export_pdf_report(request: Request, chat_id: int, db: Session = Depends(get_db)):
     authenticated_user = get_authenticated_user()
     check_authorization(authenticated_user)
     try:
         chat = db.query(Chat).filter(Chat.id == chat_id, Chat.user_id == authenticated_user).first()
         if not chat:
-            raise HTTPException(status_code=404, detail="Chat no encontrado")
+            raise HTTPException(status_code=404, detail="Recurso no encontrado o sin acceso")
         
         messages_list = []
         for m in chat.messages:
@@ -147,7 +147,7 @@ async def export_pptx(request: Request, data: dict):
 @router.get("/export/simulation/{sim_id}")
 @limiter.limit("5/minute")
 @limiter.limit("20/hour")
-async def export_simulation_pdf(request: Request, sim_id: int, user_id: Optional[str] = None, db: Session = Depends(get_db)):
+async def export_simulation_pdf(request: Request, sim_id: int, db: Session = Depends(get_db)):
     from src.database import Simulation, SimulationMessage
     from src.utils.exporter import generate_simulation_pdf
     
@@ -157,7 +157,7 @@ async def export_simulation_pdf(request: Request, sim_id: int, user_id: Optional
     try:
         sim = db.query(Simulation).filter(Simulation.id == sim_id, Simulation.user_id == authenticated_user).first()
         if not sim:
-            raise HTTPException(status_code=404, detail=f"Simulación {sim_id} no encontrada para el usuario {authenticated_user}")
+            raise HTTPException(status_code=404, detail="Recurso no encontrado o sin acceso")
         
         if not sim.result_report:
             raise HTTPException(status_code=400, detail="La simulación aún no tiene un informe final consolidado.")

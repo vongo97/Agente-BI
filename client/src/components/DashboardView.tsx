@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import { useSession } from "next-auth/react";
 import { useDashboard } from "@/context/DashboardContext";
 import { getDashboard, deleteDashboardItem, exportChartAsPng, filterDashboard } from "@/lib/api";
-import { Activity, Trash2, Download, Box, Filter, X, GripVertical } from "lucide-react";
+import { Activity, Trash2, Download, Box, Filter, X, GripVertical, Menu } from "lucide-react";
 import dynamic from "next/dynamic";
 import { Responsive } from "react-grid-layout";
 
@@ -19,7 +19,7 @@ const Plot = dynamic(() => import("react-plotly.js"), {
 
 export function DashboardView() {
     const { data: session } = useSession();
-    const { setView, filters, setFilters } = useDashboard();
+    const { setView, filters, setFilters, setSidebarOpen } = useDashboard();
     const [items, setItems] = useState<any[]>([]);
     const [originalItems, setOriginalItems] = useState<any[]>([]); // Para resetear sin re-cargar
     const [loading, setLoading] = useState(true);
@@ -193,9 +193,16 @@ export function DashboardView() {
 
     return (
         <div className="flex-1 bg-[var(--bi-canvas)] flex flex-col h-screen overflow-hidden border-l border-[var(--bi-border)]">
-            <header className="h-16 border-b border-[var(--bi-border)] flex items-center justify-between px-8 bg-[var(--bi-surface-0)]/80 backdrop-blur-xl sticky top-0 z-10 w-full shrink-0">
-                <div className="flex items-center gap-4">
-                    <div className="p-2 bg-[var(--bi-blue-dim)] rounded-lg">
+            <header className="h-16 border-b border-[var(--bi-border)] flex items-center justify-between px-4 lg:px-8 bg-[var(--bi-surface-0)]/80 backdrop-blur-xl sticky top-0 z-10 w-full shrink-0">
+                <div className="flex items-center gap-3 lg:gap-4">
+                    <button
+                        onClick={() => setSidebarOpen(true)}
+                        className="lg:hidden p-2 rounded-md text-[var(--bi-text-3)] hover:text-[var(--bi-text-1)] hover:bg-[var(--bi-surface-1)] active:bg-[var(--bi-surface-2)] transition-all duration-200 cursor-pointer"
+                        aria-label="Abrir menú"
+                    >
+                        <Menu className="w-5 h-5" />
+                    </button>
+                    <div className="p-2 bg-[var(--bi-blue-dim)] rounded-lg hidden sm:block">
                         <Activity className="w-5 h-5 text-[var(--bi-blue)]" />
                     </div>
                     <h2 className="text-xs font-semibold text-[var(--bi-text-1)] uppercase tracking-wider">Panel Interactivo <span className="text-[var(--bi-text-3)]">| Pro-Dashboard</span></h2>

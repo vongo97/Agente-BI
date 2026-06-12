@@ -31,7 +31,6 @@ router = APIRouter(tags=["Simulation"])
 logger = logging.getLogger(__name__)
 
 class SimulationRequest(BaseModel):
-    user_id: str = Field(..., alias="userId")
     title: str
     hypothesis: str
     selected_ids: List[int] = Field(..., alias="selectedIds")
@@ -155,25 +154,25 @@ async def create_simulation(request: Request, req: SimulationRequest, background
         raise HTTPException(status_code=500, detail="Error interno al iniciar la simulación.")
 
 @router.get("/simulation/user/{user_id}")
-async def list_simulations(user_id: Optional[str] = None, db: Session = Depends(get_db)):
+async def list_simulations(user_id: str, db: Session = Depends(get_db)):
     authenticated_user = get_authenticated_user()
     check_authorization(authenticated_user)
     return db.query(Simulation).filter(Simulation.user_id == authenticated_user).order_by(Simulation.created_at.desc()).all()
 
 @router.get("/simulation/{sim_id}")
-async def get_simulation(sim_id: int, user_id: Optional[str] = None, db: Session = Depends(get_db)):
+async def get_simulation(sim_id: int, db: Session = Depends(get_db)):
     authenticated_user = get_authenticated_user()
     check_authorization(authenticated_user)
     sim = db.query(Simulation).filter(Simulation.id == sim_id, Simulation.user_id == authenticated_user).first()
-    if not sim: raise HTTPException(status_code=404, detail="No encontrada o no autorizada")
+    if not sim: raise HTTPException(status_code=404, detail="Recurso no encontrado o sin acceso")
     return sim
 
 @router.get("/simulation/{sim_id}/messages")
-async def get_messages(sim_id: int, user_id: Optional[str] = None, db: Session = Depends(get_db)):
+async def get_messages(sim_id: int, db: Session = Depends(get_db)):
     authenticated_user = get_authenticated_user()
     check_authorization(authenticated_user)
     sim = db.query(Simulation).filter(Simulation.id == sim_id, Simulation.user_id == authenticated_user).first()
-    if not sim: raise HTTPException(status_code=404, detail="No encontrada o no autorizada")
+    if not sim: raise HTTPException(status_code=404, detail="Recurso no encontrado o sin acceso")
     
     msgs = db.query(SimulationMessage).filter(SimulationMessage.simulation_id == sim_id).all()
     result = []
@@ -190,7 +189,6 @@ async def get_messages(sim_id: int, user_id: Optional[str] = None, db: Session =
     return result
 
 class SuggestionRequest(BaseModel):
-    user_id: str = Field(..., alias="userId")
     selected_ids: List[int] = Field(..., alias="selectedIds")
     api_key: Optional[str] = Field("", alias="apiKey")
     provider: str = "gemini"

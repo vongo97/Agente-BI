@@ -15,19 +15,19 @@ logger = logging.getLogger(__name__)
 router = APIRouter(tags=["Dashboard"])
 
 @router.get("/history")
-async def get_history(user_id: Optional[str] = None, db: Session = Depends(get_db)):
+async def get_history(db: Session = Depends(get_db)):
     authenticated_user = get_authenticated_user()
     check_authorization(authenticated_user)
     chats = db.query(Chat).filter(Chat.user_id == authenticated_user).order_by(desc(Chat.created_at)).all()
     return [{"id": c.id, "title": c.title, "created_at": c.created_at} for c in chats]
 
 @router.get("/history/{chat_id}")
-async def get_chat_details(chat_id: int, user_id: Optional[str] = None, db: Session = Depends(get_db)):
+async def get_chat_details(chat_id: int, db: Session = Depends(get_db)):
     authenticated_user = get_authenticated_user()
     check_authorization(authenticated_user)
     chat = db.query(Chat).filter(Chat.id == chat_id, Chat.user_id == authenticated_user).first()
     if not chat:
-        raise HTTPException(status_code=404, detail="Chat no encontrado")
+        raise HTTPException(status_code=404, detail="Recurso no encontrado o sin acceso")
     
     messages = []
     for m in chat.messages:
@@ -57,13 +57,21 @@ async def get_chat_details(chat_id: int, user_id: Optional[str] = None, db: Sess
 
 @router.post("/dashboard/pin")
 async def pin_to_dashboard(
-    user_id: Optional[str] = Form(None),
     chat_id: int = Form(...),
     message_id: int = Form(...),
     db: Session = Depends(get_db)
 ):
     authenticated_user = get_authenticated_user()
     check_authorization(authenticated_user)
+    
+    chat = db.query(Chat).filter(Chat.id == chat_id, Chat.user_id == authenticated_user).first()
+    if not chat:
+        raise HTTPException(status_code=404, detail="Recurso no encontrado o sin acceso")
+        
+    message = db.query(Message).filter(Message.id == message_id, Message.chat_id == chat_id).first()
+    if not message:
+        raise HTTPException(status_code=404, detail="Recurso no encontrado o sin acceso")
+
     existing = db.query(DashboardItem).filter(
         DashboardItem.user_id == authenticated_user, 
         DashboardItem.message_id == message_id
@@ -78,7 +86,7 @@ async def pin_to_dashboard(
     return {"message": "Anclado al dashboard con éxito"}
 
 @router.get("/dashboard")
-async def get_dashboard(user_id: Optional[str] = None, db: Session = Depends(get_db)):
+async def get_dashboard(db: Session = Depends(get_db)):
     authenticated_user = get_authenticated_user()
     check_authorization(authenticated_user)
     items = db.query(DashboardItem).filter(DashboardItem.user_id == authenticated_user).all()
@@ -100,13 +108,13 @@ async def get_dashboard(user_id: Optional[str] = None, db: Session = Depends(get
 
 @router.delete("/dashboard/{item_id}")
 @limiter.limit("15/minute")
-async def unpin_from_dashboard(request: Request, item_id: int, user_id: Optional[str] = None, db: Session = Depends(get_db)):
+async def unpin_from_dashboard(request: Request, item_id: int, db: Session = Depends(get_db)):
     authenticated_user = get_authenticated_user()
     check_authorization(authenticated_user)
     try:
         item = db.query(DashboardItem).filter(DashboardItem.id == item_id, DashboardItem.user_id == authenticated_user).first()
         if not item:
-            raise HTTPException(status_code=404, detail="Item no encontrado")
+            raise HTTPException(status_code=404, detail="Recurso no encontrado o sin acceso")
         db.delete(item)
         db.commit()
         return {"message": "Eliminado del dashboard"}
@@ -122,7 +130,6 @@ async def unpin_from_dashboard(request: Request, item_id: int, user_id: Optional
 @limiter.limit("20/hour")
 async def auto_dashboard(
     request: Request,
-    user_id: Optional[str] = Form(None), 
     api_key: str = Form(...),
     data_source_id: Optional[int] = Form(None),
     provider: str = Form("gemini"),
@@ -166,7 +173,7 @@ async def auto_dashboard(
             # Priorizar el archivo seleccionado (data_source_id) si existe
             if data_source_id:
                 from src.database import DataSource
-                source_obj = db.query(DataSource).filter(DataSource.id == data_source_id).first()
+                source_obj = db.query(DataSource).filter(DataSource.id == data_source_id, DataSource.user_id == authenticated_user).first()
                 if source_obj:
                     safe_name = "".join([c if c.isalnum() else "_" for c in source_obj.name.split('.')[0]])
                     if safe_name in session_data["data"]:
@@ -175,7 +182,7 @@ async def auto_dashboard(
                         # Fallback si no está en memoria por alguna razón
                         data_source_obj = next(iter(session_data["data"].values()))
                 else:
-                    data_source_obj = next(iter(session_data["data"].values()))
+                    raise HTTPException(status_code=404, detail="Recurso no encontrado o sin acceso")
             else:
                 # Usamos el primer DataFrame si hay varios para el dashboard base
                 data_source_obj = next(iter(session_data["data"].values()))
@@ -192,7 +199,6 @@ async def auto_dashboard(
 @limiter.limit("10/minute")
 async def filter_dashboard(
     request: Request,
-    user_id: Optional[str] = Form(None),
     filters_json: str = Form(...), # JSON string: {"col": "val"}
     db: Session = Depends(get_db)
 ):

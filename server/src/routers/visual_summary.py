@@ -19,7 +19,6 @@ def get_visual_summary(
     request: Request,
     text: str = Form(...),
     api_key: str = Form(...),
-    user_id: Optional[str] = Form(None),
     provider: str = Form("gemini"),
     mistral_key: Optional[str] = Form(None),
     visual_type: Optional[str] = Form(None),

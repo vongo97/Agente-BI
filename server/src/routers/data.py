@@ -37,7 +37,7 @@ _ALLOWED_EXTENSIONS = {'.csv', '.xlsx', '.xls', '.xlsm'}
 @router.post("/upload")
 @limiter.limit("5/minute")
 @limiter.limit("30/hour")
-async def upload_file(request: Request, user_id: Optional[str] = Form(None), file: UploadFile = File(...), db: Session = Depends(get_db)):
+async def upload_file(request: Request, file: UploadFile = File(...), db: Session = Depends(get_db)):
     try:
         authenticated_user = get_authenticated_user()
         check_authorization(authenticated_user)
@@ -167,7 +167,7 @@ async def upload_file(request: Request, user_id: Optional[str] = Form(None), fil
 @router.post("/connect-sql")
 @limiter.limit("5/minute")
 @limiter.limit("30/hour")
-async def connect_sql(request: Request, user_id: Optional[str] = Form(None), url: str = Form(...), db: Session = Depends(get_db)):
+async def connect_sql(request: Request, url: str = Form(...), db: Session = Depends(get_db)):
     authenticated_user = get_authenticated_user()
     check_authorization(authenticated_user)
     
@@ -200,7 +200,7 @@ async def connect_sql(request: Request, user_id: Optional[str] = Form(None), url
 @router.post("/connect-gsheets")
 @limiter.limit("5/minute")
 @limiter.limit("30/hour")
-async def connect_gsheets(request: Request, user_id: Optional[str] = Form(None), url: str = Form(...), db: Session = Depends(get_db)):
+async def connect_gsheets(request: Request, url: str = Form(...), db: Session = Depends(get_db)):
     authenticated_user = get_authenticated_user()
     check_authorization(authenticated_user)
     
@@ -257,7 +257,7 @@ async def connect_gsheets(request: Request, user_id: Optional[str] = Form(None),
 
 @router.post("/clear-session")
 @limiter.limit("10/minute")
-async def clear_session(request: Request, user_id: Optional[str] = Form(None), db: Session = Depends(get_db)):
+async def clear_session(request: Request, db: Session = Depends(get_db)):
     authenticated_user = get_authenticated_user()
     check_authorization(authenticated_user)
     try:
@@ -290,7 +290,7 @@ async def clear_session(request: Request, user_id: Optional[str] = Form(None), d
 
 @router.post("/remove-session-source")
 @limiter.limit("10/minute")
-async def remove_session_source(request: Request, user_id: Optional[str] = Form(None), source_id: int = Form(...), db: Session = Depends(get_db)):
+async def remove_session_source(request: Request, source_id: int = Form(...), db: Session = Depends(get_db)):
     authenticated_user = get_authenticated_user()
     check_authorization(authenticated_user)
     try:
@@ -322,7 +322,6 @@ async def remove_session_source(request: Request, user_id: Optional[str] = Form(
 @limiter.limit("5/minute")
 async def clean_data(
     request: Request,
-    user_id: Optional[str] = Form(None), 
     api_key: str = Form(...),
     provider: str = Form("gemini"),
     mistral_key: Optional[str] = Form(None)
@@ -359,7 +358,7 @@ async def clean_data(
 
 @router.get("/data-sources")
 @limiter.limit("15/minute")
-async def get_data_sources(request: Request, user_id: Optional[str] = None, db: Session = Depends(get_db)):
+async def get_data_sources(request: Request, db: Session = Depends(get_db)):
     authenticated_user = get_authenticated_user()
     check_authorization(authenticated_user)
     try:
@@ -374,7 +373,6 @@ async def get_data_sources(request: Request, user_id: Optional[str] = None, db: 
 @limiter.limit("10/minute")
 async def save_data_source(
     request: Request,
-    user_id: Optional[str] = Form(None),
     name: str = Form(...),
     type: str = Form(...),
     url: str = Form(...),
@@ -411,13 +409,13 @@ async def save_data_source(
 
 @router.delete("/data-sources/{source_id}")
 @limiter.limit("10/minute")
-async def delete_data_source(request: Request, source_id: int, user_id: Optional[str] = None, db: Session = Depends(get_db)):
+async def delete_data_source(request: Request, source_id: int, db: Session = Depends(get_db)):
     authenticated_user = get_authenticated_user()
     check_authorization(authenticated_user)
     try:
         source = db.query(DataSource).filter(DataSource.id == source_id, DataSource.user_id == authenticated_user).first()
         if not source:
-            raise HTTPException(status_code=404, detail="Fuente no encontrada")
+            raise HTTPException(status_code=404, detail="Recurso no encontrado o sin acceso")
         
         # Eliminar archivo físico si era de tipo 'file'
         if source.type == "file" and source.url:
@@ -441,7 +439,7 @@ async def delete_data_source(request: Request, source_id: int, user_id: Optional
 
 @router.get("/sources")
 @limiter.limit("15/minute")
-async def list_data_sources(request: Request, user_id: Optional[str] = None, db: Session = Depends(get_db)):
+async def list_data_sources(request: Request, db: Session = Depends(get_db)):
     authenticated_user = get_authenticated_user()
     check_authorization(authenticated_user)
     try:
@@ -451,8 +449,20 @@ async def list_data_sources(request: Request, user_id: Optional[str] = None, db:
         logger.error("Error al obtener sources: %s", safe_error_message(e))
         raise HTTPException(status_code=500, detail="Error al obtener las fuentes de datos.")
 
-@router.get("/sources/clear-force")
-async def clear_force(db: Session = Depends(get_db)):
+@router.post("/sources/clear-force")
+@limiter.limit("2/minute")
+async def clear_force(request: Request, db: Session = Depends(get_db)):
+    is_render = os.getenv("RENDER", "false").lower() == "true"
+    is_dev = os.getenv("ENVIRONMENT", "development").lower() == "development"
+    if is_render or not is_dev:
+        raise HTTPException(
+            status_code=403, 
+            detail="Acceso denegado: este endpoint solo está disponible en desarrollo local."
+        )
+        
+    authenticated_user = get_authenticated_user()
+    check_authorization(authenticated_user)
+    
     from sqlalchemy import text
     try:
         db.execute(text("UPDATE chats SET data_source_id = NULL"))
@@ -461,4 +471,9 @@ async def clear_force(db: Session = Depends(get_db)):
         db.commit()
         return {"status": "success", "message": "Todas las fuentes de la base de datos local han sido eliminadas."}
     except Exception as e:
-        return {"status": "error", "message": str(e)}
+        from src.utils.logging_config import safe_error_message
+        logger.error("Error crítico en clear_force: %s", safe_error_message(e))
+        raise HTTPException(
+            status_code=500, 
+            detail="Error interno al limpiar las fuentes de datos de desarrollo."
+        )

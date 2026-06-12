@@ -21,7 +21,6 @@ async def analyze(
     request: Request,
     query: str = Form(...),
     api_key: str = Form(...),
-    user_id: Optional[str] = Form(None),
     chat_id: Optional[int] = Form(None),
     data_source_id: Optional[int] = Form(None),
     provider: str = Form("gemini"),
@@ -30,6 +29,16 @@ async def analyze(
 ):
     authenticated_user = get_authenticated_user()
     check_authorization(authenticated_user)
+
+    if chat_id:
+        chat = db.query(Chat).filter(Chat.id == chat_id, Chat.user_id == authenticated_user).first()
+        if not chat:
+            raise HTTPException(status_code=404, detail="Recurso no encontrado o sin acceso")
+
+    if data_source_id:
+        source = db.query(DataSource).filter(DataSource.id == data_source_id, DataSource.user_id == authenticated_user).first()
+        if not source:
+            raise HTTPException(status_code=404, detail="Recurso no encontrado o sin acceso")
     
     # --- AUTO-RECUPERACIÓN DE LLAVES CIFRADAS ---
     # Si las llaves vienen vacías, cortas o enmascaradas, intentamos sacarlas de la DB del usuario
@@ -108,7 +117,7 @@ async def analyze(
         primary_source_name = None
         if data_source_id:
             from src.database import DataSource
-            source_obj = db.query(DataSource).filter(DataSource.id == data_source_id).first()
+            source_obj = db.query(DataSource).filter(DataSource.id == data_source_id, DataSource.user_id == authenticated_user).first()
             if source_obj:
                 primary_source_name = "".join([c if c.isalnum() else "_" for c in source_obj.name.split('.')[0]])
         
@@ -186,7 +195,6 @@ async def analyze(
 @limiter.limit("60/hour")
 def get_suggestions(
     request: Request,
-    user_id: Optional[str] = Form(None), 
     api_key: str = Form(...),
     chat_id: Optional[int] = Form(None), # AÑADIDO
     data_source_id: Optional[int] = Form(None),
@@ -196,6 +204,16 @@ def get_suggestions(
 ):
     authenticated_user = get_authenticated_user()
     check_authorization(authenticated_user)
+
+    if chat_id:
+        chat = db.query(Chat).filter(Chat.id == chat_id, Chat.user_id == authenticated_user).first()
+        if not chat:
+            raise HTTPException(status_code=404, detail="Recurso no encontrado o sin acceso")
+
+    if data_source_id:
+        source = db.query(DataSource).filter(DataSource.id == data_source_id, DataSource.user_id == authenticated_user).first()
+        if not source:
+            raise HTTPException(status_code=404, detail="Recurso no encontrado o sin acceso")
     # Si no viene mistral_key, intentar recuperarla de la base de datos
     if not mistral_key:
         from src.database import UserConfig
@@ -234,7 +252,7 @@ def get_suggestions(
         primary_source_name = None
         if data_source_id:
             from src.database import DataSource
-            source_obj = db.query(DataSource).filter(DataSource.id == data_source_id).first()
+            source_obj = db.query(DataSource).filter(DataSource.id == data_source_id, DataSource.user_id == authenticated_user).first()
             if source_obj:
                 primary_source_name = "".join([c if c.isalnum() else "_" for c in source_obj.name.split('.')[0]])
 
@@ -268,7 +286,6 @@ def get_report_summary(
     request: Request,
     query: str = Form(...),
     api_key: str = Form(...),
-    user_id: Optional[str] = Form(None),
     provider: str = Form("gemini"),
     mistral_key: Optional[str] = Form(None),
     db: Session = Depends(get_db)

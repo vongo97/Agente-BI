@@ -313,7 +313,6 @@ export async function createSimulation(
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      userId: userId,
       title,
       hypothesis,
       dataSourceId,
@@ -337,7 +336,6 @@ export async function getSimulationSuggestions(
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      userId: userId,
       selectedIds: selectedIds,
       apiKey: apiKey,
       provider: provider,

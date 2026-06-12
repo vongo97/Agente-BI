@@ -1,15 +1,20 @@
-from fastapi import APIRouter, Depends, Form, HTTPException
+from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from sqlalchemy.orm import Session
 from typing import Optional
 from src.database import get_db, UserConfig
 from src.engine.bi_analyst import validate_api_key
 from src.utils.common import check_authorization, get_authenticated_user
 from src.utils.security import encrypt_key, decrypt_key
+from src.utils.limiter import limiter
 
 router = APIRouter(tags=["Auth & Config"])
 
 @router.post("/validate-key")
-def validate_key(api_key: str = Form(...), provider: str = Form("gemini")):
+@limiter.limit("5/minute")
+@limiter.limit("20/hour")
+def validate_key(request: Request, api_key: str = Form(...), provider: str = Form("gemini")):
+    authenticated_user = get_authenticated_user()
+    check_authorization(authenticated_user)
     is_valid, error = validate_api_key(api_key, provider=provider)
     return {"valid": is_valid, "error": error}
 
@@ -29,7 +34,7 @@ def mask_key(encrypted_key: Optional[str]) -> str:
         return "xxxx...xxxx"
 
 @router.get("/user-config")
-async def get_user_config(user_id: Optional[str] = None, db: Session = Depends(get_db)):
+async def get_user_config(db: Session = Depends(get_db)):
     authenticated_user = get_authenticated_user()
     check_authorization(authenticated_user)
     config = db.query(UserConfig).filter(UserConfig.user_id == authenticated_user).first()
@@ -44,7 +49,6 @@ async def get_user_config(user_id: Optional[str] = None, db: Session = Depends(g
 
 @router.post("/user-config")
 async def set_user_config(
-    user_id: Optional[str] = Form(None),
     gemini_key: Optional[str] = Form(None),
     mistral_key: Optional[str] = Form(None),
     gamma_key: Optional[str] = Form(None),
@@ -77,3 +81,4 @@ async def set_user_config(
     
     db.commit()
     return {"message": "Configuración guardada correctamente"}
+

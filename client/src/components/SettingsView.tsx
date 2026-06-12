@@ -1,12 +1,12 @@
 'use client';
 
 import { useState } from "react";
-import { Settings, Key, Cpu, Shield, Save, CheckCircle2, AlertCircle, Sparkles } from "lucide-react";
+import { Settings, Key, Cpu, Shield, Save, CheckCircle2, AlertCircle, Sparkles, Menu } from "lucide-react";
 import { useDashboard } from "@/context/DashboardContext";
 import { validateApiKey } from "@/lib/api";
 
 export function SettingsView() {
-    const { apiKey, setApiKey, mistralKey, setMistralKey, aiProvider, setAiProvider, autoSuggestionsEnabled, setAutoSuggestionsEnabled } = useDashboard();
+    const { apiKey, setApiKey, mistralKey, setMistralKey, aiProvider, setAiProvider, autoSuggestionsEnabled, setAutoSuggestionsEnabled, setSidebarOpen } = useDashboard();
     const [status, setStatus] = useState<"idle" | "saving" | "success" | "error">("idle");
     const [msg, setMsg] = useState("");
 
@@ -43,8 +43,15 @@ export function SettingsView() {
         <div className="flex-1 bg-[var(--bi-canvas)] p-8 lg:p-12 overflow-y-auto custom-scrollbar">
             <div className="max-w-3xl mx-auto space-y-8 lg:space-y-12">
                 <header className="space-y-4">
-                    <div className="flex items-center gap-4">
-                        <div className="p-3 bg-[var(--bi-blue-dim)] border border-[var(--bi-blue-border)] rounded-lg">
+                    <div className="flex items-center gap-3 lg:gap-4">
+                        <button
+                            onClick={() => setSidebarOpen(true)}
+                            className="lg:hidden p-2 rounded-md text-[var(--bi-text-3)] hover:text-[var(--bi-text-1)] hover:bg-[var(--bi-surface-1)] active:bg-[var(--bi-surface-2)] transition-all duration-200 cursor-pointer"
+                            aria-label="Abrir menú"
+                        >
+                            <Menu className="w-5 h-5" />
+                        </button>
+                        <div className="p-3 bg-[var(--bi-blue-dim)] border border-[var(--bi-blue-border)] rounded-lg hidden sm:block">
                             <Settings className="w-5 h-5 text-[var(--bi-blue)]" />
                         </div>
                         <div>

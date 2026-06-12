@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from "react";
-import { Brain, Download, PlusCircle } from "lucide-react";
+import { Brain, Download, PlusCircle, Menu } from "lucide-react";
 import { useDashboard } from "@/context/DashboardContext";
 import { createSimulation, getSimulations, getSimulationDetails, getSimulationMessages, exportSimulationPdf, getDataSources, getSimulationSuggestions } from "@/lib/api";
 
@@ -12,7 +12,7 @@ import { SimDebate } from "./simulation/SimDebate";
 import { SimReport } from "./simulation/SimReport";
 
 export function SimulationSandbox() {
-    const { apiKey, mistralKey, aiProvider, setAiProvider, userId, dataSources } = useDashboard();
+    const { apiKey, mistralKey, aiProvider, setAiProvider, userId, dataSources, setSidebarOpen } = useDashboard();
     const [title, setTitle] = useState("");
     const [hypothesis, setHypothesis] = useState("");
     const [loading, setLoading] = useState(false);
@@ -170,10 +170,17 @@ export function SimulationSandbox() {
             />
 
             <div className="flex-1 flex flex-col overflow-hidden">
-                <header className="p-6 border-b border-[var(--bi-border)] bg-[var(--bi-surface-0)]">
+                <header className="p-4 lg:p-6 border-b border-[var(--bi-border)] bg-[var(--bi-surface-0)]">
                     <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-4">
-                            <div className="p-2 bg-[var(--sim-accent-soft)] border border-[var(--sim-border)] rounded-lg">
+                        <div className="flex items-center gap-3 lg:gap-4">
+                            <button
+                                onClick={() => setSidebarOpen(true)}
+                                className="lg:hidden p-2 rounded-md text-[var(--bi-text-3)] hover:text-[var(--bi-text-1)] hover:bg-[var(--bi-surface-1)] active:bg-[var(--bi-surface-2)] transition-all duration-200 cursor-pointer"
+                                aria-label="Abrir menú"
+                            >
+                                <Menu className="w-5 h-5" />
+                            </button>
+                            <div className="p-2 bg-[var(--sim-accent-soft)] border border-[var(--sim-border)] rounded-lg hidden sm:block">
                                 <Brain className="w-5 h-5 text-[var(--sim-accent)]" />
                             </div>
                             <div>

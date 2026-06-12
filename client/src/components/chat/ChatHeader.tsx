@@ -75,10 +75,10 @@ export function ChatHeader({
             <div className="flex items-center gap-2.5 min-w-0">
                 <button
                     onClick={() => setSidebarOpen(true)}
-                    className="lg:hidden p-1.5 rounded-md text-[var(--bi-text-3)] hover:text-[var(--bi-text-1)] hover:bg-[var(--bi-surface-1)] transition-colors cursor-pointer"
+                    className="lg:hidden p-2 rounded-md text-[var(--bi-text-3)] hover:text-[var(--bi-text-1)] hover:bg-[var(--bi-surface-1)] active:bg-[var(--bi-surface-2)] transition-all duration-200 cursor-pointer"
                     aria-label="Abrir menú"
                 >
-                    <Menu className="w-4 h-4" />
+                    <Menu className="w-5 h-5" />
                 </button>
                 <div className="flex items-center gap-1.5">
                     <div className="relative">
