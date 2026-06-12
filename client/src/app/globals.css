@@ -1,163 +1,528 @@
 @import "tailwindcss";
 
+/* ============================================================
+   VEKTRA BI — DESIGN SYSTEM TOKENS
+   Dark-first. :root = dark workspace.
+   [data-theme="light"] = light override.
+   ============================================================ */
+
 :root {
-  /* Light Mode Colors */
-  --bg-primary: #ffffff;
-  --bg-secondary: #f8fafc; /* Slate-50 */
-  --bg-tertiary: #f1f5f9;  /* Slate-100 */
-  --text-primary: #0f172a; /* Slate-900 */
-  --text-secondary: #475569; /* Slate-600 */
-  --text-tertiary: #94a3b8; /* Slate-400 */
-  --border-color: #e2e8f0; /* Slate-200 */
-  --border-hover: #3b82f6;
-  --accent-blue: #3b82f6;
-  --accent-blue-hover: #2563eb;
-  
-  /* Legacy variables for compatibility */
-  --background: #ffffff;
-  --foreground: #171717;
+  /* --- Canvas & Surfaces --- */
+  --bi-canvas:    #09090b;   /* true background */
+  --bi-surface-0: #0f1012;   /* sidebar, panels */
+  --bi-surface-1: #18191c;   /* cards, dropdowns */
+  --bi-surface-2: #222428;   /* hover, active */
+  --bi-surface-3: #2a2c31;   /* pressed, selected rim */
+
+  /* --- Borders --- */
+  --bi-border:        rgba(255, 255, 255, 0.07);
+  --bi-border-strong: rgba(255, 255, 255, 0.14);
+
+  /* --- Text --- */
+  --bi-text-1: #f0f2f5;   /* headings, primary */
+  --bi-text-2: #9da3af;   /* body, secondary */
+  --bi-text-3: #4e535c;   /* placeholder, muted */
+
+  /* --- Accent: Teal (primary action) --- */
+  --bi-teal:        #2dd4bf;
+  --bi-teal-hover:  #14b8a6;
+  --bi-teal-dim:    rgba(45, 212, 191, 0.10);
+  --bi-teal-border: rgba(45, 212, 191, 0.22);
+
+  /* --- Accent: Electric Blue (charts, links) --- */
+  --bi-blue:        #60a5fa;
+  --bi-blue-hover:  #93c5fd;
+  --bi-blue-dim:    rgba(96, 165, 250, 0.10);
+  --bi-blue-border: rgba(96, 165, 250, 0.22);
+
+  /* --- Accent: Technical Green (success, live) --- */
+  --bi-green:       #4ade80;
+  --bi-green-dim:   rgba(74, 222, 128, 0.10);
+
+  /* --- Semantic States --- */
+  --bi-amber:       #fbbf24;
+  --bi-amber-dim:   rgba(251, 191, 36, 0.10);
+  --bi-red:         #f87171;
+  --bi-red-dim:     rgba(248, 113, 113, 0.10);
+  --bi-red-border:  rgba(248, 113, 113, 0.22);
+
+  /* --- Module Accent: Simulation (Purple) --- */
+  --module-simulation-accent:       #a855f7;
+  --module-simulation-accent-hover: #9333ea;
+  --module-simulation-accent-soft:  rgba(168, 85, 247, 0.10);
+  --module-simulation-border:       rgba(168, 85, 247, 0.22);
+
+  /* --- Backward-compat aliases (existing components) --- */
+  --bg-primary:         var(--bi-canvas);
+  --bg-secondary:       var(--bi-surface-0);
+  --bg-tertiary:        var(--bi-surface-1);
+  --text-primary:       var(--bi-text-1);
+  --text-secondary:     var(--bi-text-2);
+  --text-tertiary:      var(--bi-text-3);
+  --border-color:       var(--bi-border);
+  --border-hover:       var(--bi-teal-border);
+  --accent-blue:        var(--bi-blue);
+  --accent-blue-hover:  var(--bi-blue-hover);
+  --accent-teal:        var(--bi-teal);
+  --accent-teal-hover:  var(--bi-teal-hover);
+
+  /* --- Legacy --- */
+  --background: var(--bi-canvas);
+  --foreground: var(--bi-text-1);
 }
 
-[data-theme="dark"] {
-  /* Dark Mode Colors (actual) */
-  --bg-primary: #000000;
-  --bg-secondary: #0f0f0f;
-  --bg-tertiary: #1a1a1a;
-  --text-primary: #ffffff;
-  --text-secondary: #a0a0a0;
-  --text-tertiary: #666666;
-  --border-color: rgba(255, 255, 255, 0.05);
-  --border-hover: rgba(59, 130, 246, 0.3);
-  --accent-blue: #3b82f6;
-  --accent-blue-hover: #60a5fa;
-  
-  /* Legacy variables */
-  --background: #0a0a0a;
-  --foreground: #ededed;
+/* ============================================================
+   LIGHT MODE OVERRIDE
+   ============================================================ */
+[data-theme="light"] {
+  --bi-canvas:    #ffffff;
+  --bi-surface-0: #f8fafc;
+  --bi-surface-1: #f1f5f9;
+  --bi-surface-2: #e8ecf2;
+  --bi-surface-3: #dde3ec;
+
+  --bi-border:        rgba(0, 0, 0, 0.08);
+  --bi-border-strong: rgba(0, 0, 0, 0.15);
+
+  --bi-text-1: #0f172a;
+  --bi-text-2: #475569;
+  --bi-text-3: #94a3b8;
+
+  --bi-teal:        #0d9488;
+  --bi-teal-hover:  #0f766e;
+  --bi-teal-dim:    rgba(13, 148, 136, 0.08);
+  --bi-teal-border: rgba(13, 148, 136, 0.22);
+
+  --bi-blue:        #2563eb;
+  --bi-blue-hover:  #1d4ed8;
+  --bi-blue-dim:    rgba(37, 99, 235, 0.08);
+  --bi-blue-border: rgba(37, 99, 235, 0.22);
+
+  --bi-green:       #16a34a;
+  --bi-green-dim:   rgba(22, 163, 74, 0.08);
+
+  --bi-amber:       #d97706;
+  --bi-amber-dim:   rgba(217, 119, 6, 0.08);
+  --bi-red:         #dc2626;
+  --bi-red-dim:     rgba(220, 38, 38, 0.08);
+  --bi-red-border:  rgba(220, 38, 38, 0.22);
+
+  /* --- Module Accent: Simulation (Purple) --- */
+  --module-simulation-accent:       #8b5cf6;
+  --module-simulation-accent-hover: #7c3aed;
+  --module-simulation-accent-soft:  rgba(139, 92, 246, 0.08);
+  --module-simulation-border:       rgba(139, 92, 246, 0.22);
 }
 
+/* ============================================================
+   TAILWIND v4 @theme INLINE — exposes CSS vars as utilities
+   Enables: bg-bi-canvas, text-bi-t1, border-bi-teal, etc.
+   ============================================================ */
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-background:   var(--background);
+  --color-foreground:   var(--foreground);
+  --font-sans:          var(--font-geist-sans);
+  --font-mono:          var(--font-geist-mono);
+
+  /* Canvas & surfaces */
+  --color-bi-canvas:    var(--bi-canvas);
+  --color-bi-s0:        var(--bi-surface-0);
+  --color-bi-s1:        var(--bi-surface-1);
+  --color-bi-s2:        var(--bi-surface-2);
+  --color-bi-s3:        var(--bi-surface-3);
+
+  /* Borders */
+  --color-bi-border:    var(--bi-border);
+  --color-bi-border-strong: var(--bi-border-strong);
+
+  /* Text */
+  --color-bi-t1:        var(--bi-text-1);
+  --color-bi-t2:        var(--bi-text-2);
+  --color-bi-t3:        var(--bi-text-3);
+
+  /* Accents */
+  --color-bi-teal:      var(--bi-teal);
+  --color-bi-teal-dim:  var(--bi-teal-dim);
+  --color-bi-blue:      var(--bi-blue);
+  --color-bi-blue-dim:  var(--bi-blue-dim);
+  --color-bi-green:     var(--bi-green);
+  --color-bi-green-dim: var(--bi-green-dim);
+  --color-bi-amber:     var(--bi-amber);
+  --color-bi-amber-dim: var(--bi-amber-dim);
+  --color-bi-red:       var(--bi-red);
+  --color-bi-red-dim:   var(--bi-red-dim);
+
+  /* Simulation Module Accents */
+  --color-sim-accent:      var(--module-simulation-accent);
+  --color-sim-accent-hover: var(--module-simulation-accent-hover);
+  --color-sim-accent-soft: var(--module-simulation-accent-soft);
+  --color-sim-border:      var(--module-simulation-border);
 }
 
-/* --- EJECUTIVO & MINIMALISTA --- */
+/* ============================================================
+   BASE STYLES
+   ============================================================ */
+*, *::before, *::after { box-sizing: border-box; }
+
+html {
+  color-scheme: dark;
+}
+
+[data-theme="light"] {
+  color-scheme: light;
+}
+
 body {
-  background: var(--bg-primary);
-  color: var(--text-primary);
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  background: var(--bi-canvas);
+  color: var(--bi-text-1);
+  font-family: var(--font-geist-sans), 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-size: 0.875rem;
+  line-height: 1.5;
   letter-spacing: -0.01em;
-  transition: background-color 0.3s ease, color 0.3s ease;
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
-/* Custom Markdown Styles - Premium Executive Look */
+/* ============================================================
+   COMPONENT UTILITIES
+   Reusable patterns for BI workspace UI.
+   ============================================================ */
+@layer components {
+
+  /* --- Navigation item --- */
+  .nav-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.375rem 0.625rem;
+    border-radius: 0.375rem;
+    font-size: 0.8125rem;
+    font-weight: 500;
+    color: var(--bi-text-2);
+    cursor: pointer;
+    transition: background 0.12s, color 0.12s;
+    width: 100%;
+    text-align: left;
+    background: transparent;
+    border: none;
+    user-select: none;
+  }
+  .nav-item:hover {
+    background: var(--bi-surface-1);
+    color: var(--bi-text-1);
+  }
+  .nav-item.active {
+    background: var(--bi-teal-dim);
+    color: var(--bi-teal);
+    border: 1px solid var(--bi-teal-border);
+  }
+
+  /* --- Toolbar button (compact icon-button style) --- */
+  .btn-toolbar {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    padding: 0.3125rem 0.625rem;
+    border-radius: 0.375rem;
+    font-size: 0.6875rem;
+    font-weight: 500;
+    color: var(--bi-text-2);
+    background: transparent;
+    border: 1px solid var(--bi-border);
+    cursor: pointer;
+    transition: background 0.12s, color 0.12s, border-color 0.12s;
+    white-space: nowrap;
+  }
+  .btn-toolbar:hover:not(:disabled) {
+    background: var(--bi-surface-1);
+    color: var(--bi-text-1);
+    border-color: var(--bi-border-strong);
+  }
+  .btn-toolbar:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+  .btn-toolbar.active {
+    color: var(--bi-teal);
+    background: var(--bi-teal-dim);
+    border-color: var(--bi-teal-border);
+  }
+
+  /* --- Primary button --- */
+  .btn-primary {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    padding: 0.4375rem 0.875rem;
+    border-radius: 0.375rem;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    background: var(--bi-teal);
+    color: #000;
+    border: none;
+    cursor: pointer;
+    transition: background 0.12s, opacity 0.12s;
+  }
+  .btn-primary:hover:not(:disabled) { background: var(--bi-teal-hover); }
+  .btn-primary:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  /* --- Ghost button --- */
+  .btn-ghost {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    padding: 0.4375rem 0.875rem;
+    border-radius: 0.375rem;
+    font-size: 0.8125rem;
+    font-weight: 500;
+    background: transparent;
+    color: var(--bi-text-2);
+    border: 1px solid var(--bi-border);
+    cursor: pointer;
+    transition: background 0.12s, color 0.12s;
+  }
+  .btn-ghost:hover:not(:disabled) {
+    background: var(--bi-surface-1);
+    color: var(--bi-text-1);
+  }
+  .btn-ghost:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  /* --- Standard input --- */
+  .input-bi {
+    width: 100%;
+    background: var(--bi-surface-0);
+    border: 1px solid var(--bi-border);
+    border-radius: 0.375rem;
+    padding: 0.375rem 0.625rem;
+    font-size: 0.8125rem;
+    color: var(--bi-text-1);
+    outline: none;
+    transition: border-color 0.12s;
+  }
+  .input-bi:focus { border-color: var(--bi-teal-border); }
+  .input-bi::placeholder { color: var(--bi-text-3); }
+  .input-bi:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  /* --- Panel surface --- */
+  .panel {
+    background: var(--bi-surface-0);
+    border: 1px solid var(--bi-border);
+    border-radius: 0.5rem;
+  }
+
+  /* --- Section label (sidebar, settings) --- */
+  .section-label {
+    display: flex;
+    align-items: center;
+    gap: 0.375rem;
+    font-size: 0.6875rem;
+    font-weight: 600;
+    color: var(--bi-text-3);
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+    padding: 0 0.25rem;
+  }
+
+  /* --- Status dot --- */
+  .dot-live {
+    width: 0.375rem;
+    height: 0.375rem;
+    border-radius: 9999px;
+    background: var(--bi-green);
+    flex-shrink: 0;
+    animation: pulse-live 2s ease-in-out infinite;
+  }
+
+  /* --- Badge --- */
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    font-size: 0.625rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    padding: 0.125rem 0.375rem;
+    border-radius: 0.25rem;
+    border: 1px solid transparent;
+  }
+  .badge-teal {
+    background: var(--bi-teal-dim);
+    color: var(--bi-teal);
+    border-color: var(--bi-teal-border);
+  }
+  .badge-blue {
+    background: var(--bi-blue-dim);
+    color: var(--bi-blue);
+    border-color: var(--bi-blue-border);
+  }
+  .badge-red {
+    background: var(--bi-red-dim);
+    color: var(--bi-red);
+    border-color: var(--bi-red-border);
+  }
+
+  /* --- Source chip --- */
+  .source-chip {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.375rem 0.5rem;
+    border-radius: 0.375rem;
+    border: 1px solid var(--bi-teal-border);
+    background: var(--bi-teal-dim);
+  }
+}
+
+/* ============================================================
+   MARKDOWN CONTENT
+   ============================================================ */
 .markdown-content {
-  font-size: 0.95rem;
-  font-weight: 450;
-  color: var(--text-secondary);
+  font-size: 0.875rem;
+  line-height: 1.65;
+  color: var(--bi-text-2);
 }
-
 .markdown-content h1, .markdown-content h2 {
-  font-size: 1.1rem;
-  font-weight: 800;
-  margin-top: 2rem;
-  margin-bottom: 1rem;
-  color: var(--text-primary);
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-  border-left: 3px solid var(--accent-blue);
-  padding-left: 0.75rem;
-}
-
-.markdown-content h3 {
-  font-size: 1rem;
+  font-size: 0.9375rem;
   font-weight: 700;
   margin-top: 1.5rem;
-  margin-bottom: 0.5rem;
-  color: var(--accent-blue);
-}
-
-.markdown-content p {
-  margin-bottom: 1.25rem;
-  line-height: 1.7;
-}
-
-.markdown-content strong {
-  color: var(--text-primary);
-  font-weight: 700;
-}
-
-.markdown-content ul, .markdown-content ol {
-  margin-bottom: 1.25rem;
-  padding-left: 1.5rem;
-  border-left: 1px solid var(--border-color);
-}
-
-.markdown-content li {
   margin-bottom: 0.75rem;
-  position: relative;
+  color: var(--bi-text-1);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  border-left: 2px solid var(--bi-teal);
+  padding-left: 0.625rem;
 }
-
-/* Tablas Ejecutivas */
+.markdown-content h3 {
+  font-size: 0.875rem;
+  font-weight: 600;
+  margin-top: 1.25rem;
+  margin-bottom: 0.5rem;
+  color: var(--bi-teal);
+}
+.markdown-content p {
+  margin-bottom: 1rem;
+  color: var(--bi-text-2);
+}
+.markdown-content strong {
+  color: var(--bi-text-1);
+  font-weight: 600;
+}
+.markdown-content ul, .markdown-content ol {
+  margin-bottom: 1rem;
+  padding-left: 1.25rem;
+  border-left: 1px solid var(--bi-border);
+}
+.markdown-content li {
+  margin-bottom: 0.375rem;
+  color: var(--bi-text-2);
+}
 .markdown-content table {
   width: 100%;
   border-collapse: separate;
   border-spacing: 0;
-  margin: 1.5rem 0;
-  border: 1px solid var(--border-color);
-  border-radius: 12px;
+  margin: 1.25rem 0;
+  border: 1px solid var(--bi-border);
+  border-radius: 0.5rem;
   overflow: hidden;
-  background: rgba(255,255,255,0.02);
+  background: var(--bi-surface-0);
 }
-
 .markdown-content th {
-  background: rgba(255,255,255,0.05);
-  color: var(--text-primary);
-  font-size: 0.75rem;
+  background: var(--bi-surface-1);
+  color: var(--bi-text-2);
+  font-size: 0.6875rem;
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  padding: 0.75rem 1rem;
+  padding: 0.5rem 0.75rem;
   text-align: left;
-  border-bottom: 1px solid var(--border-color);
+  font-weight: 600;
+  border-bottom: 1px solid var(--bi-border);
 }
-
 .markdown-content td {
-  padding: 0.75rem 1rem;
-  font-size: 13px;
-  border-bottom: 1px solid var(--border-color);
+  padding: 0.5rem 0.75rem;
+  font-size: 0.8125rem;
+  border-bottom: 1px solid var(--bi-border);
+  color: var(--bi-text-2);
 }
-
-.markdown-content tr:last-child td {
-  border-bottom: none;
-}
-
-/* Bloques de Resaltado para Recomendaciones */
+.markdown-content tr:last-child td { border-bottom: none; }
 .markdown-content blockquote {
-  border-left: 4px solid var(--accent-blue);
-  background: rgba(59, 130, 246, 0.05);
-  padding: 1rem 1.5rem;
-  margin: 1.5rem 0;
-  border-radius: 0 12px 12px 0;
+  border-left: 3px solid var(--bi-teal);
+  background: var(--bi-teal-dim);
+  padding: 0.75rem 1rem;
+  margin: 1.25rem 0;
+  border-radius: 0 0.375rem 0.375rem 0;
+  color: var(--bi-text-2);
 }
-
-/* Scrollbar Personalizada para modo oscuro */
-.custom-scrollbar::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+.markdown-content code {
+  background: var(--bi-surface-1);
+  border: 1px solid var(--bi-border);
+  border-radius: 0.25rem;
+  padding: 0.125rem 0.375rem;
+  font-family: var(--font-geist-mono), monospace;
+  font-size: 0.8125rem;
+  color: var(--bi-teal);
 }
-
-.custom-scrollbar::-webkit-scrollbar-track {
+.markdown-content pre code {
   background: transparent;
+  border: none;
+  padding: 0;
+  color: var(--bi-text-1);
+}
+.markdown-content pre {
+  background: var(--bi-surface-1);
+  border: 1px solid var(--bi-border);
+  border-radius: 0.5rem;
+  padding: 0.875rem 1rem;
+  overflow-x: auto;
+  margin: 1rem 0;
 }
 
+/* ============================================================
+   SCROLLBAR
+   ============================================================ */
+.custom-scrollbar::-webkit-scrollbar { width: 4px; height: 4px; }
+.custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
 .custom-scrollbar::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.15);
-  border-radius: 10px;
+  background: var(--bi-surface-3);
+  border-radius: 4px;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: var(--bi-border-strong);
 }
 
-.custom-scrollbar::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.3);
+/* ============================================================
+   ANIMATIONS
+   ============================================================ */
+@keyframes pulse-live {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.4; }
 }
+
+/* animate-in utilities (used by components) */
+@keyframes fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes slide-in-from-bottom-2 {
+  from { opacity: 0; transform: translateY(0.5rem); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes slide-in-from-bottom-4 {
+  from { opacity: 0; transform: translateY(1rem); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes slide-in-from-left-2 {
+  from { opacity: 0; transform: translateX(-0.5rem); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+.animate-in { animation-fill-mode: both; }
+.fade-in    { animation-name: fade-in; }
+.slide-in-from-bottom-2 { animation-name: slide-in-from-bottom-2; }
+.slide-in-from-bottom-4 { animation-name: slide-in-from-bottom-4; }
+.slide-in-from-bottom-8 { animation-name: slide-in-from-bottom-4; }
+.slide-in-from-left-2   { animation-name: slide-in-from-left-2; }
+.zoom-in { animation-name: fade-in; }
+.duration-300  { animation-duration: 0.3s; }
+.duration-500  { animation-duration: 0.5s; }
+.duration-700  { animation-duration: 0.7s; }
+.duration-1000 { animation-duration: 1s; }
+.delay-300 { animation-delay: 0.3s; }

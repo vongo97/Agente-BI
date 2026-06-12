@@ -12,38 +12,22 @@ interface ThemeContextType {
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
-    const [theme, setTheme] = useState<Theme>('dark');
-    const [mounted, setMounted] = useState(false);
+    // Dark-first: default is always dark. Read localStorage once at mount (SSR-safe via lazy initializer).
+    const [theme, setTheme] = useState<Theme>(() => {
+        if (typeof window === 'undefined') return 'dark';
+        const saved = localStorage.getItem('vektra-theme') as Theme | null;
+        return (saved === 'light' || saved === 'dark') ? saved : 'dark';
+    });
 
     useEffect(() => {
-        setMounted(true);
-        // Cargar tema guardado o usar preferencia del sistema
-        const savedTheme = localStorage.getItem('theme') as Theme;
-        if (savedTheme) {
-            setTheme(savedTheme);
-        } else {
-            const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-            setTheme(prefersDark ? 'dark' : 'light');
-        }
-    }, []);
-
-    useEffect(() => {
-        if (!mounted) return;
-
-        // Aplicar tema al documento
+        // dark = :root (no attribute needed), light = [data-theme="light"]
         document.documentElement.setAttribute('data-theme', theme);
-        localStorage.setItem('theme', theme);
-    }, [theme, mounted]);
+        localStorage.setItem('vektra-theme', theme);
+    }, [theme]);
 
-    const toggleTheme = () => {
-        setTheme(prev => prev === 'dark' ? 'light' : 'dark');
-    };
+    const toggleTheme = () => setTheme(prev => prev === 'dark' ? 'light' : 'dark');
 
-    // Evitar flash de contenido sin estilo
-    if (!mounted) {
-        return <>{children}</>;
-    }
-
+    // Avoid SSR flash — render with dark default (matches layout.tsx data-theme="dark")
     return (
         <ThemeContext.Provider value={{ theme, toggleTheme }}>
             {children}
@@ -53,8 +37,6 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
 
 export function useTheme() {
     const context = useContext(ThemeContext);
-    if (context === undefined) {
-        throw new Error('useTheme must be used within a ThemeProvider');
-    }
+    if (!context) throw new Error('useTheme must be used within a ThemeProvider');
     return context;
 }

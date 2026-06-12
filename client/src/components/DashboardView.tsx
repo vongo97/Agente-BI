@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import { useSession } from "next-auth/react";
 import { useDashboard } from "@/context/DashboardContext";
 import { getDashboard, deleteDashboardItem, exportChartAsPng, filterDashboard } from "@/lib/api";
-import { Activity, Trash2, Download, Box, Sparkles, Filter, X, GripVertical } from "lucide-react";
+import { Activity, Trash2, Download, Box, Filter, X, GripVertical } from "lucide-react";
 import dynamic from "next/dynamic";
 import { Responsive } from "react-grid-layout";
 
@@ -182,66 +182,66 @@ export function DashboardView() {
 
     if (loading) {
         return (
-            <div className="flex-1 bg-black flex flex-col items-center justify-center">
-                <div className="p-4 bg-blue-600/20 rounded-2xl animate-spin mb-4">
-                    <Activity className="w-8 h-8 text-blue-500" />
+            <div className="flex-1 bg-[var(--bi-canvas)] flex flex-col items-center justify-center">
+                <div className="p-4 bg-[var(--bi-blue-dim)] rounded-xl animate-spin mb-4">
+                    <Activity className="w-8 h-8 text-[var(--bi-blue)]" />
                 </div>
-                <p className="text-gray-400 font-bold uppercase tracking-[0.2em] animate-pulse">Cargando tu Panel de Control...</p>
+                <p className="text-[var(--bi-text-2)] font-bold uppercase tracking-[0.2em] animate-pulse">Cargando tu Panel de Control...</p>
             </div>
         );
     }
 
     return (
-        <div className="flex-1 bg-[var(--bg-primary)] flex flex-col h-screen overflow-hidden border-l border-[var(--border-color)]">
-            <header className="h-16 border-b border-white/5 flex items-center justify-between px-8 bg-black/40 backdrop-blur-xl sticky top-0 z-10 w-full shrink-0">
+        <div className="flex-1 bg-[var(--bi-canvas)] flex flex-col h-screen overflow-hidden border-l border-[var(--bi-border)]">
+            <header className="h-16 border-b border-[var(--bi-border)] flex items-center justify-between px-8 bg-[var(--bi-surface-0)]/80 backdrop-blur-xl sticky top-0 z-10 w-full shrink-0">
                 <div className="flex items-center gap-4">
-                    <div className="p-2 bg-blue-600/10 rounded-xl">
-                        <Activity className="w-5 h-5 text-blue-500" />
+                    <div className="p-2 bg-[var(--bi-blue-dim)] rounded-lg">
+                        <Activity className="w-5 h-5 text-[var(--bi-blue)]" />
                     </div>
-                    <h2 className="text-sm font-black text-white uppercase tracking-[0.3em]">Panel Interactiva <span className="text-gray-600">| Pro-Dashboard</span></h2>
+                    <h2 className="text-xs font-semibold text-[var(--bi-text-1)] uppercase tracking-wider">Panel Interactivo <span className="text-[var(--bi-text-3)]">| Pro-Dashboard</span></h2>
                 </div>
 
                 <div className="flex items-center gap-4">
                     {/* Filtros Activos UI */}
                     <div className="flex items-center gap-2 overflow-x-auto max-w-[400px]">
                         {Object.entries(filters).map(([key, val]) => (
-                            <div key={key} className="flex items-center gap-2 bg-blue-600/20 px-3 py-1.5 rounded-full border border-blue-600/30">
-                                <span className="text-[10px] font-bold text-blue-400 uppercase tracking-tighter">{key}: {val}</span>
-                                <button onClick={() => clearFilter(key)} className="text-blue-400 hover:text-white transition-colors">
+                            <div key={key} className="flex items-center gap-2 bg-[var(--bi-blue-dim)] px-2.5 py-1 rounded-md border border-[var(--bi-blue-border)]">
+                                <span className="text-[10px] font-bold text-[var(--bi-blue)] uppercase tracking-tighter">{key}: {val}</span>
+                                <button onClick={() => clearFilter(key)} className="text-[var(--bi-blue)] hover:text-[var(--bi-text-1)] transition-colors">
                                     <X className="w-3 h-3" />
                                 </button>
                             </div>
                         ))}
                     </div>
 
-                    <div className="flex items-center gap-2 bg-white/5 px-4 py-2 rounded-2xl border border-white/5">
+                    <div className="flex items-center gap-2 bg-[var(--bi-surface-1)] px-4 py-2 rounded-lg border border-[var(--bi-border)]">
                         {isFiltering ? (
                             <div className="flex items-center gap-2">
-                                <Activity className="w-3 h-3 text-blue-500 animate-pulse" />
-                                <span className="text-[10px] font-bold text-blue-400 uppercase tracking-widest">Filtrando...</span>
+                                <Activity className="w-3 h-3 text-[var(--bi-blue)] animate-pulse" />
+                                <span className="text-[10px] font-bold text-[var(--bi-blue)] uppercase tracking-widest">Filtrando...</span>
                             </div>
                         ) : (
                             <div className="flex items-center gap-2">
-                                <Filter className="w-3 h-3 text-gray-500" />
-                                <span className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Dashboard Vivo</span>
+                                <Filter className="w-3 h-3 text-[var(--bi-text-3)]" />
+                                <span className="text-[10px] font-bold text-[var(--bi-text-3)] uppercase tracking-widest">Dashboard Vivo</span>
                             </div>
                         )}
                     </div>
                 </div>
             </header>
 
-            <div className="flex-1 relative bg-black">
+            <div className="flex-1 relative bg-[var(--bi-canvas)]">
                 <div className="absolute inset-0" ref={containerRef}>
                     {items.length === 0 ? (
-                        <div className="h-full flex flex-col items-center justify-center text-center max-w-sm mx-auto p-12">
-                            <div className="w-20 h-20 bg-white/[0.02] border border-white/5 rounded-3xl flex items-center justify-center mb-6">
-                                <Box className="w-10 h-10 text-gray-700" />
+                        <div className="h-full flex flex-col items-center justify-center text-center max-w-sm mx-auto p-12 animate-in fade-in duration-500">
+                            <div className="w-16 h-16 bg-[var(--bi-surface-1)] border border-[var(--bi-border)] rounded-xl flex items-center justify-center mb-6">
+                                <Box className="w-8 h-8 text-[var(--bi-text-3)]" />
                             </div>
-                            <h3 className="text-xl font-bold text-white mb-2">Tu panel está vacío</h3>
-                            <p className="text-gray-500 text-sm leading-relaxed mb-6">Analiza datos en el chat y ancla los gráficos más importantes para verlos aquí todos juntos.</p>
+                            <h3 className="text-base font-bold text-[var(--bi-text-1)] mb-2">Tu panel está vacío</h3>
+                            <p className="text-[var(--bi-text-2)] text-xs leading-relaxed mb-6">Analiza datos en el chat y ancla los gráficos más importantes para verlos aquí todos juntos.</p>
                             <button
                                 onClick={() => setView('chat')}
-                                className="px-6 py-3 bg-blue-600 hover:bg-blue-500 rounded-xl text-white text-xs font-black uppercase tracking-widest transition-all"
+                                className="px-5 py-2.5 bg-[var(--bi-blue)] hover:bg-[var(--bi-blue-hover)] rounded-md text-[var(--bi-canvas)] text-xs font-semibold uppercase tracking-wider transition-all"
                             >
                                 Ir al Chat de Análisis
                             </button>
@@ -264,28 +264,28 @@ export function DashboardView() {
                                 } as any)}
                             >
                                 {items.map((item) => (
-                                    <div key={item.id.toString()} className="bg-[#0f0f0f] border border-white/5 rounded-3xl overflow-hidden group hover:border-blue-500/20 transition-all flex flex-col shadow-2xl">
-                                        <div className="px-4 py-3 border-b border-white/5 flex items-center justify-between bg-white/[0.02]">
+                                    <div key={item.id.toString()} className="bg-[var(--bi-surface-0)] border border-[var(--bi-border)] rounded-xl overflow-hidden group hover:border-[var(--bi-blue-border)] transition-all flex flex-col shadow-2xl">
+                                        <div className="px-4 py-3 border-b border-[var(--bi-border)] flex items-center justify-between bg-[var(--bi-surface-0)]/50">
                                             <div className="flex items-center gap-3 overflow-hidden">
-                                                <div className="drag-handle cursor-grab active:cursor-grabbing p-1.5 hover:bg-white/5 rounded-lg text-gray-600">
+                                                <div className="drag-handle cursor-grab active:cursor-grabbing p-1.5 hover:bg-[var(--bi-surface-2)] rounded-lg text-[var(--bi-text-3)]">
                                                     <GripVertical className="w-4 h-4" />
                                                 </div>
                                                 <div className="overflow-hidden">
-                                                    <p className="text-[8px] text-gray-600 font-bold uppercase tracking-widest truncate">{item.chat_title}</p>
-                                                    <p className="text-[11px] font-semibold text-gray-300 truncate">{item.content}</p>
+                                                    <p className="text-[8px] text-[var(--bi-text-3)] font-bold uppercase tracking-widest truncate">{item.chat_title}</p>
+                                                    <p className="text-[11px] font-semibold text-[var(--bi-text-2)] truncate">{item.content}</p>
                                                 </div>
                                             </div>
                                             <div className="flex items-center gap-1 shrink-0">
                                                 <button
                                                     onClick={() => handleDownload(item.fig, item.content)}
-                                                    className="p-1.5 text-gray-600 hover:text-blue-400 hover:bg-blue-600/10 rounded-lg transition-all"
+                                                    className="p-1.5 text-[var(--bi-text-3)] hover:text-[var(--bi-blue)] hover:bg-[var(--bi-blue-dim)] rounded-lg transition-all"
                                                     title="Exportar PNG"
                                                 >
                                                     <Download className="w-3.5 h-3.5" />
                                                 </button>
                                                 <button
                                                     onClick={() => handleUnpin(item.id)}
-                                                    className="p-1.5 text-gray-600 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-all"
+                                                    className="p-1.5 text-[var(--bi-text-3)] hover:text-[var(--bi-red)] hover:bg-[var(--bi-red-dim)] rounded-lg transition-all"
                                                     title="Remover"
                                                 >
                                                     <Trash2 className="w-3.5 h-3.5" />
@@ -293,9 +293,9 @@ export function DashboardView() {
                                             </div>
                                         </div>
 
-                                        <div className="flex-1 p-2 bg-black/40 min-h-0 relative">
+                                        <div className="flex-1 p-2 bg-[var(--bi-canvas)]/30 min-h-0 relative">
                                             {item.fig ? (
-                                                <div className="w-full h-full flex items-center justify-center rounded-2xl overflow-hidden">
+                                                <div className="w-full h-full flex items-center justify-center rounded-lg overflow-hidden">
                                                     <Plot
                                                         data={item.fig.data}
                                                         layout={{
@@ -303,10 +303,10 @@ export function DashboardView() {
                                                             autosize: true,
                                                             paper_bgcolor: 'rgba(0,0,0,0)',
                                                             plot_bgcolor: 'rgba(0,0,0,0)',
-                                                            font: { color: '#888', size: 9 },
+                                                            font: { color: 'var(--bi-text-2)', size: 9 },
                                                             margin: { t: 20, b: 20, l: 30, r: 20 },
-                                                            xaxis: { ...item.fig.layout.xaxis, gridcolor: '#111', zerolinecolor: '#222' },
-                                                            yaxis: { ...item.fig.layout.yaxis, gridcolor: '#111', zerolinecolor: '#222' }
+                                                            xaxis: { ...item.fig.layout.xaxis, gridcolor: 'var(--bi-border)', zerolinecolor: 'var(--bi-border)' },
+                                                            yaxis: { ...item.fig.layout.yaxis, gridcolor: 'var(--bi-border)', zerolinecolor: 'var(--bi-border)' }
                                                         }}
                                                         useResizeHandler={true}
                                                         style={{ width: "100%", height: "100%" }}
@@ -316,7 +316,7 @@ export function DashboardView() {
                                                 </div>
                                             ) : (
                                                 <div className="h-full flex items-center justify-center">
-                                                    <p className="text-[10px] text-gray-700 font-bold uppercase tracking-widest italic">Solo Tabla</p>
+                                                    <p className="text-[10px] text-[var(--bi-text-3)] font-bold uppercase tracking-widest italic">Solo Tabla</p>
                                                 </div>
                                             )}
                                         </div>

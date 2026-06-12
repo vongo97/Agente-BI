@@ -1,4 +1,4 @@
-import { Send } from "lucide-react";
+import { Send, Loader2 } from "lucide-react";
 
 interface ChatInputProps {
     input: string;
@@ -13,35 +13,61 @@ export function ChatInput({
     setInput,
     handleSend,
     loading,
-    dataSourcesCount
+    dataSourcesCount,
 }: ChatInputProps) {
+    const hasData = dataSourcesCount > 0;
+    const canSend = hasData && !loading && input.trim().length > 0;
+
     return (
-        <div className="p-4 lg:p-8 pb-8 lg:pb-12 bg-gradient-to-t from-[var(--bg-primary)] via-[var(--bg-primary)] to-transparent">
-            <div className="max-w-4xl mx-auto relative group">
-                <div className="absolute -inset-1 bg-gradient-to-r from-blue-600 to-indigo-600 rounded-2xl blur opacity-20 group-hover:opacity-40 transition duration-1000 group-focus-within:opacity-50"></div>
+        <div className="px-4 py-3 lg:px-8 lg:py-4 border-t border-[var(--bi-border)] bg-[var(--bi-canvas)] flex-shrink-0">
+            <div className="max-w-4xl mx-auto flex items-end gap-2">
                 <textarea
                     value={input}
                     onChange={(e) => setInput(e.target.value)}
                     onKeyDown={(e) => {
-                        if (e.key === 'Enter' && !e.shiftKey) {
+                        if (e.key === "Enter" && !e.shiftKey) {
                             e.preventDefault();
-                            handleSend();
+                            if (canSend) handleSend();
                         }
                     }}
                     rows={2}
-                    placeholder={dataSourcesCount > 0 ? "Escribe tu pregunta estratégica (Shift+Enter para nueva línea)..." : "Suba un archivo para comenzar..."}
-                    disabled={dataSourcesCount === 0 || loading}
-                    className="relative w-full resize-none custom-scrollbar bg-[var(--bg-secondary)] border border-[var(--border-color)] rounded-2xl px-6 py-4 pr-16 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-tertiary)] focus:outline-none focus:border-blue-500/50 transition-all shadow-3xl disabled:opacity-50 disabled:cursor-not-allowed"
+                    placeholder={
+                        hasData
+                            ? "Escribe tu pregunta sobre los datos… (Enter para enviar, Shift+Enter para nueva línea)"
+                            : "Sube un archivo de datos para comenzar el análisis"
+                    }
+                    disabled={!hasData || loading}
+                    className="
+                        flex-1 resize-none custom-scrollbar
+                        bg-[var(--bi-surface-0)] border border-[var(--bi-border)]
+                        rounded-lg px-4 py-2.5 text-sm text-[var(--bi-text-1)]
+                        placeholder:text-[var(--bi-text-3)]
+                        focus:outline-none focus:border-[var(--bi-teal-border)]
+                        transition-colors
+                        disabled:opacity-40 disabled:cursor-not-allowed
+                    "
                 />
                 <button
                     onClick={handleSend}
-                    disabled={loading || !input.trim() || dataSourcesCount === 0}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 p-3 bg-blue-600 text-white rounded-xl hover:bg-blue-500 transition-all disabled:bg-gray-800 disabled:text-gray-600"
+                    disabled={!canSend}
+                    title="Enviar consulta"
+                    className="
+                        flex-shrink-0 p-3 rounded-lg
+                        bg-[var(--bi-teal)] text-[var(--bi-canvas)]
+                        hover:bg-[var(--bi-teal-hover)]
+                        disabled:bg-[var(--bi-surface-3)] disabled:text-[var(--bi-text-3)]
+                        transition-colors cursor-pointer disabled:cursor-not-allowed
+                    "
                 >
-                    <Send className="w-5 h-5" />
+                    {loading
+                        ? <Loader2 className="w-4 h-4 animate-spin" />
+                        : <Send className="w-4 h-4" />
+                    }
                 </button>
             </div>
-            <p className="mt-4 text-[9px] text-gray-800 font-black uppercase tracking-[0.2em] text-center">Precision BI Logic Engine • 2026</p>
+            <p className="mt-2 text-[10px] text-[var(--bi-text-3)] text-center font-medium">
+                Vektra BI · Precision Analysis Engine
+            </p>
         </div>
     );
 }

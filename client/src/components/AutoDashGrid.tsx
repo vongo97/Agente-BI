@@ -78,7 +78,7 @@ export default function AutoDashGrid({ items, metrics = [], userId }: AutoDashGr
             {metrics.length > 0 && (
                 <div className="space-y-4">
                     <div className="flex items-center gap-2 px-1">
-                        <div className="w-1 h-4 bg-blue-500 rounded-full"></div>
+                        <div className="w-1 h-4 bg-[var(--bi-blue)] rounded-full"></div>
                         <h3 className="text-[10px] font-black text-[var(--text-tertiary)] uppercase tracking-[0.2em]">Métricas de Impacto</h3>
                     </div>
                     
@@ -86,14 +86,14 @@ export default function AutoDashGrid({ items, metrics = [], userId }: AutoDashGr
                         {metrics.map((metric, idx) => {
                             const Icon = getIcon(metric.icon);
                             return (
-                                <div key={idx} className="relative group bg-[var(--bg-secondary)] border border-[var(--border-color)] rounded-2xl p-5 hover:border-blue-500/40 transition-all hover:shadow-2xl hover:shadow-blue-500/5 overflow-hidden">
+                                <div key={idx} className="relative group bg-[var(--bg-secondary)] border border-[var(--border-color)] rounded-lg p-5 hover:border-[var(--bi-blue-border)] transition-all overflow-hidden">
                                     <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity">
                                         <Icon className="w-16 h-16" />
                                     </div>
                                     <div className="relative flex flex-col gap-3">
                                         <div className="flex items-center justify-between">
-                                            <div className="p-2 bg-blue-500/10 rounded-xl">
-                                                <Icon className="w-5 h-5 text-blue-500" />
+                                            <div className="p-2 bg-[var(--bi-blue-dim)] rounded-lg">
+                                                <Icon className="w-5 h-5 text-[var(--bi-blue)]" />
                                             </div>
                                             <ArrowUpRight className="w-4 h-4 text-[var(--text-tertiary)] opacity-0 group-hover:opacity-100 transition-all translate-y-1 group-hover:translate-y-0" />
                                         </div>
@@ -118,19 +118,19 @@ export default function AutoDashGrid({ items, metrics = [], userId }: AutoDashGr
             {items.length > 0 && (
                 <div className="space-y-4">
                     <div className="flex items-center gap-2 px-1">
-                        <div className="w-1 h-4 bg-purple-500 rounded-full"></div>
+                        <div className="w-1 h-4 bg-[var(--bi-blue)] rounded-full"></div>
                         <h3 className="text-[10px] font-black text-[var(--text-tertiary)] uppercase tracking-[0.2em]">Análisis Visual</h3>
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         {items.map((item, idx) => (
-                            <div key={idx} className="relative bg-[var(--bg-secondary)] border border-[var(--border-color)] rounded-3xl overflow-hidden shadow-2xl p-4 flex flex-col hover:border-purple-500/30 transition-all group">
+                            <div key={idx} className="relative bg-[var(--bg-secondary)] border border-[var(--border-color)] rounded-lg overflow-hidden shadow-2xl p-4 flex flex-col hover:border-[var(--bi-blue-border)] transition-all group">
                                 
                                 <div className="absolute top-4 right-4 z-20 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                                     <button
                                         onClick={() => handlePin(item, idx)}
                                         disabled={pinnedIndices.includes(idx)}
-                                        className={`p-2 rounded-xl shadow-lg backdrop-blur-md border transition-all ${pinnedIndices.includes(idx)
+                                        className={`p-2 rounded-lg shadow-lg backdrop-blur-md border transition-all ${pinnedIndices.includes(idx)
                                                 ? 'bg-green-500/20 border-green-500/30 text-green-400'
                                                 : 'bg-white/10 hover:bg-white/20 border-white/10 text-white'
                                             }`}
@@ -144,7 +144,7 @@ export default function AutoDashGrid({ items, metrics = [], userId }: AutoDashGr
                                     <h4 className="font-bold text-sm text-[var(--text-primary)] tracking-tight truncate" title={item.title}>{item.title}</h4>
                                 </div>
 
-                                <div className="flex-1 min-h-[300px] relative rounded-2xl overflow-hidden bg-[var(--bg-primary)]/50 border border-[var(--border-color)]/50">
+                                <div className="flex-1 min-h-[300px] relative rounded-lg overflow-hidden bg-[var(--bg-primary)]/50 border border-[var(--border-color)]/50">
                                     {item.fig ? (
                                         <Plot
                                             data={item.fig.data}
@@ -160,8 +160,8 @@ export default function AutoDashGrid({ items, metrics = [], userId }: AutoDashGr
                                                     family: 'Inter, sans-serif'
                                                 },
                                                 margin: { l: 40, r: 20, t: 40, b: 40 },
-                                                xaxis: { ...(item.fig.layout.xaxis || {}), gridcolor: 'rgba(255,255,255,0.03)' },
-                                                yaxis: { ...(item.fig.layout.yaxis || {}), gridcolor: 'rgba(255,255,255,0.03)' },
+                                                xaxis: { ...(item.fig.layout.xaxis || {}), gridcolor: 'var(--bi-border)' },
+                                                yaxis: { ...(item.fig.layout.yaxis || {}), gridcolor: 'var(--bi-border)' },
                                             }}
                                             style={{ width: '100%', height: '100%' }}
                                             useResizeHandler={true}
@@ -169,7 +169,7 @@ export default function AutoDashGrid({ items, metrics = [], userId }: AutoDashGr
                                         />
                                     ) : (
                                         <div className="absolute inset-0 flex items-center justify-center flex-col text-[var(--text-tertiary)] gap-3">
-                                            <div className="w-12 h-12 bg-[var(--bg-tertiary)] rounded-2xl flex items-center justify-center border border-[var(--border-color)]">
+                                            <div className="w-12 h-12 bg-[var(--bg-tertiary)] rounded-lg flex items-center justify-center border border-[var(--border-color)]">
                                                 <AlertTriangle className="w-6 h-6 opacity-40 text-orange-500" />
                                             </div>
                                             <span className="text-[10px] uppercase font-bold tracking-widest">{item.error || 'Fallo en renderizado'}</span>
@@ -178,11 +178,11 @@ export default function AutoDashGrid({ items, metrics = [], userId }: AutoDashGr
                                 </div>
 
                                 {item.insight && (
-                                    <div className="mt-4 text-[11px] text-[var(--text-secondary)] bg-blue-500/5 p-4 rounded-2xl border border-blue-500/10 flex gap-3">
+                                    <div className="mt-4 text-[11px] text-[var(--text-secondary)] bg-[var(--bi-blue-dim)] p-4 rounded-lg border border-[var(--bi-blue-border)] flex gap-3">
                                         <div className="mt-0.5">
-                                            <Search className="w-3 h-3 text-blue-500 opacity-60" />
+                                            <Search className="w-3 h-3 text-[var(--bi-blue)] opacity-60" />
                                         </div>
-                                        <p className="leading-relaxed leading-relaxed italic">{item.insight}</p>
+                                        <p className="leading-relaxed italic">{item.insight}</p>
                                     </div>
                                 )}
                             </div>
@@ -193,7 +193,7 @@ export default function AutoDashGrid({ items, metrics = [], userId }: AutoDashGr
 
             {items.length === 0 && metrics.length === 0 && (
                 <div className="flex flex-col items-center justify-center py-20 text-center space-y-4">
-                    <div className="w-16 h-16 bg-[var(--bg-secondary)] rounded-3xl flex items-center justify-center border border-[var(--border-color)] shadow-inner">
+                    <div className="w-16 h-16 bg-[var(--bg-secondary)] rounded-lg flex items-center justify-center border border-[var(--border-color)] shadow-inner">
                         <LayoutDashboard className="w-8 h-8 text-[var(--text-tertiary)] opacity-20" />
                     </div>
                     <p className="text-xs text-[var(--text-tertiary)] font-bold uppercase tracking-widest">No se pudieron extraer métricas automáticas</p>

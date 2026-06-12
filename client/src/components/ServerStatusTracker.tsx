@@ -1,10 +1,10 @@
 'use client';
 
 import { useDashboard } from "@/context/DashboardContext";
-import { Coffee, AlertCircle, CheckCircle2 } from "lucide-react";
+import { Coffee, AlertCircle } from "lucide-react";
 
 export function ServerStatusTracker() {
-    const { isServerHealthy, isWakingUp } = useDashboard();
+    const { isServerHealthy } = useDashboard();
 
     if (isServerHealthy === true) return null;
 

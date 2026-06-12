@@ -25,8 +25,11 @@ export default function Home() {
 
   if (status === "loading") {
     return (
-      <div className="min-h-screen bg-black flex items-center justify-center">
-        <Loader2 className="w-8 h-8 text-blue-500 animate-spin" />
+      <div className="min-h-screen bg-[var(--bi-canvas)] flex items-center justify-center">
+        <div className="flex flex-col items-center gap-3">
+          <Loader2 className="w-6 h-6 text-[var(--bi-teal)] animate-spin" />
+          <span className="text-xs text-[var(--bi-text-3)]">Cargando workspace…</span>
+        </div>
       </div>
     );
   }

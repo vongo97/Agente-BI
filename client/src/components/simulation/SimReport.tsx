@@ -37,45 +37,45 @@ export function SimReport({ activeSim, userId, polling }: SimReportProps) {
     return (
         <div className="col-span-12 lg:col-span-5 h-fit lg:sticky lg:top-0">
             {activeSim.result_report ? (
-                <div className="bg-gradient-to-br from-purple-900/20 to-indigo-900/10 border border-purple-500/20 rounded-3xl p-8 shadow-2xl shadow-purple-900/20 animate-in fade-in slide-in-from-right-8 duration-700">
-                    <div className="flex items-center justify-between mb-8">
+                <div className="bg-[var(--bi-surface-0)] border border-[var(--sim-border)] rounded-lg p-6 lg:p-8 shadow-2xl shadow-[var(--sim-accent-soft)]/5 animate-in fade-in slide-in-from-right-8 duration-700">
+                    <div className="flex items-center justify-between mb-6">
                         <div className="flex items-center gap-3">
-                            <div className="p-2 bg-purple-500/20 rounded-lg">
-                                <Activity className="w-4 h-4 text-purple-400" />
+                            <div className="p-2 bg-[var(--sim-accent-soft)] border border-[var(--sim-border)]/50 rounded-md">
+                                <Activity className="w-4 h-4 text-[var(--sim-accent)]" />
                             </div>
-                            <h2 className="text-[10px] font-black text-purple-400 uppercase tracking-[0.3em]">Veredicto Estratégico</h2>
+                            <h2 className="text-[10px] font-bold text-[var(--sim-accent)] uppercase tracking-[0.25em]">Veredicto Estratégico</h2>
                         </div>
                         <button 
                             onClick={handleDownloadPdf}
                             disabled={downloadingPdf}
-                            className="p-2 hover:bg-white/5 rounded-lg text-purple-400 transition-all disabled:opacity-50 cursor-pointer"
+                            className="p-2 hover:bg-[var(--bi-surface-2)] rounded-md text-[var(--sim-accent)] transition-all disabled:opacity-50 cursor-pointer"
                             title="Descargar PDF"
                         >
                             {downloadingPdf ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
                         </button>
                     </div>
-                    <div className="markdown-content prose prose-invert prose-sm prose-purple max-w-none">
+                    <div className="markdown-content prose prose-invert prose-sm max-w-none">
                         <ReactMarkdown remarkPlugins={[remarkGfm]}>
                             {activeSim.result_report}
                         </ReactMarkdown>
                     </div>
                     
-                    <div className="mt-8 pt-8 border-t border-purple-500/10 flex items-center justify-between">
+                    <div className="mt-6 pt-6 border-t border-[var(--bi-border)] flex items-center justify-between">
                         <div className="flex flex-col">
-                            <span className="text-[8px] text-gray-500 font-black uppercase tracking-widest">Motor Utilizado</span>
-                            <span className="text-[10px] text-purple-300 font-bold uppercase tracking-tight">{activeSim.provider}</span>
+                            <span className="text-[8px] text-[var(--bi-text-3)] font-semibold uppercase tracking-widest">Motor Utilizado</span>
+                            <span className="text-[10px] text-[var(--sim-accent)] font-bold uppercase tracking-tight">{activeSim.provider}</span>
                         </div>
                         <div className="flex flex-col items-end">
-                            <span className="text-[8px] text-gray-500 font-black uppercase tracking-widest">Estado</span>
-                            <span className="text-[10px] text-green-400 font-bold uppercase tracking-tight">Consolidado</span>
+                            <span className="text-[8px] text-[var(--bi-text-3)] font-semibold uppercase tracking-widest">Estado</span>
+                            <span className="text-[10px] text-[var(--bi-green)] font-bold uppercase tracking-tight">Consolidado</span>
                         </div>
                     </div>
                 </div>
             ) : polling ? (
-                <div className="bg-white/[0.02] border border-dashed border-white/10 rounded-3xl p-12 text-center space-y-4">
-                    <Loader2 className="w-8 h-8 text-white/10 animate-spin mx-auto" />
-                    <p className="text-[10px] font-black text-gray-500 uppercase tracking-[0.2em]">Esperando Síntesis Final</p>
-                    <p className="text-[9px] text-gray-600 max-w-[200px] mx-auto italic">El estratega está procesando las 3 rondas de debate para emitir el veredicto final.</p>
+                <div className="bg-[var(--bi-surface-0)] border border-dashed border-[var(--bi-border)] rounded-lg p-8 text-center space-y-4">
+                    <Loader2 className="w-6 h-6 text-[var(--sim-accent)]/40 animate-spin mx-auto" />
+                    <p className="text-[10px] font-bold text-[var(--bi-text-2)] uppercase tracking-[0.2em]">Esperando Síntesis Final</p>
+                    <p className="text-[9px] text-[var(--bi-text-3)] max-w-[200px] mx-auto italic leading-relaxed">El estratega está procesando las rondas de debate para emitir el veredicto final.</p>
                 </div>
             ) : null}
         </div>

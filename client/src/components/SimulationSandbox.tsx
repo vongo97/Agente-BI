@@ -161,10 +161,8 @@ export function SimulationSandbox() {
         const msgs = await getSimulationMessages(sim.id);
         setMessages(msgs);
         setPolling(sim.status === 'running');
-    };
-
-    return (
-        <div className="flex h-full bg-[var(--bg-primary)] overflow-hidden">
+    };    return (
+        <div className="flex h-full bg-[var(--bi-canvas)] overflow-hidden">
             <SimHistory 
                 simulations={simulations} 
                 activeSim={activeSim} 
@@ -172,21 +170,21 @@ export function SimulationSandbox() {
             />
 
             <div className="flex-1 flex flex-col overflow-hidden">
-                <header className="p-8 border-b border-[var(--border-color)] bg-gradient-to-r from-purple-900/10 to-transparent">
+                <header className="p-6 border-b border-[var(--bi-border)] bg-[var(--bi-surface-0)]">
                     <div className="flex items-center justify-between">
                         <div className="flex items-center gap-4">
-                            <div className="p-3 bg-purple-600 rounded-2xl shadow-xl shadow-purple-600/20">
-                                <Brain className="w-6 h-6 text-white" />
+                            <div className="p-2 bg-[var(--sim-accent-soft)] border border-[var(--sim-border)] rounded-lg">
+                                <Brain className="w-5 h-5 text-[var(--sim-accent)]" />
                             </div>
                             <div>
-                                <h1 className="text-2xl font-black text-white tracking-tight italic">Ensayos del Futuro</h1>
-                                <p className="text-[10px] text-purple-400 font-black uppercase tracking-widest">Inteligencia de Enjambre • Mirofish Lite</p>
+                                <h1 className="text-sm font-semibold text-[var(--bi-text-1)] uppercase">Ensayos del Futuro</h1>
+                                <p className="text-[10px] text-[var(--sim-accent)] font-semibold uppercase tracking-widest">Inteligencia de Enjambre • Mirofish Lite</p>
                             </div>
                         </div>
                         <div className="flex items-center gap-3">
                             <button
                                 onClick={() => { setActiveSim(null); setTitle(""); setHypothesis(""); }}
-                                className="flex items-center gap-2 px-4 py-2 bg-white/5 hover:bg-white/10 text-gray-300 rounded-xl text-[10px] font-black uppercase tracking-widest border border-white/5 transition-all"
+                                className="flex items-center gap-1.5 px-3 py-1.5 bg-[var(--bi-surface-1)] hover:bg-[var(--bi-surface-2)] text-[var(--bi-text-2)] hover:text-[var(--bi-text-1)] rounded-lg text-[10px] font-semibold uppercase tracking-wider border border-[var(--bi-border)] transition-colors cursor-pointer"
                             >
                                 <PlusCircle className="w-3.5 h-3.5" /> Nuevo Ensayo
                             </button>
@@ -195,7 +193,7 @@ export function SimulationSandbox() {
                                 <button 
                                     onClick={handleDownloadPdf}
                                     disabled={downloadingPdf}
-                                    className="flex items-center gap-2 px-6 py-2.5 bg-purple-600 hover:bg-purple-500 text-white rounded-xl text-[10px] font-black uppercase tracking-widest shadow-xl shadow-purple-600/20 transition-all disabled:opacity-50 cursor-pointer"
+                                    className="flex items-center gap-1.5 px-4 py-2 bg-[var(--sim-accent)] hover:bg-[var(--sim-accent-hover)] text-white rounded-lg text-[10px] font-semibold uppercase tracking-wider transition-all disabled:opacity-50 cursor-pointer shadow-lg shadow-[var(--sim-accent-soft)]"
                                 >
                                     <Download className="w-3.5 h-3.5" /> 
                                     <span>{downloadingPdf ? "Exportando..." : "Exportar Veredicto"}</span>
@@ -205,7 +203,7 @@ export function SimulationSandbox() {
                     </div>
                 </header>
 
-                <div className="flex-1 overflow-y-auto p-8 space-y-12 custom-scrollbar">
+                <div className="flex-1 overflow-y-auto p-6 lg:p-8 space-y-12 custom-scrollbar bg-[var(--bi-canvas)]">
                     {!activeSim ? (
                         <SimForm 
                             aiProvider={aiProvider} setAiProvider={setAiProvider}
@@ -218,7 +216,7 @@ export function SimulationSandbox() {
                             handleStart={handleStart} loading={loading}
                         />
                     ) : (
-                        <div className="flex flex-col h-full">
+                        <div className="flex flex-col h-full animate-in fade-in duration-500">
                             <div className="grid grid-cols-12 gap-8 h-full">
                                 <SimDebate 
                                     messages={messages} 

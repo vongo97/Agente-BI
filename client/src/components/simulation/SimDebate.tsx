@@ -10,12 +10,12 @@ interface SimDebateProps {
 
 export function SimDebate({ messages, polling, activeSim }: SimDebateProps) {
     return (
-        <div className="col-span-12 lg:col-span-7 space-y-8 pb-20">
+        <div className="col-span-12 lg:col-span-7 space-y-6 pb-20">
             <div className="flex items-center justify-between px-2">
-                <h3 className="text-[10px] font-black text-gray-600 uppercase tracking-widest">Interacción del Enjambre</h3>
+                <h3 className="text-[10px] font-semibold text-[var(--bi-text-3)] uppercase tracking-widest">Interacción del Enjambre</h3>
                 <div className="flex items-center gap-2">
-                    <span className="w-2 h-2 rounded-full bg-purple-500 animate-pulse"></span>
-                    <span className="text-[9px] font-bold text-purple-400 uppercase tracking-tighter">Debate en Curso</span>
+                    <span className="w-2 h-2 rounded-full bg-[var(--sim-accent)] animate-pulse"></span>
+                    <span className="text-[9px] font-bold text-[var(--sim-accent)] uppercase tracking-tighter">Debate en Curso</span>
                 </div>
             </div>
             
@@ -23,23 +23,23 @@ export function SimDebate({ messages, polling, activeSim }: SimDebateProps) {
                 {messages
                     .filter(m => m.content && !m.content.includes("Límite de cuota") && !m.content.includes("Error Gemini"))
                     .map((m, idx) => (
-                    <div key={idx} className="bg-[var(--bg-secondary)] border border-[var(--border-color)] rounded-2xl p-6 space-y-3 animate-in slide-in-from-bottom-4 duration-500 relative overflow-hidden group shadow-lg hover:shadow-purple-500/5 transition-all">
+                    <div key={idx} className="bg-[var(--bi-surface-0)] border border-[var(--bi-border)] rounded-lg p-6 space-y-3 animate-in slide-in-from-bottom-4 duration-500 relative overflow-hidden group shadow-md hover:border-[var(--sim-border)]/50 transition-all">
                         {/* Badge de Ronda */}
                         {m.round_number && (
-                            <div className="absolute top-0 right-0 px-3 py-1 bg-purple-600/20 text-purple-400 text-[8px] font-black uppercase tracking-widest rounded-bl-xl border-l border-b border-purple-500/20 group-hover:bg-purple-600/30 transition-all">
+                            <div className="absolute top-0 right-0 px-3 py-1 bg-[var(--sim-accent-soft)] text-[var(--sim-accent)] text-[8px] font-semibold uppercase tracking-wider rounded-bl-lg border-l border-b border-[var(--sim-border)] transition-all">
                                 Ronda {m.round_number}
                             </div>
                         )}
                         
                         <div className="flex items-center justify-between">
                             <div className="flex flex-col">
-                                <span className="text-[10px] font-black text-purple-400 uppercase tracking-widest bg-purple-500/10 px-2 py-1 rounded inline-block w-fit">
+                                <span className="text-[10px] font-bold text-[var(--sim-accent)] uppercase tracking-wider bg-[var(--sim-accent-soft)] px-2.5 py-0.5 rounded border border-[var(--sim-border)] inline-block w-fit">
                                     {m.agent_name || "Agente"}
                                 </span>
-                                <span className="text-[9px] text-gray-600 font-bold mt-1 uppercase tracking-tighter">{m.agent_role}</span>
+                                <span className="text-[9px] text-[var(--bi-text-3)] font-semibold mt-1 uppercase tracking-tighter">{m.agent_role}</span>
                             </div>
                         </div>
-                        <div className="text-sm text-gray-300 leading-relaxed font-medium markdown-content">
+                        <div className="text-sm text-[var(--bi-text-2)] leading-relaxed font-medium markdown-content">
                             <ReactMarkdown remarkPlugins={[remarkGfm]}>
                                 {m.content}
                             </ReactMarkdown>
@@ -48,14 +48,14 @@ export function SimDebate({ messages, polling, activeSim }: SimDebateProps) {
                 ))}
                 
                 {polling && (
-                    <div className="flex flex-col gap-4 p-6 bg-purple-600/5 rounded-2xl border border-dashed border-purple-500/20 animate-pulse">
+                    <div className="flex flex-col gap-4 p-6 bg-[var(--sim-accent-soft)]/10 rounded-lg border border-dashed border-[var(--sim-border)]/50 animate-pulse">
                         <div className="flex items-center gap-3">
-                            <Loader2 className="w-4 h-4 text-purple-500 animate-spin" />
+                            <Loader2 className="w-4 h-4 text-[var(--sim-accent)] animate-spin" />
                             <div className="flex flex-col">
-                                <span className="text-[10px] font-black text-purple-500 uppercase tracking-[0.2em]">
+                                <span className="text-[10px] font-bold text-[var(--sim-accent)] uppercase tracking-wider">
                                     Ronda {activeSim?.current_round || 1} • Procesando Debate
                                 </span>
-                                <span className="text-[8px] text-gray-500 font-bold uppercase tracking-widest">
+                                <span className="text-[8px] text-[var(--bi-text-3)] font-semibold uppercase tracking-widest mt-0.5">
                                     Los agentes están analizando las variables en tiempo real...
                                 </span>
                             </div>
