@@ -122,11 +122,32 @@ async def create_simulation(request: Request, req: SimulationRequest, background
     try:
         # [PILAR 2] Recuperar y Descifrar Key si es necesario
         api_key = req.api_key
+        mistral_key = req.mistral_key
+        
         if not api_key or len(api_key) < 10 or "..." in api_key:
             config = db.query(UserConfig).filter(UserConfig.user_id == authenticated_user).first()
-            if config: api_key = decrypt_key(config.gemini_key)
+            if config and config.gemini_key:
+                api_key = decrypt_key(config.gemini_key)
         else:
             api_key = decrypt_key(api_key)
+            
+        if not mistral_key or len(mistral_key) < 10 or "..." in mistral_key:
+            config = db.query(UserConfig).filter(UserConfig.user_id == authenticated_user).first()
+            if config and config.mistral_key:
+                mistral_key = decrypt_key(config.mistral_key)
+        else:
+            mistral_key = decrypt_key(mistral_key)
+            
+        # Validación de claves antes de proceder
+        if req.provider == "gemini" and not api_key:
+            raise HTTPException(status_code=400, detail="Clave API de Gemini no válida o corrupta. Por favor, re-ingresa tu clave API en Ajustes.")
+        elif req.provider == "mistral" and not mistral_key:
+            raise HTTPException(status_code=400, detail="Clave API de Mistral no válida o corrupta. Por favor, re-ingresa tu clave API en Ajustes.")
+        elif req.provider == "hybrid":
+            if not api_key:
+                raise HTTPException(status_code=400, detail="Clave API de Gemini no válida o corrupta. Por favor, re-ingresa tu clave API en Ajustes.")
+            if not mistral_key:
+                raise HTTPException(status_code=400, detail="Clave API de Mistral no válida o corrupta. Por favor, re-ingresa tu clave API en Ajustes.")
 
         new_sim = Simulation(
             user_id=authenticated_user, 
@@ -144,7 +165,7 @@ async def create_simulation(request: Request, req: SimulationRequest, background
             new_sim.id, 
             api_key, 
             req.provider, 
-            req.mistral_key, 
+            mistral_key, 
             req.selected_ids
         )
         return {"status": "started", "simulation_id": new_sim.id}
@@ -264,14 +285,36 @@ async def get_simulation_suggestions(request: Request, req: SuggestionRequest, d
         
         # [PILAR 2] Recuperar y Descifrar Key
         api_key = req.api_key
+        mistral_key = req.mistral_key
+        
         if not api_key or len(api_key) < 10 or "..." in api_key:
             config = db.query(UserConfig).filter(UserConfig.user_id == authenticated_user).first()
-            if config: api_key = decrypt_key(config.gemini_key)
+            if config and config.gemini_key:
+                api_key = decrypt_key(config.gemini_key)
         else:
             api_key = decrypt_key(api_key)
+            
+        if not mistral_key or len(mistral_key) < 10 or "..." in mistral_key:
+            config = db.query(UserConfig).filter(UserConfig.user_id == authenticated_user).first()
+            if config and config.mistral_key:
+                mistral_key = decrypt_key(config.mistral_key)
+        else:
+            mistral_key = decrypt_key(mistral_key)
 
         prov = req.provider.lower()
-        key = (req.mistral_key or api_key) if prov == "mistral" else api_key
+        
+        # Validar la clave correspondiente
+        if prov == "gemini" and not api_key:
+            raise HTTPException(status_code=400, detail="Clave API de Gemini no válida o corrupta. Por favor, re-ingresa tu clave API en Ajustes.")
+        elif prov == "mistral" and not mistral_key:
+            raise HTTPException(status_code=400, detail="Clave API de Mistral no válida o corrupta. Por favor, re-ingresa tu clave API en Ajustes.")
+        elif prov == "hybrid":
+            if not api_key:
+                raise HTTPException(status_code=400, detail="Clave API de Gemini no válida o corrupta. Por favor, re-ingresa tu clave API en Ajustes.")
+            if not mistral_key:
+                raise HTTPException(status_code=400, detail="Clave API de Mistral no válida o corrupta. Por favor, re-ingresa tu clave API en Ajustes.")
+        
+        key = mistral_key if prov == "mistral" else api_key
         if prov == "hybrid": prov = "gemini"
 
         try:

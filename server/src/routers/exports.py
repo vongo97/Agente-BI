@@ -101,13 +101,24 @@ async def export_pro_report(request: Request, data: dict):
 @router.post("/export-pptx")
 @limiter.limit("5/minute")
 @limiter.limit("20/hour")
-async def export_pptx(request: Request, data: dict):
+async def export_pptx(request: Request, data: dict, db: Session = Depends(get_db)):
     authenticated_user = get_authenticated_user()
     check_authorization(authenticated_user)
     title = data.get("title", "Reporte Ejecutivo")
     summary = data.get("summary", "")
     items = data.get("items", [])
     template_type = data.get("template", "general")
+    
+    # Recuperar la API key del usuario desde la base de datos para la síntesis inteligente
+    api_key = None
+    try:
+        from src.database import UserConfig
+        from src.utils.security import decrypt_key
+        user_config = db.query(UserConfig).filter(UserConfig.user_id == authenticated_user).first()
+        if user_config and user_config.gemini_key:
+            api_key = decrypt_key(user_config.gemini_key)
+    except Exception as db_err:
+        logger.warning("No se pudo recuperar la API key para PPTX: %s", db_err)
     
     if not items:
         raise HTTPException(status_code=400, detail="Contenido no proporcionado")
@@ -121,7 +132,7 @@ async def export_pptx(request: Request, data: dict):
         temp_path = tmp.name
     
     try:
-        success, result = create_presentation(title, summary, items, temp_path, template_path)
+        success, result = create_presentation(title, summary, items, temp_path, template_path, api_key=api_key)
         if not success:
             if os.path.exists(temp_path): os.remove(temp_path)
             logger.error("Error generando PPTX: %s", result)

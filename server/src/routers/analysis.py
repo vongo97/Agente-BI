@@ -4,7 +4,7 @@ import logging
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from sqlalchemy.orm import Session
 from typing import Optional
-from src.database import get_db, Chat, Message, UserConfig
+from src.database import get_db, Chat, Message, UserConfig, DataSource
 from src.engine.bi_analyst import analyze_data, execute_analysis, suggest_questions, validate_data_quality
 from src.utils.common import check_authorization, get_user_data, get_authenticated_user
 from src.utils.security import decrypt_key
@@ -54,6 +54,23 @@ async def analyze(
         api_key = decrypt_key(api_key)
         if mistral_key: mistral_key = decrypt_key(mistral_key)
     
+    # Validar que las llaves descifradas no sean vacías o None si el proveedor las requiere
+    if provider == "gemini" and not api_key:
+        raise HTTPException(
+            status_code=400,
+            detail="Clave API de Gemini no válida o corrupta. Por favor, re-ingresa tu clave API en Ajustes."
+        )
+    elif provider == "mistral" and not mistral_key:
+        raise HTTPException(
+            status_code=400,
+            detail="Clave API de Mistral no válida o corrupta. Por favor, re-ingresa tu clave API en Ajustes."
+        )
+    elif provider == "hybrid":
+        if not api_key:
+            raise HTTPException(status_code=400, detail="Clave API de Gemini no válida o corrupta. Por favor, re-ingresa tu clave API en Ajustes.")
+        if not mistral_key:
+            raise HTTPException(status_code=400, detail="Clave API de Mistral no válida o corrupta. Por favor, re-ingresa tu clave API en Ajustes.")
+    
     # Filtro de saludos
     greetings = ["hola", "hi", "hey", "buenos dias", "buenas tardes", "buenas noches"]
     if query.strip().lower() in greetings:
@@ -95,7 +112,6 @@ async def analyze(
         # Intentar auto-cargar desde DataSource si tenemos el ID
         if data_source_id:
             logger.debug("Attempting auto-load for source %s", data_source_id)
-            from src.database import DataSource
             from src.utils.common import load_source_to_session
             source = db.query(DataSource).filter(DataSource.id == data_source_id, DataSource.user_id == authenticated_user).first()
             if source:
@@ -116,7 +132,6 @@ async def analyze(
         # Determinar el nombre de la fuente primaria para el aislamiento de contexto
         primary_source_name = None
         if data_source_id:
-            from src.database import DataSource
             source_obj = db.query(DataSource).filter(DataSource.id == data_source_id, DataSource.user_id == authenticated_user).first()
             if source_obj:
                 primary_source_name = "".join([c if c.isalnum() else "_" for c in source_obj.name.split('.')[0]])
@@ -214,12 +229,25 @@ def get_suggestions(
         source = db.query(DataSource).filter(DataSource.id == data_source_id, DataSource.user_id == authenticated_user).first()
         if not source:
             raise HTTPException(status_code=404, detail="Recurso no encontrado o sin acceso")
-    # Si no viene mistral_key, intentar recuperarla de la base de datos
-    if not mistral_key:
-        from src.database import UserConfig
-        config = db.query(UserConfig).filter(UserConfig.user_id == authenticated_user).first()
-        if config:
-            mistral_key = config.mistral_key
+    
+    # --- AUTO-RECUPERACIÓN DE LLAVES CIFRADAS ---
+    if len(api_key) < 10 or "..." in api_key or (provider == "mistral" and (not mistral_key or len(mistral_key) < 10 or "..." in mistral_key)):
+        user_config = db.query(UserConfig).filter(UserConfig.user_id == authenticated_user).first()
+        if user_config:
+            if (len(api_key) < 10 or "..." in api_key) and user_config.gemini_key:
+                api_key = decrypt_key(user_config.gemini_key)
+            if provider == "mistral" and (not mistral_key or len(mistral_key) < 10 or "..." in mistral_key) and user_config.mistral_key:
+                mistral_key = decrypt_key(user_config.mistral_key)
+    else:
+        api_key = decrypt_key(api_key)
+        if mistral_key:
+            mistral_key = decrypt_key(mistral_key)
+ 
+    # Validar que las llaves descifradas no sean vacías o None si el proveedor las requiere
+    if provider == "gemini" and not api_key:
+        raise HTTPException(status_code=400, detail="Clave API de Gemini no válida o corrupta. Por favor, re-ingresa tu clave API en Ajustes.")
+    elif provider == "mistral" and not mistral_key:
+        raise HTTPException(status_code=400, detail="Clave API de Mistral no válida o corrupta. Por favor, re-ingresa tu clave API en Ajustes.")
  
     session_data = get_user_data(authenticated_user, chat_id)
     
@@ -235,7 +263,6 @@ def get_suggestions(
     if not session_data:
         # Intentar auto-cargar desde DataSource si tenemos el ID
         if data_source_id:
-            from src.database import DataSource
             from src.utils.common import load_source_to_session
             source = db.query(DataSource).filter(DataSource.id == data_source_id, DataSource.user_id == authenticated_user).first()
             if source and load_source_to_session(authenticated_user, source, chat_id):
@@ -251,7 +278,6 @@ def get_suggestions(
         # Determinar el nombre de la fuente primaria para el aislamiento de contexto
         primary_source_name = None
         if data_source_id:
-            from src.database import DataSource
             source_obj = db.query(DataSource).filter(DataSource.id == data_source_id, DataSource.user_id == authenticated_user).first()
             if source_obj:
                 primary_source_name = "".join([c if c.isalnum() else "_" for c in source_obj.name.split('.')[0]])
@@ -292,6 +318,26 @@ def get_report_summary(
 ):
     authenticated_user = get_authenticated_user()
     check_authorization(authenticated_user)
+    
+    # --- AUTO-RECUPERACIÓN DE LLAVES CIFRADAS ---
+    if len(api_key) < 10 or "..." in api_key or (provider == "mistral" and (not mistral_key or len(mistral_key) < 10 or "..." in mistral_key)):
+        user_config = db.query(UserConfig).filter(UserConfig.user_id == authenticated_user).first()
+        if user_config:
+            if (len(api_key) < 10 or "..." in api_key) and user_config.gemini_key:
+                api_key = decrypt_key(user_config.gemini_key)
+            if provider == "mistral" and (not mistral_key or len(mistral_key) < 10 or "..." in mistral_key) and user_config.mistral_key:
+                mistral_key = decrypt_key(user_config.mistral_key)
+    else:
+        api_key = decrypt_key(api_key)
+        if mistral_key:
+            mistral_key = decrypt_key(mistral_key)
+            
+    # Validar que las llaves descifradas no sean vacías o None si el proveedor las requiere
+    if provider == "gemini" and not api_key:
+        raise HTTPException(status_code=400, detail="Clave API de Gemini no válida o corrupta. Por favor, re-ingresa tu clave API en Ajustes.")
+    elif provider == "mistral" and not mistral_key:
+        raise HTTPException(status_code=400, detail="Clave API de Mistral no válida o corrupta. Por favor, re-ingresa tu clave API en Ajustes.")
+            
     session_data = get_user_data(authenticated_user)
     
     # Generar el resumen usando el motor de IA

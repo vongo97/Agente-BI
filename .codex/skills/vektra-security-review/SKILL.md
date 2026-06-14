@@ -1,36 +1,64 @@
 ---
 name: vektra-security-review
-description: Review and harden Vektra BI security. Use when changing or reviewing authentication, authorization, endpoint ownership, API keys, secrets, CORS, rate limits, logs, production configuration, destructive endpoints, or any server/client boundary in this FastAPI + Next.js BI application.
+description: Revisa y fortalece la seguridad de la API y de los clientes Web/Móvil. Úsalo al modificar o auditar autenticación, autorización, propiedad de endpoints, llaves API, secretos, CORS, límites de tasa, logs, variables de entorno, y seguridad móvil.
 ---
 
-# Vektra Security Review
+# Universal Security Review & API Hardening
 
-Apply this checklist before editing security-sensitive code and again before finishing.
+Aplica esta lista de control de seguridad antes de modificar cualquier código sensible y nuevamente antes de dar por terminada una tarea.
 
-## Project Rules
+---
 
-- Treat the backend token identity as the only source of truth. Do not trust `user_id` sent by the client.
-- Require every user-owned DB query to include ownership checks such as `Model.user_id == authenticated_user`.
-- Protect destructive/admin endpoints with authentication, authorization, and rate limiting. Remove dev-only endpoints from production paths.
-- Never log raw API keys, bearer tokens, connection strings, database URLs, emails in high-volume logs, uploaded data samples, or LLM prompts containing secrets.
-- Require `AUTH_SECRET` or `NEXTAUTH_SECRET`, `ENCRYPTION_KEY`, production database config, and explicit allowed origins in production.
-- Keep CORS explicit. Do not use wildcard origins with credentials.
-- Keep error responses generic in production and detailed only in local development logs after secret filtering.
-- Do not add fallback secrets, default admin users, or permissive production bypasses.
+## 1. Reglas Generales del Proyecto
 
-## Review Workflow
+* **Identidad y Autenticación:** Trata la identidad del token del backend como la única fuente de verdad. **No confíes** en el `user_id` enviado por el cliente.
+* **Propiedad de Datos:** Asegúrate de que cada consulta SQL/Base de datos que afecte a un usuario verifique la propiedad explícitamente (ej: `Model.user_id == authenticated_user`).
+* **Protección de Endpoints:** Protege los endpoints destructivos o de configuración mediante autenticación obligatoria y límites de velocidad. Remueve los endpoints exclusivos de desarrollo en producción.
+* **Manejo de Secretos:** Nunca registres (logs) llaves API crudas, tokens de portador, cadenas de conexión de base de datos, correos de usuarios en logs de alto volumen, muestras de datos cargados o prompts de LLM que contengan secretos.
+* **Configuración Segura:** Requiere variables de entorno explícitas para producción como `AUTH_SECRET`/`NEXTAUTH_SECRET`, `ENCRYPTION_KEY` y orígenes permitidos en CORS.
+* **CORS Explícito:** Mantén las políticas CORS restrictivas. No utilices comodines (`*`) con credenciales habilitadas.
 
-1. Identify trust boundaries: browser, NextAuth, FastAPI, database, file storage, LLM providers, sandbox worker.
-2. Trace identity from `client/src/auth.ts` to FastAPI authorization helpers.
-3. Check endpoint inputs and outputs for spoofable identity, secret exposure, unsafe file paths, and mass assignment.
-4. Confirm rate limits exist for expensive endpoints, uploads, LLM calls, exports, simulations, and config mutation.
-5. Add or update tests for ownership failures, missing token, wrong user token, and destructive endpoint protection.
+---
 
-## Red Flags
+## 2. Pautas de Seguridad Avanzada (Nivel Profesional)
 
-- Endpoint accepts `user_id` and uses it directly.
-- Query fetches by resource id without `user_id`.
-- Endpoint mutates or deletes data without auth.
-- Raw `str(e)` is returned to clients in production paths.
-- API keys are passed repeatedly from frontend when encrypted backend storage already exists.
-- Development bypass depends only on missing environment variables.
+* **Prevención de Inyección de Fórmulas (CSV Injection):**
+  * Al procesar o exportar archivos CSV/Excel, asegúrate de desinfectar y neutralizar cualquier celda que comience con caracteres especiales de fórmula: `=`, `@`, `+`, `-`.
+  * Sanitiza estos valores anteponiendo una comilla simple (`'`) para evitar que se ejecuten hojas de cálculo de forma maliciosa.
+  * Implementa límites de tamaño de archivo estrictos en el backend y validaciones MIME para evitar ataques de denegación de servicio (como Zip Bombs).
+
+* **Prevención de Cross-Site Scripting (XSS) en Componentes de IA:**
+  * Dado que la IA genera Markdown y diagramas de Mermaid dinámicos, el cliente React **debe desinfectar** todas las salidas antes de renderizarlas.
+  * Usa librerías como `DOMPurify` o hooks de sanitización de HTML para eliminar etiquetas `<script>`, directivas `javascript:`, e inyecciones de eventos (como `onload` u `onerror`).
+
+* **Almacenamiento Cifrado de Credenciales y Llaves API:**
+  * Las llaves API suministradas por los usuarios (como OpenAI, Mistral, etc.) y credenciales de bases de datos externas **deben cifrarse en reposo** en la base de datos utilizando cifrado simétrico (AES-256-GCM) con una clave maestra del servidor (`ENCRYPTION_KEY`).
+  * Nunca transmitas estas llaves API en texto plano repetidamente a través de la red si ya se encuentran almacenadas.
+
+* **Enmascaramiento de Errores y Stack Traces (Error Hardening):**
+  * En producción, está **estrictamente prohibido** exponer stack traces detallados de Python, FastAPI o Next.js al cliente final.
+  * Implementa un manejador global de excepciones (Exception Handler) que capture excepciones no controladas en el backend, registre el error real en logs seguros internos, y devuelva al cliente un mensaje genérico junto con un ID de error único (ej. `{"error": "Fallo interno del servidor", "error_id": "ERR-12345"}`).
+
+* **Mitigación de Inyección SQL en Consultas Generadas por IA:**
+  * Al procesar consultas de bases de datos generadas dinámicamente por la IA o los usuarios, se debe utilizar parametrización estricta (Prepared Statements) o el motor ORM (SQLAlchemy) con condiciones tipadas.
+  * Queda **prohibida** la concatenación directa de entradas de usuario en strings SQL de ejecución.
+
+---
+
+## 3. Seguridad Específica para Clientes Móviles e Integración de Red
+
+* **Autenticación Segura (OAuth2 con PKCE):** 
+  * Para las aplicaciones móviles nativas (Android), el flujo de autenticación debe implementar OAuth2 con **Proof Key for Code Exchange (PKCE)** para evitar la interceptación del código de autorización por parte de apps maliciosas en el dispositivo.
+* **Seguridad CORS y User-Agents:**
+  * Si la app Android realiza peticiones a la API del backend, el backend debe estar configurado para admitir llamadas seguras desde orígenes móviles específicos (o manejar tokens Web seguros) sin debilitar las políticas CORS de navegadores web.
+* **Inspección de Certificados (SSL Pinning):**
+  * Implementa SSL Pinning en los clientes móviles Android (a través del cliente `OkHttpClient` o configuraciones del sistema de red) para bloquear ataques de intermediarios (MITM) en redes públicas.
+
+---
+
+## 4. Flujo de Trabajo para Auditoría de Código
+
+1. **Identificar Fronteras de Confianza:** Define claramente las interacciones entre navegador, NextAuth, API de FastAPI, base de datos, sistemas de archivos temporales, APIs de LLM y el worker de sandbox aislado.
+2. **Trazabilidad de Identidad:** Rastrea cómo fluye la sesión del usuario desde `client/src/auth.ts` hasta los middlewares de FastAPI.
+3. **Validación de Entradas:** Comprueba que no haya suplantación de identidad en parámetros, exposición de secretos en URLs o manipulación de rutas de archivos (`Path Traversal`).
+4. **Pruebas de Seguridad:** Escribe o ejecuta tests específicos para validar que los endpoints de borrado u obtención de reportes fallen adecuadamente con tokens alterados o usuarios diferentes.

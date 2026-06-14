@@ -186,7 +186,8 @@ def export_to_image_matplotlib_fallback(fig_dict: dict):
         # Rotación inteligente de etiquetas
         plt.xticks(rotation=45, ha='right', fontsize=9)
         if len(data_list) > 1:
-            ax.legend(frameon=True, facecolor='white', shadow=True)
+            # Colocar la leyenda fuera del área de trazado para evitar superposiciones
+            ax.legend(loc='upper left', bbox_to_anchor=(1, 1), frameon=True, facecolor='white', shadow=True)
             
         plt.tight_layout()
         
@@ -239,11 +240,97 @@ def generate_pdf_report(user_name: str, messages: list):
     
     return pdf.output()
 
+class PremiumBIReport(FPDF):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.alias_nb_pages()
+        
+    def header(self):
+        if self.page_no() == 1:
+            return
+        # Encabezado con línea fina de acento y texto formal
+        self.set_draw_color(37, 99, 235) # Azul Vektra
+        self.set_line_width(0.5)
+        # Margen izquierdo es 15, derecho es 15, por lo que la línea va de 15 a 195 (210 - 15)
+        self.line(15, 15, 195, 15)
+        
+        self.set_y(8)
+        self.set_font('helvetica', 'B', 8)
+        self.set_text_color(100, 100, 100)
+        self.cell(0, 5, 'INFORME DE ANÁLISIS ESTRATÉGICO - VEKTRA BI', 0, 1, 'L')
+        
+        # CORRECCIÓN: Evitar que el texto empiece a escribirse en Y=13 y choque con la línea en Y=15
+        self.set_y(22)
+        
+    def footer(self):
+        if self.page_no() == 1:
+            return
+        # Pie de página: numeración formal ("Página X de Y") y fecha.
+        self.set_y(-15)
+        self.set_font('helvetica', '', 8)
+        self.set_text_color(150, 150, 150)
+        date_str = datetime.now().strftime("%d/%m/%Y")
+        
+        # Fecha alineada a la izquierda y número de página alineado a la derecha
+        self.cell(100, 10, f'Fecha: {date_str}', 0, 0, 'L')
+        self.cell(0, 10, f'Página {self.page_no()} de {{nb}}', 0, 0, 'R')
+
+def get_multicell_height(pdf, text, width):
+    lines = text.split('\n')
+    total_lines = 0
+    for line in lines:
+        if not line:
+            total_lines += 1
+            continue
+        w = pdf.get_string_width(line)
+        import math
+        sub_lines = max(1, math.ceil(w / width))
+        total_lines += sub_lines
+    return total_lines * 6
+
+def draw_card(pdf, text, bg_color=(240, 244, 248), border_color=(14, 116, 144)):
+    # Calcular ancho disponible y ancho del texto considerando paddings
+    avail_w = pdf.w - pdf.l_margin - pdf.r_margin
+    text_w = avail_w - 8 # 4mm de padding interno a cada lado
+    
+    # Calcular la altura necesaria con la fuente de 10
+    pdf.set_font("helvetica", '', 10)
+    card_h = get_multicell_height(pdf, text, text_w) + 6 # 3mm de padding arriba y abajo
+    
+    # Verificar salto de página preventivo
+    if pdf.get_y() + card_h > pdf.page_break_trigger:
+        pdf.add_page()
+        
+    start_x = pdf.get_x()
+    start_y = pdf.get_y()
+    
+    # Dibujar fondo de la tarjeta
+    pdf.set_fill_color(*bg_color)
+    pdf.rect(start_x, start_y, avail_w, card_h, 'F')
+    
+    # Dibujar borde izquierdo grueso (de color azul/verde/teal)
+    pdf.set_fill_color(*border_color)
+    pdf.rect(start_x, start_y, 1.5, card_h, 'F')
+    
+    # Dibujar el texto
+    pdf.set_text_color(55, 65, 81) # Charcoal
+    pdf.set_xy(start_x + 5, start_y + 3)
+    pdf.multi_cell(text_w, 6, txt=text, border=0)
+    
+    # Actualizar cursor de posición con un margen de 4mm después de la tarjeta
+    pdf.set_y(start_y + card_h + 4)
+
 def generate_pro_report(title: str, summary: str, user_name: str, items: list):
     """
     Genera un Informe Ejecutivo Profesional con Portada y Resumen Estratégico.
     """
-    pdf = FPDF()
+    # Control de Errores: Reemplazo silencioso de errores de autenticación técnica en el resumen ejecutivo
+    error_indicators = ["error de autenticación con gemini", "error de autenticacion", "api key", "autenticación", "gemini api error"]
+    if any(ind in summary.lower() for ind in error_indicators):
+        summary = "Por favor, configure sus claves API en Ajustes para generar este resumen."
+
+    pdf = PremiumBIReport()
+    pdf.set_margins(15, 20, 15) # Margen izquierdo 15, superior 20, derecho 15
     pdf.set_auto_page_break(auto=True, margin=20)
     
     # --- PORTADA PREMIUM (DARK MODE STYLE) ---
@@ -273,12 +360,13 @@ def generate_pro_report(title: str, summary: str, user_name: str, items: list):
     pdf.set_font("helvetica", 'B', 14)
     pdf.set_text_color(255, 255, 255)
     
-    # Formatear el nombre por si es un correo
+    # Formatear el nombre por si es un correo o tiene números/caracteres
     formatted_name = user_name
     if "@" in formatted_name:
         formatted_name = formatted_name.split("@")[0]
-        formatted_name = re.sub(r'\d+$', '', formatted_name)
-        formatted_name = formatted_name.replace(".", " ").replace("_", " ")
+    formatted_name = re.sub(r'\d+$', '', formatted_name)
+    formatted_name = formatted_name.replace(".", " ").replace("_", " ").replace("-", " ")
+    formatted_name = formatted_name.title().strip()
         
     pdf.cell(0, 10, txt=clean_text(formatted_name).upper(), ln=True, align='R')
     
@@ -292,20 +380,21 @@ def generate_pro_report(title: str, summary: str, user_name: str, items: list):
     pdf.set_font("helvetica", 'B', 18)
     pdf.set_text_color(20, 80, 160)
     pdf.cell(0, 15, txt="1. RESUMEN EJECUTIVO", ln=True)
-    pdf.line(pdf.l_margin, pdf.get_y(), 200, pdf.get_y())
+    pdf.line(pdf.l_margin, pdf.get_y(), pdf.w - pdf.r_margin, pdf.get_y())
     pdf.ln(10)
     
-    pdf.set_font("helvetica", '', 11)
-    pdf.set_text_color(0, 0, 0)
     summary_clean = clean_text(summary)
-    pdf.multi_cell(0, 7, txt=summary_clean)
+    paragraphs = [p.strip() for p in summary_clean.split('\n\n') if p.strip()]
+    for p in paragraphs:
+        # Usar un color de acento azul (#2563eb) para la tarjeta del resumen
+        draw_card(pdf, p, bg_color=(240, 244, 248), border_color=(37, 99, 235))
 
     # --- HALLAZGOS Y VISUALIZACIONES ---
     pdf.add_page()
     pdf.set_font("helvetica", 'B', 18)
     pdf.set_text_color(20, 80, 160)
     pdf.cell(0, 15, txt="2. ANÁLISIS DETALLADO", ln=True)
-    pdf.line(pdf.l_margin, pdf.get_y(), 200, pdf.get_y())
+    pdf.line(pdf.l_margin, pdf.get_y(), pdf.w - pdf.r_margin, pdf.get_y())
     pdf.ln(10)
 
     for i, item in enumerate(items):
@@ -325,43 +414,85 @@ def generate_pro_report(title: str, summary: str, user_name: str, items: list):
         # Explicación y Tablas
         content = clean_text(item['content'])
         lines = content.split('\n')
-        text_block = []
+        
+        # Parsear líneas en elementos de tipo "text" (párrafos) o "table" (lista de celdas)
+        elements = []
+        current_text = []
+        current_table = []
         
         for line in lines:
             line_str = line.strip()
-            # Detectar fila de tabla markdown
             if line_str.startswith('|') and line_str.endswith('|'):
-                # Imprimir el bloque de texto acumulado
-                if text_block:
-                    pdf.set_font("helvetica", '', 10)
-                    pdf.set_text_color(50, 50, 50)
-                    pdf.multi_cell(0, 6, txt='\n'.join(text_block))
-                    pdf.ln(3)
-                    text_block = []
+                # Fila de tabla
+                if current_text:
+                    elements.append(("text", "\n".join(current_text)))
+                    current_text = []
                 
                 cells = [c.strip() for c in line_str.split('|')[1:-1]]
-                # Ignorar separadores como |---|---|
                 if all(c.replace('-', '').replace(':', '').strip() == '' for c in cells if c):
                     continue
-                
-                # Renderizar fila de tabla
-                pdf.set_font("helvetica", '', 8)
-                pdf.set_text_color(20, 20, 20)
-                col_w = (pdf.w - 2 * pdf.l_margin) / max(1, len(cells))
-                
-                # Intentar limpiar más cada celda por seguridad (sin pipes raros)
-                for cell in cells:
-                    pdf.cell(col_w, 6, txt=cell[:45], border=1) # Truncar a 45 chars para que quepa en la celda FPDF
-                pdf.ln(6)
+                current_table.append(cells)
             else:
-                text_block.append(line)
+                # Línea de texto normal
+                if current_table:
+                    elements.append(("table", current_table))
+                    current_table = []
+                current_text.append(line)
                 
-        # Imprimir bloque restante
-        if text_block:
-            pdf.set_font("helvetica", '', 10)
-            pdf.set_text_color(50, 50, 50)
-            pdf.multi_cell(0, 6, txt='\n'.join(text_block))
-            pdf.ln(5)
+        if current_text:
+            elements.append(("text", "\n".join(current_text)))
+        if current_table:
+            elements.append(("table", current_table))
+            
+        # Renderizar elementos
+        for elem_type, elem_content in elements:
+            if elem_type == "text":
+                paragraphs = [p.strip() for p in elem_content.split('\n\n') if p.strip()]
+                for p in paragraphs:
+                    # Renderizar texto libre con fuente elegante y espaciado profesional en vez de tarjetas repetitivas
+                    pdf.set_font("helvetica", '', 10)
+                    pdf.set_text_color(30, 41, 59) # Slate Oscuro (Texto Principal)
+                    
+                    # Salto preventivo para evitar que una línea huérfana salte de página
+                    if pdf.get_y() + 15 > pdf.page_break_trigger:
+                        pdf.add_page()
+                        
+                    pdf.multi_cell(0, 6, txt=p)
+                    pdf.ln(4) # Espaciado entre párrafos
+            elif elem_type == "table":
+                rows = elem_content
+                if not rows:
+                    continue
+                
+                # Control preventivo de salto de página para tablas
+                h_table = len(rows) * 6 + 10
+                if pdf.get_y() + h_table > pdf.page_break_trigger:
+                    pdf.add_page()
+                    
+                # Dibujar tabla
+                for row_idx, cells in enumerate(rows):
+                    col_w = (pdf.w - pdf.l_margin - pdf.r_margin) / max(1, len(cells))
+                    
+                    if row_idx == 0:
+                        # Estilo cabecera de la tabla
+                        pdf.set_font("helvetica", 'B', 8)
+                        pdf.set_text_color(255, 255, 255)
+                        pdf.set_fill_color(37, 99, 235) # Azul Vektra
+                        pdf.set_draw_color(37, 99, 235)
+                    else:
+                        # Estilo filas de datos
+                        pdf.set_font("helvetica", '', 8)
+                        pdf.set_text_color(55, 65, 81)
+                        if row_idx % 2 == 0:
+                            pdf.set_fill_color(243, 244, 246) # Zebra striping
+                        else:
+                            pdf.set_fill_color(255, 255, 255)
+                        pdf.set_draw_color(229, 231, 235)
+                        
+                    for cell in cells:
+                        pdf.cell(col_w, 6, txt=cell[:45], border=1, fill=True)
+                    pdf.ln(6)
+                pdf.ln(4)
         
         # Gráfico
         if item.get('fig'):
@@ -372,7 +503,12 @@ def generate_pro_report(title: str, summary: str, user_name: str, items: list):
                     tmp_path = tmp.name
                 try:
                     # Centrar y ajustar imagen
-                    avail_width = pdf.w - (pdf.l_margin * 2)
+                    avail_width = pdf.w - pdf.l_margin - pdf.r_margin
+                    
+                    # Control preventivo de salto de página para gráficos
+                    if pdf.get_y() + 100 > pdf.page_break_trigger:
+                        pdf.add_page()
+                        
                     pdf.image(tmp_path, x=pdf.l_margin, w=avail_width)
                     pdf.ln(10)
                 finally:
@@ -389,29 +525,44 @@ def clean_text(text: str):
     """Limpia el texto eliminando artefactos de markdown y caracteres no soportados por latin-1"""
     if not text: return ""
     
-    # 1. Eliminar artefactos de Markdown comunes
     import re
-    # Eliminar etiquetas internas del sistema y sus subtítulos (ej: "DATA: Diagnóstico Estratégico:")
-    text = re.sub(r'^(DATA|ANALISIS|INFO|REGLA DE ORO|RECOMENDACIONES):\s*([^\n]*?:\s*)?', '', text, flags=re.MULTILINE|re.IGNORECASE)
     
-    # Eliminar #, ##, ### del inicio de las líneas
-    text = re.sub(r'^#+\s*', '', text, flags=re.MULTILINE)
-    # Eliminar ** (negritas)
-    text = text.replace("**", "")
-    # Eliminar * (itálicas o bullets)
-    text = text.replace("* ", " - ")
+    # 1. Primero eliminar todos los emojis UTF-8 (reemplazándolos por "")
+    text = re.sub(r'[\U00010000-\U0010ffff]', '', text)
+    text = re.sub(r'[\u2600-\u27bf\u2300-\u23ff\ufe0f]', '', text)
     
-    # 2. Reemplazar caracteres especiales por equivalentes seguros
+    # Reemplazar otros caracteres especiales de puntuación
     replacements = {
         "•": "-", "—": "-", "–": "-",
-        "“": '"', "”": '"', "‘": "'", "’": "'",
-        "💡": "INFO:", "⚠️": "ATENCION:", "🚀": "TIP:", 
-        "🔍": "ANALISIS:", "🎯": "OBJETIVO:", "⚡": "ALERTA:",
-        "🏁": "ACCION:", "📊": "DATA:"
+        "“": '"', "”": '"', "‘": "'", "’": "'"
     }
     for char, replacement in replacements.items():
         text = text.replace(char, replacement)
         
+    text = text.replace("**", "")
+    text = text.replace("* ", " - ")
+    
+    # Eliminar #, ##, ### del inicio de las líneas
+    text = re.sub(r'^#+\s*', '', text, flags=re.MULTILINE)
+    
+    # Eliminar por completo las líneas enteras de subtítulos específicos (y sus variantes)
+    text = re.sub(r'^.*Análisis de Impacto\s*\(¿Qué está pasando\?\).*$', '', text, flags=re.MULTILINE | re.IGNORECASE)
+    text = re.sub(r'^.*Recomendaciones\s*\(¿Qué debemos hacer\?\).*$', '', text, flags=re.MULTILINE | re.IGNORECASE)
+    
+    # Eliminar etiquetas internas del sistema y subtítulos técnicos redundantes sin dejar prefijos
+    text = re.sub(r'^\s*(DATA|ANALISIS|INFO|REGLA DE ORO|RECOMENDACIONES|ATENCION|TIP|OBJETIVO|ALERTA|DIAGNÓSTICO ESTRATÉGICO|DIAGNOSTICO ESTRATEGICO):\s*([^\n]*?:\s*)?', '', text, flags=re.MULTILINE|re.IGNORECASE)
+    
+    # Limpiar espacios a nivel de línea pero conservar los dobles saltos de línea para mantener los párrafos separados
+    lines = [line.strip() for line in text.split("\n")]
+    cleaned_lines = []
+    for line in lines:
+        if line == "":
+            if cleaned_lines and cleaned_lines[-1] != "":
+                cleaned_lines.append("")
+        else:
+            cleaned_lines.append(line)
+    text = "\n".join(cleaned_lines)
+    
     # 3. Codificar de forma segura para FPDF (Latin-1)
     return text.encode('latin-1', 'replace').decode('latin-1')
 

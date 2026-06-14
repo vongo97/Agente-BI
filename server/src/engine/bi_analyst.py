@@ -9,8 +9,9 @@ from google import genai
 from google.genai import types
 
 # Módulos internos
-from . import prompts
+from . import prompts as agent_prompts
 from . import executor
+from . import prompts
 from src.utils.common import SafeJSONEncoder
 
 logger = logging.getLogger(__name__)
@@ -140,8 +141,46 @@ def generate_ai_content(prompt, api_key, provider="gemini", temperature=0.7, mod
     
     return f"⚠️ Error: El motor de {provider} no pudo generar una respuesta. Verifica tu API Key."
 
+def safe_parse_validator_json(raw_text):
+    """
+    Limpia y parsea de forma robusta la respuesta en formato JSON del Validator Agent.
+    """
+    try:
+        clean_text = raw_text.strip()
+        # 1. Quitar bloques markdown de código si existen
+        if "```json" in clean_text:
+            clean_text = re.search(r"```json\s*(.*?)\s*```", clean_text, re.DOTALL).group(1)
+        elif "```" in clean_text:
+            clean_text = re.search(r"```\s*(.*?)\s*```", clean_text, re.DOTALL).group(1)
+        
+        clean_text = clean_text.strip()
+        
+        # 2. Si todavía no empieza por '{' y termina por '}', extraer la subcadena JSON más externa
+        if not (clean_text.startswith("{") and clean_text.endswith("}")):
+            match = re.search(r"(\{.*\})", clean_text, re.DOTALL)
+            if match:
+                clean_text = match.group(1).strip()
+        
+        # 3. Intentar parsear
+        data = json.loads(clean_text)
+        if isinstance(data, dict):
+            return {
+                "status": data.get("status", "error"),
+                "reason": data.get("reason", "No proporcionado"),
+                "feedback": data.get("feedback", "No proporcionado")
+            }
+    except Exception as e:
+        logger.warning("Error parseando JSON del validador: %s. Texto crudo: %s", e, raw_text)
+    
+    # Fallback seguro
+    return {
+        "status": "error",
+        "reason": "Fallo al analizar la respuesta JSON del validador.",
+        "feedback": "Por favor, vuelve a escribir la validación siguiendo estrictamente el formato JSON."
+    }
+
 async def analyze_data(data_context, query, api_key, chat_history=[], mode="file", provider="gemini", mistral_key=None, primary_source_name=None):
-    """Analista Inteligente con soporte Dual (Híbrido) y Aislamiento de Contexto."""
+    """Analista Inteligente con soporte de Arquitectura Multi-Agente (Planner -> Executor -> Validator) y Aislamiento de Contexto."""
     try:
         # 1. Configuración de Roles y Proveedores
         if provider == "hybrid":
@@ -156,107 +195,152 @@ async def analyze_data(data_context, query, api_key, chat_history=[], mode="file
             eng_provider, eng_key = "gemini", api_key
             str_provider, str_key = "gemini", api_key
 
-        # 2. Bucle de Ingeniería (Código) con Reintento y Aislamiento de Contexto
+        # 2. Preparar el Contexto de Datos
+        focus_instruction = ""
+        if isinstance(data_context, dict):
+            tables_desc = []
+            head_info = {}
+            
+            # Aislamiento si hay fuente primaria
+            temp_context = data_context
+            if primary_source_name and primary_source_name in temp_context:
+                focus_instruction = f"⚠️ IMPORTANTE: Enfócate principalmente en la tabla '{primary_source_name}' si la pregunta no especifica otra, pero tienes acceso a todas las listadas abajo."
+            
+            for name, df in temp_context.items():
+                if hasattr(df, 'columns'):
+                    tables_desc.append(f"- Tabla '{name}': {df.columns.tolist()} ({len(df)} filas)")
+                    head_info[name] = {
+                        "muestra": df.head(5).to_dict(),
+                        "tipos": df.dtypes.astype(str).to_dict()
+                    }
+            
+            data_info = "\n".join(tables_desc)
+            table_names_hint = "NOMBRES EXACTOS PARA ACCEDER A LAS TABLAS (cópialos literalmente):\n" + \
+                               "\n".join([f"  dfs['{name}']" for name in temp_context.keys()])
+            if primary_source_name and primary_source_name in temp_context:
+                table_names_hint += f"\n⭐ TABLA PRINCIPAL PARA ESTA CONSULTA: dfs['{primary_source_name}']"
+            
+            data_var = "dfs"
+            muestra_datos = json.dumps(head_info, indent=2, cls=SafeJSONEncoder)
+        else:
+            data_info = f"Columnas: {data_context.columns.tolist()} ({len(data_context)} filas)"
+            table_names_hint = "Usa la variable 'df' directamente."
+            data_var = "df"
+            muestra_datos = json.dumps({
+                "muestra": data_context.head(5).to_dict(),
+                "tipos": data_context.dtypes.astype(str).to_dict()
+            }, indent=2, cls=SafeJSONEncoder)
+
+        # 3. Agente 1: Planner Agent (Diseño de la Estrategia)
+        planner_prompt = agent_prompts.PLANNER_PROMPT_TEMPLATE.format(
+            query=query,
+            data_info=data_info,
+            muestra_datos=muestra_datos,
+            focus_instruction=focus_instruction,
+            table_names_hint=table_names_hint
+        )
+        logger.info("Invocando Planner Agent...")
+        plan = generate_ai_content(planner_prompt, eng_key, eng_provider, model_level="ANALYTICS")
+        if not plan or "⚠️" in plan:
+            return plan or "⚠️ Error en Planner Agent.", None, None
+
+        # 4. Bucle Multi-Agente (Executor ➔ Execution ➔ Validator) con máximo 3 reintentos (4 intentos en total)
         retry_count = 0
-        max_retries = 1
-        real_results = ""
-        fig_code = ""
+        max_retries = 3
+        validator_feedback = ""
+        
+        raw_code = ""
+        execution_text = ""
+        fig_code = None
         
         while retry_count <= max_retries:
-            # AISLAMIENTO DE CONTEXTO Y GENERACIÓN DE PROMPT
-            if isinstance(data_context, dict):
-                tables_desc = []
-                head_info = {}
-                focus_instruction = ""
-                
-                # Aislamiento si hay fuente primaria
-                temp_context = data_context
-                if primary_source_name and primary_source_name in temp_context:
-                    focus_instruction = f"⚠️ IMPORTANTE: Enfócate principalmente en la tabla '{primary_source_name}' si la pregunta no especifica otra, pero tienes acceso a todas las listadas abajo."
-
-                
-                for name, df in temp_context.items():
-                    if hasattr(df, 'columns'):
-                        # Muestra más rica: 5 filas y tipos de datos
-                        tables_desc.append(f"- Tabla '{name}': {df.columns.tolist()} ({len(df)} filas)")
-                        head_info[name] = {
-                            "muestra": df.head(5).to_dict(),
-                            "tipos": df.dtypes.astype(str).to_dict()
-                        }
-                
-                data_info = "\n".join(tables_desc)
-                context_str = data_info
-                
-                # Hint de nombres exactos de tablas para evitar KeyError en el código generado
-                table_names_hint = "NOMBRES EXACTOS PARA ACCEDER A LAS TABLAS (cópialos literalmente):\n" + \
-                                   "\n".join([f"  dfs['{name}']" for name in temp_context.keys()])
-                
-                # Hint de tabla primaria si hay una fuente seleccionada
-                primary_hint = ""
-                if primary_source_name and primary_source_name in temp_context:
-                    primary_hint = f"\n⭐ TABLA PRINCIPAL PARA ESTA CONSULTA: dfs['{primary_source_name}']"
-                
-                p = f"""
-        Eres un Analista BI Experto. Objetivo: "{query}"
-        {focus_instruction}
-
-        ESTRUCTURA DE DATOS:
-        {data_info}
-
-        {table_names_hint}{primary_hint}
-
-        REGLAS CRÍTICAS PARA GENERACIÓN DE CÓDIGO:
-        1. DEBES usar el diccionario 'dfs' con los nombres EXACTOS de la lista anterior (ej: df1 = dfs['nombre_tabla']).
-        2. RESULTADOS: Guarda un resumen en la variable `analysis_text` (string) con los valores EXACTOS extraídos
-           (nombres reales, cifras reales, sin redondear). Además, imprime los datos con `print(df_resultado.to_string())`.
-        3. Visualización: Genera SIEMPRE un gráfico interactivo con Plotly Express (`px`) y guárdalo en la variable `fig`.
-        4. NO uses matplotlib.
-
-        MUESTRA DE DATOS (úsala para entender los valores reales):
-        {json.dumps(head_info, indent=2, cls=SafeJSONEncoder)}
-
-        OUTPUT REQUERIDO:
-        Devuelve ÚNICAMENTE el código Python dentro de un bloque ```python
-        El código DEBE terminar con:
-          print(analysis_text)   # para que el estratega vea los datos reales
-        """
-                data_var = "dfs"
+            logger.info("Iteración del bucle multi-agente: %d/%d", retry_count, max_retries)
+            
+            # Formatear el prompt del Executor
+            executor_prompt = agent_prompts.EXECUTOR_PROMPT_TEMPLATE.format(
+                query=query,
+                plan=plan,
+                data_info=data_info,
+                muestra_datos=muestra_datos,
+                table_names_hint=table_names_hint,
+                data_var=data_var
+            )
+            
+            # Anexar feedback del Validator si es un reintento
+            if retry_count > 0 and validator_feedback:
+                executor_prompt += f"\n\n⚠️ **FEEDBACK DE CORRECCIÓN DEL VALIDADOR (Corrige esto de forma prioritaria)**:\n{validator_feedback}"
+            
+            # Generar código Python
+            logger.info("Invocando Executor Agent...")
+            raw_code = generate_ai_content(executor_prompt, eng_key, eng_provider, model_level="ANALYTICS")
+            if not raw_code or "⚠️" in raw_code:
+                return raw_code or "⚠️ Error en Executor Agent.", None, None
+            
+            # Ejecutar el código en el Sandbox
+            logger.info("Ejecutando código en Sandbox...")
+            execution_text, fig_code = await executor.execute_analysis(data_context, raw_code, data_var)
+            
+            # Determinar si la ejecución falló
+            has_error = "⚠️ Error" in execution_text or "🛡️" in execution_text
+            
+            # Invocamos al Validator Agent (Validación de Calidad)
+            validator_prompt = agent_prompts.VALIDATOR_PROMPT_TEMPLATE.format(
+                query=query,
+                plan=plan,
+                code=raw_code,
+                has_error=str(has_error),
+                execution_result=execution_text
+            )
+            
+            logger.info("Invocando Validator Agent...")
+            validation_raw = ""
+            if eng_provider == "gemini":
+                try:
+                    client = get_client(eng_key.strip())
+                    model_name = MODELS.get("GEMINI_ANALYTICS", MODELS["GEMINI_SWARM"])
+                    response = client.models.generate_content(
+                        model=model_name,
+                        contents=validator_prompt,
+                        config=types.GenerateContentConfig(
+                            temperature=0.2,
+                            response_mime_type="application/json"
+                        )
+                    )
+                    validation_raw = response.text
+                except Exception as e:
+                    logger.warning("Fallo en validación estructurada JSON nativo, usando fallback: %s", e)
+                    validation_raw = generate_ai_content(validator_prompt, eng_key, eng_provider, temperature=0.2, model_level="ANALYTICS")
             else:
-                context_str = f"Columnas: {data_context.columns.tolist()}"
-                p = prompts.ENGINEER_PROMPT_TEMPLATE.format(data_var="df", query=query, context_str=context_str)
-                data_var = "df"
-
-            if retry_count > 0:
-                p += f"\n\n⚠️ **ERROR ANTERIOR**: {real_results}\nCorrige el código. Evita .str en fechas."
-
-            raw = generate_ai_content(p, eng_key, eng_provider, model_level="ANALYTICS")
-            if not raw or "⚠️" in raw: return raw or "⚠️ Error en IA.", None, None
+                validation_raw = generate_ai_content(validator_prompt, eng_key, eng_provider, temperature=0.2, model_level="ANALYTICS")
             
-            temp_text, fig = await executor.execute_analysis(data_context, raw, data_var)
+            # Parseo robusto del JSON del Validator
+            validation_result = safe_parse_validator_json(validation_raw)
+            logger.info("Resultado de la Validación: %s", validation_result)
             
-            if "⚠️ Error" in temp_text and retry_count < max_retries:
-                real_results = temp_text
+            if validation_result["status"] == "success":
+                logger.info("Validación exitosa en el intento %d.", retry_count)
+                break
+            else:
+                # Si falló la validación, guardamos el feedback e incrementamos contador
+                validator_feedback = validation_result["feedback"]
+                logger.warning("Intento %d fallido. Feedback: %s", retry_count, validator_feedback)
                 retry_count += 1
-                continue
-            
-            real_results = temp_text
-            fig_code = fig
-            break
+                
+        # 5. Generar la Narrativa Final con el Estratega
+        clean_res = execution_text.split("---")[-1].strip() if "---" in execution_text else execution_text
+        if "⚠️ Error" in execution_text:
+            clean_res = f"⚠️ Análisis parcial por error persistente: {execution_text}"
 
-        # 3. Estrategia (Narrativa)
-        clean_res = real_results.split("---")[-1].strip() if "---" in real_results else real_results
-        if "⚠️ Error" in real_results:
-            clean_res = f"⚠️ Análisis parcial por error: {real_results}"
-
+        context_str = data_info if isinstance(data_context, dict) else f"Columnas: {data_context.columns.tolist()}"
         p_strat = prompts.STRATEGIST_PROMPT_TEMPLATE.format(query=query, real_results=clean_res, context_str=context_str)
+        logger.info("Invocando Estratega...")
         final_narrative = generate_ai_content(p_strat, str_key, str_provider, model_level="ANALYTICS")
         
-        # Devolver el trio perfecto: Narrativa, Gráfico y Código
-        return final_narrative, fig_code, raw
+        return final_narrative, fig_code, raw_code
 
     except Exception as e:
-        logger.error("Critical Error in analyze_data: %s", type(e).__name__)
-        return f"### ❌ Error Crítico\n{type(e).__name__}", None, None
+        logger.error("Critical Error in analyze_data: %s", type(e).__name__, exc_info=True)
+        return f"### ❌ Error Crítico\n{type(e).__name__}: {str(e)}", None, None
 
 def generate_report_summary(query, api_key, context_data=None, provider="gemini", mistral_key=None):
     key = (mistral_key or api_key) if provider == "mistral" else api_key

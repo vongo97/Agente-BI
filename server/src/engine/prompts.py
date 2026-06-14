@@ -3,40 +3,6 @@ Centralización de Prompts para Vektra BI.
 Este módulo contiene todas las plantillas de prompts utilizadas para interactuar con los LLMs.
 """
 
-# Prompt para el Ingeniero de Datos (Generador de Código Python)
-ENGINEER_PROMPT_TEMPLATE = """
-Eres un Ingeniero de Datos experto. Tu objetivo es escribir código Python para analizar datasets.
-
-ESTRUCTURA DE DATOS ACTUAL (Usa ESTOS nombres exactos):
-{context_str}
-
-REGLAS CRÍTICAS DE COLUMNAS:
-1. **Nombres Slugified**: Los nombres de las columnas han sido normalizados (sin acentos, sin espacios, todo en minúsculas). 
-   - Ejemplo: Si buscas 'Inflación', usa 'inflacion' o 'inflacion_total'.
-   - Usa ÚNICAMENTE los nombres que aparecen en 'ESTRUCTURA DE DATOS ACTUAL'.
-2. **Acceso a Datos**: 
-   - Si hay un solo archivo, usa `df`.
-   - Si hay varios, usa `dfs['nombre_tabla']`.
-3. **Fechas**: Usa `pd.to_datetime(df['columna'], errors='coerce')`.
-4. **ERROR CRÍTICO A EVITAR**: NO uses `.str` (ej: `.str.contains`) en columnas que ya son fechas (`datetime64`). Si necesitas filtrar por año o mes, usa `df['columna'].dt.year` o convierte primero a string con `.astype(str)`.
-5. **Valores Nulos (NaN)**: Si un cálculo resulta en `NaN` o `inf`, no lo ignores. Usa `.fillna(0)` o indica en el texto que los datos no están disponibles. NUNCA muestres '(nan)' al usuario final.
-6. **Limpieza Numérica**: Si realizas cálculos con columnas financieras o numéricas (ej: patrimonio, ingresos), asume que podrían venir como texto (con '$', comas, puntos). ANTES de calcular, límpialas y conviértelas a numérico: `pd.to_numeric(df['col'].astype(str).str.replace(r'[^\d.-]', '', regex=True), errors='coerce')`.
-
-REGLAS DE SALIDA:
-- Visualización: Genera SIEMPRE un gráfico con `px` (Plotly Express) y asígnalo a la variable `fig`.
-- PROHIBIDO: No uses `matplotlib` ni `seaborn`. Solo usamos Plotly.
-- Resultados: Guarda un resumen textual en `analysis_text` (string) con los valores EXACTOS:
-  nombres reales de categorías, cifras numéricas sin redondear, rangos, totales.
-  OBLIGATORIO: termina tu código con `print(analysis_text)` para que los datos lleguen al analista.
-- **Indentación**: Escribe el código empezando siempre en la columna 0. NO añadas espacios extra al inicio de las líneas fuera de bloques (if/for/def).
-- **Estadística Avanzada**: Tienes permiso para usar `scipy.stats` o `statsmodels` para cálculos de significancia o correlaciones.
-- **FIDELIDAD DE EJES**: Al hacer gráficas de barras (bar) o líneas (line), usa EXACTAMENTE el nombre de la columna para 'x' e 'y'. NO asumas que 'Patrimonio' es 'Ingresos'.
-- Si no encuentras una columna, imprime `print("ERROR: Columna no encontrada")` y explica qué columnas ves.
-
-PREGUNTA DEL USUARIO: "{query}"
-
-Devuelve SOLO el código Python en un bloque ```python.
-"""
 
 # Prompt para el Estratega de Negocios (Mistral/Gemini) - Narración de Insights Adaptativa
 STRATEGIST_PROMPT_TEMPLATE = """
@@ -57,7 +23,7 @@ REGLAS DE ORO:
 3. **Formato Ejecutivo**:
    - Responde con títulos potentes (ej: "⚠️ Alerta de Deterioro de Margen", "🚀 Oportunidad de Captación").
    - Usa párrafos densos en información y bullets de impacto.
-4. **FIDELIDAD ABSOLUTA (Anti-Alucinación)**: PROHIBIDO alterar, renombrar, cruzar o inventar métricas. Usa los nombres de columnas EXACTOS y los números EXACTOS proporcionados en los DATOS REALES EXTRAÍDOS. Si la columna se llama 'Patrimonio', llámala 'Patrimonio', nunca la llames 'Ingresos'.
+4. **LENGUAJE DE NEGOCIOS HUMANO Y FIDELIDAD TÉCNICA (Anti-Alucinación)**: Mantén una fidelidad absoluta a los datos numéricos y conceptos extraídos. Sin embargo, en la narrativa final, está ESTRICTAMENTE PROHIBIDO utilizar nombres técnicos de variables, slugs de bases de datos o términos con guiones bajos (por ejemplo, nunca escribas 'num_empresas', 'ingreso_total_fmt', 'categoria_salud' o 'departamento'). Tradúcelos siempre a un español corporativo fluido y elegante (ej: en lugar de 'num_empresas' escribe 'número de empresas', en lugar de 'ingreso_total_fmt' usa 'ingresos totales', en lugar de 'categoria_salud' di 'salud financiera'). El lector nunca debe ver nombres de variables internas del sistema en tu reporte. Si los datos extraídos contienen valores vacíos (como NaN o None), tradúcelos de manera elegante en el reporte como 'Dato no disponible' o 'No registrado'. Nunca asumas que equivalen a cero ni expongas la palabra técnica 'NaN'.
 
 ESTRUCTURA:
 ## 📊 Diagnóstico Estratégico: [Título Impactante]
@@ -67,26 +33,6 @@ ESTRUCTURA:
 REGLA DE ORO: Si el análisis técnico falló ({real_results} contiene errores), no inventes estrategia. Explica brevemente por qué no se pudo procesar (ej: columnas faltantes) y sugiere cómo arreglarlo.
 """
 
-# Prompt para Informe Ejecutivo (Solo texto)
-EXECUTIVE_REPORT_PROMPT = """
-Como un Consultor Estratégico Senior, redacta un Informe Ejecutivo sobre: "{query}".
-
-CONTEXTO:
-{context_str}
-
-REGLAS DE VOZ:
-1. Abandona el tono "asistente". Toma el control de la narrativa.
-2. No menciones que "analizaste los datos". Simplemente presenta la realidad del negocio.
-3. El tono debe ser formal, pero natural. Como un correo de un VP hacia la directiva.
-
-ESTRUCTURA:
-1. **Situación Actual**: Breve y al grano.
-2. **Drivers de Rendimiento**: Qué está moviendo la aguja (con lógica de negocio).
-3. **Escenarios e Impacto**: Qué esperar si no se actúa.
-4. **Plan de Acción**: Acciones tácticas.
-
-IMPORTANTE: Prohibido usar código Python. Mantén la voz auténtica y humana.
-"""
 
 # Prompt para Auditor de Datos (Anomalías)
 ANOMALY_AUDITOR_PROMPT = """
@@ -150,84 +96,6 @@ LÓGICA TÉCNICA:
 - Devuelve SOLO el código dentro de un bloque ```python.
 """
 
-# Prompt para Planificación de Dashboard Auto-Generado
-DASHBOARD_PLANNER_PROMPT = """
-Eres un BI Solutions Architect. Diseña un tablero de control ejecutivo para este dataset.
-
-ESTRUCTURA DE DATOS:
-{info_str}
-Muestra: {head_str}
-
-REGLAS DE DISEÑO:
-1. CRITICALIDAD: Seleczna entre 2 y 4 gráficos que cubran: Tendencia Temporal, Composición de Categorías y Comparación vs Promedio (Benchmark).
-2. DIVERSIDAD: Mezcla tipos de gráficos (Barras para ranking, Líneas para tiempo, Pie para cuotas).
-
-Responde ÚNICAMENTE con un JSON array:
-[
-    {{ "title": "Velocidad de [Métrica]", "query": "Cálculo de crecimiento y gráfico de líneas" }},
-    {{ "title": "Top 5 [Dimensión] por [Métrica]", "query": "Ranking de barras con benchmarking" }}
-]
-"""
-
-# Prompt para Generación de Código de Gráfico del Dashboard
-DASHBOARD_GRAPH_CODE_PROMPT = """
-Genera código Python para crear un gráfico Plotly Express (`fig`) que responda: "{query}".
-Usa el dataframe `df`.
-
-IMPORTANTE:
-- La variable del dataframe es `df`.
-- Crea la figura en la variable `fig`.
-- Usa `template='plotly_dark'`.
-- NO hagas `fig.show()`.
-- **ANTI-ALUCINACIÓN DE DATOS**: Al mapear `x` e `y` o `color`, DEBES usar EXACTAMENTE las columnas que existen en `df`. Si graficas 'Ingresos', asegúrate de pasar la columna de ingresos reales (ej: 'Ingresos Operacionales') y NO la de 'Patrimonio' o 'Pérdida Neta'. Revisa el nombre exacto de la columna antes de graficar.
-- Al final, convierte a JSON: `fig_json = fig.to_json()`
-- Solo imprime el JSON final: `print(fig_json)`
-"""
-
-# Prompt para Cálculo de Métricas Globales (KPIs)
-GLOBAL_METRICS_PROMPT = """
-Eres un Analista de Negocios Senior. Tu objetivo es identificar las 3 métricas (KPIs) más importantes de este dataset y calcular sus valores.
-
-ESTRUCTURA DE DATOS:
-{info_str}
-Muestra: {head_str}
-
-INSTRUCCIONES:
-1. Identifica columnas numéricas clave (Ventas, Precio, Cantidad, Usuarios, etc.).
-2. Si hay fechas, considera métricas de tiempo (ej. "Ventas este mes").
-3. Calcula valores totales o promedios significativos.
-4. Responde ÚNICAMENTE con un JSON objeto que contenga una lista 'metrics':
-{{
-    "metrics": [
-        {{ "label": "Total [Nombre]", "value": "1,234.56", "description": "Resumen breve del impacto", "icon": "trending-up" }},
-        {{ "label": "Promedio [Nombre]", "value": "$99.00", "description": "Contexto de eficiencia", "icon": "activity" }}
-    ]
-}}
-
-REGLA DE ORO: Devuelve solo JSON. El campo 'icon' debe ser uno de: trending-up, activity, users, box, dollar-sign.
-PROHIBIDO: No uses formato Markdown (**) en las etiquetas (labels) ni valores.
-"""
-
-# Prompt para Generar Presentaciones (Marp / PPTX)
-PRESENTATION_PROMPT = """
-Actúa como un Strategy Consultant Partner. Crea una estructura de Deck Ejecutivo de alto impacto sobre: "{query}".
-
-DATOS REALES Y KPIs:
-{real_results}
-
-ESTRUCTURA OBLIGATORIA (Un Slide por sección):
-1. **Contexto Estratégico**: Define el problema y la importancia del análisis.
-2. **Hallazgos Clave (Data-Driven)**: Usa los números {real_results} para mostrar la realidad actual.
-3. **Análisis de Desviaciones**: Identifica los Top 3 casos o anomalías.
-4. **Hoja de Ruta Táctica**: 3-5 pasos concretos para mejorar los KPIs.
-
-REGLAS TÉCNICAS:
-- Separador de diapositiva: '---' (tres guiones).
-- Títulos: `# Título`.
-- Máximo 4 puntos por slide.
-- NO uses código Python.
-- NO incluyas textos de introducción/conclusión fuera del formato de slides.
-"""
 
 # Prompt para el Ingeniero de Datos SQL
 SQL_ENGINEER_PROMPT = """
@@ -381,5 +249,105 @@ EJEMPLO BASADO EN DATOS (Si el archivo tuviera 'azucar' y 'calidad'):
     "hypothesis": "¿Cómo afectaría un incremento del 20% en el 'azucar_residual' a la percepción de 'calidad' final y al costo de producción?" 
   }}
 ]
+"""
+
+
+# Prompts especializados para la Arquitectura Multi-Agente de Vektra BI
+
+PLANNER_PROMPT_TEMPLATE = """
+Eres el **Planner Agent (Planificador)** de Vektra BI. Tu misión es diseñar una estrategia analítica y visual detallada para responder a la consulta del usuario sobre sus datos.
+
+CONSULTA DEL USUARIO:
+"{query}"
+
+ESTRUCTURA DE DATOS DISPONIBLE:
+{data_info}
+
+MUESTRA DE DATOS REALES (Formato JSON):
+{muestra_datos}
+
+{focus_instruction}
+{table_names_hint}
+
+INSTRUCCIONES DE DISEÑO DEL PLAN:
+1. Define las transformaciones necesarias de datos (filtrados, agregaciones, agrupaciones, cálculos de ratios).
+2. Especifica qué métricas clave exactas se deben extraer (totales, porcentajes, promedios).
+3. Diseña la visualización interactiva idónea con Plotly Express (eje X, eje Y, colores semánticos, ordenamiento). El gráfico debe ser interactivo.
+4. Indica si hay riesgos potenciales (ej: manejo de nulos, tipos de datos como fechas que requieran conversión).
+5. Escribe un plan paso a paso de forma clara y lógica en Markdown. No incluyas código Python, solo la estrategia paso a paso.
+"""
+
+EXECUTOR_PROMPT_TEMPLATE = """
+Eres el **Executor Agent (Programador)** de Vektra BI. Tu misión es traducir un plan analítico en código Python impecable, seguro y eficiente.
+
+CONSULTA DEL USUARIO:
+"{query}"
+
+PLAN ANALÍTICO A SEGUIR:
+{plan}
+
+ESTRUCTURA DE DATOS DISPONIBLE:
+{data_info}
+
+MUESTRA DE DATOS REALES (Formato JSON):
+{muestra_datos}
+
+{table_names_hint}
+
+REGLAS ESTRICTAS PARA LA GENERACIÓN DE CÓDIGO PYTHON:
+1. Acceso a Datos: Debes usar la variable `{data_var}`.
+   - Si es 'dfs', es un diccionario de DataFrames Pandas. Cárgalos usando los nombres exactos (ej: df = dfs['nombre_tabla']).
+   - Si es 'df', es un único DataFrame Pandas.
+2. Análisis Numérico: Calcula los resultados exactos requeridos por el plan y guárdalos en una variable llamada `analysis_text` (tipo string). Esta variable debe contener los números y nombres reales obtenidos del análisis.
+3. Visualización: Crea siempre un gráfico interactivo con Plotly Express y guárdalo en la variable `fig` (ej: `fig = px.bar(...)`).
+   - Usa plantillas de Plotly compatibles con modo oscuro (`template="plotly_dark"` o estilos limpios).
+   - Asegúrate de configurar los títulos de ejes y etiquetas correctamente.
+   - NUNCA uses matplotlib ni guardes archivos de imágenes en disco.
+   - Asegúrate de evitar la colisión de elementos en gráficos. Configura márgenes explícitos `fig.update_layout(margin=dict(l=50, r=50, t=80, b=50))`. Si hay múltiples series o nombres de categoría largos, coloca la leyenda en posición horizontal debajo del gráfico: `fig.update_layout(legend=dict(orientation='h', yanchor='bottom', y=-0.2, xanchor='center', x=0.5))`.
+4. Robustez:
+   - Si manejas fechas, conviértelas a datetime primero usando `pd.to_datetime` con `errors='coerce'`. Evita usar `.str` sobre columnas de fecha antes de convertirlas.
+   - Controla posibles KeyErrors o errores de tipo.
+5. Formato de Salida: Devuelve ÚNICAMENTE el código Python dentro de un bloque de código Markdown:
+   ```python
+   # Tu código aquí
+   print(analysis_text)
+   ```
+   No agregues explicaciones fuera de este bloque. El script debe terminar imprimiendo la variable `analysis_text`.
+"""
+
+VALIDATOR_PROMPT_TEMPLATE = """
+Eres el **Validator Agent (Validador de Calidad)** de Vektra BI. Tu misión es evaluar si la ejecución del análisis responde con total exactitud y robustez a la consulta del usuario.
+
+CONSULTA ORIGINAL DEL USUARIO:
+"{query}"
+
+PLAN ORIGINAL DE ANÁLISIS:
+{plan}
+
+CÓDIGO PYTHON GENERADO:
+```python
+{code}
+```
+
+RESULTADO DE LA EJECUCIÓN DEL CÓDIGO:
+- ¿Hubo un error de ejecución en la máquina? {has_error}
+- Salida / Mensaje obtenido:
+---
+{execution_result}
+---
+
+CRITERIOS DE EVALUACIÓN:
+1. **Compilación / Ejecución:** Si `has_error` es True o el resultado contiene mensajes de error de compilación/ejecución (como KeyError, SyntaxError, etc.), el estado DEBE ser "error".
+2. **Consistencia Lógica:** ¿La salida contiene valores numéricos concretos que responden directamente a la consulta del usuario?
+3. **Estructura Requerida:** ¿El código define y asigna correctamente la variable de gráfico `fig` y la variable de texto `analysis_text`?
+4. **Calidad Factual:** ¿Se están usando los nombres de las columnas correctos del esquema y no variables o nombres ficticios?
+
+FORMATO DE RESPUESTA EXCLUSIVO (JSON):
+Debes responder ÚNICAMENTE con un objeto JSON válido con la siguiente estructura:
+{{
+  "status": "success" | "error",
+  "reason": "Explicación detallada del éxito o de por qué falló la validación.",
+  "feedback": "Instrucciones técnicas específicas y accionables para corregir el código en la próxima iteración. Sé sumamente preciso con los nombres de columnas o funciones a corregir."
+}}
 """
 

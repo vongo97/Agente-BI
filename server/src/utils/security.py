@@ -57,7 +57,6 @@ def decrypt_key(encrypted_key: str) -> str:
         decrypted_text = cipher_suite.decrypt(encrypted_key.encode())
         return decrypted_text.decode()
     except Exception as e:
-        # Si falla el descifrado, devolvemos el original (podría ser texto plano antiguo)
         logger.error("Error al descifrar clave (tipo=%s)", type(e).__name__)
-        return encrypted_key
+        return None
 

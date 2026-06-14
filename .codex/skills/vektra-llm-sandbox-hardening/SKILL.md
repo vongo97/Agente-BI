@@ -38,3 +38,11 @@ Treat LLM output as untrusted user input. The model is not a security boundary.
 - Generated output tries to leak environment variables.
 - Timeout and memory limit failures return safe user-facing messages.
 - Pickle/session loading cannot read attacker-controlled paths.
+
+## Agentic Workflow (Multi-Agent Architecture)
+
+To ensure maximum correctness (up to 99% accuracy) and robust execution of data analysis queries:
+- **Mandatory Workflow:** Always structure data analysis generation as a three-agent pipeline: **Planner** (strategic planning) ➔ **Executor** (code generation) ➔ **Validator** (execution and logic verification).
+- **Execution Loop:** Run the Planner/Executor generation, execute the code, and pass the code + execution stdout/stderr + planned goal to the **Validator**.
+- **Retry Budget:** If the Validator finds runtime errors (KeyError, ValueError, syntax, etc.) or logical deviations (missing Plotly figure, mismatch with user request, incorrect data rounding), it must trigger a retry. Allow a **maximum of 3 retries**.
+- **Prompt Isolation:** Keep prompt templates for all agents in a separate file `server/src/engine/prompts/agents.py` to maintain modularity and clean core files.

@@ -166,6 +166,23 @@ async def auto_dashboard(
         if mistral_key:
             mistral_key = decrypt_key(mistral_key)
          
+    # Validar que las llaves descifradas no sean vacías o None si el proveedor las requiere
+    if provider == "gemini" and not api_key:
+        raise HTTPException(
+            status_code=400,
+            detail="Clave API de Gemini no válida o corrupta. Por favor, re-ingresa tu clave API en Ajustes."
+        )
+    elif provider == "mistral" and not mistral_key:
+        raise HTTPException(
+            status_code=400,
+            detail="Clave API de Mistral no válida o corrupta. Por favor, re-ingresa tu clave API en Ajustes."
+        )
+    elif provider == "hybrid":
+        if not api_key:
+            raise HTTPException(status_code=400, detail="Clave API de Gemini no válida o corrupta. Por favor, re-ingresa tu clave API en Ajustes.")
+        if not mistral_key:
+            raise HTTPException(status_code=400, detail="Clave API de Mistral no válida o corrupta. Por favor, re-ingresa tu clave API en Ajustes.")
+
     try:
         # El origen puede ser un motor SQL o un diccionario de DataFrames
         data_source_obj = session_data["data"]

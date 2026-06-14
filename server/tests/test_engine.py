@@ -28,12 +28,13 @@ class TestBIEngine(unittest.IsolatedAsyncioTestCase):
 
     def test_prompts_templates(self):
         """Prueba que las plantillas de prompts se formateen correctamente."""
-        context = "Columns: [a, b]"
-        query = "Test query"
-        formatted = prompts.ENGINEER_PROMPT_TEMPLATE.format(
-            data_var="df",
-            query=query,
-            context_str=context
+        formatted = prompts.EXECUTOR_PROMPT_TEMPLATE.format(
+            query="Test query",
+            plan="Test plan",
+            data_info="Columns: [a, b]",
+            muestra_datos="{}",
+            table_names_hint="hint",
+            data_var="df"
         )
         self.assertIn("Test query", formatted)
         self.assertIn("df", formatted)
@@ -50,10 +51,19 @@ class TestBIEngine(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(cleaned_df['producto'].iloc[0], 'a')
         self.assertEqual(summary, 'Convertido a minúsculas')
 
+    @patch('src.engine.bi_analyst.get_client')
     @patch('src.engine.bi_analyst.generate_ai_content')
-    async def test_analyze_data_flow(self, mock_ai):
+    async def test_analyze_data_flow(self, mock_ai, mock_get_client):
         """Prueba el flujo de analyze_data (simulando la IA)."""
+        # Mock para el cliente de Gemini y su validador
+        mock_client = MagicMock()
+        mock_response = MagicMock()
+        mock_response.text = '{"status": "success", "reason": "ok", "feedback": "none"}'
+        mock_client.models.generate_content.return_value = mock_response
+        mock_get_client.return_value = mock_client
+
         mock_ai.side_effect = [
+            "Plan de análisis estratégico.",
             "```python\nprint('Resultado: 10')\nfig = px.pie(df, names='producto')\n```", 
             "Informe estratégico basado en los datos." 
         ]
@@ -62,7 +72,7 @@ class TestBIEngine(unittest.IsolatedAsyncioTestCase):
         
         self.assertIn("Informe estratégico", output_text)
         self.assertIn("```python", raw_response)
-        self.assertEqual(mock_ai.call_count, 2)
+        self.assertEqual(mock_ai.call_count, 3)
 
     async def test_security_sandbox_attack(self):
         """Prueba que el sandbox bloquee intentos de acceso al sistema."""

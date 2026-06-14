@@ -480,6 +480,7 @@ for name, pkl_file in metadata_tables.items():
 for _tname, _tdf in loaded_tables.items():
     if not isinstance(_tdf, pd.DataFrame):
         continue
+    _tdf.replace([np.inf, -np.inf], np.nan, inplace=True)
     for _col in _tdf.columns:
         # Intentar convertir columnas 'object' que parecen numéricas
         if _tdf[_col].dtype == 'object':
@@ -616,9 +617,9 @@ with open(os.path.join(temp_dir, "output.json"), "w", encoding="utf-8") as f:
             err_type = output_data["error_type"]
             err_msg = output_data["error"]
             if err_type == "KeyError":
-                return f"### ⚠️ Error de Estructura\n{err_msg}", None
+                return f"### ⚠️ Error de Estructura\nKeyError: {err_msg}", None
             else:
-                return f"### ⚠️ Error de Análisis\n{err_msg}", None
+                return f"### ⚠️ Error de Análisis\n{err_type}: {err_msg}", None
                 
         code_stdout = output_data["stdout"]
         fig = output_data["fig_json"]
@@ -689,6 +690,8 @@ temp_dir = {repr(temp_dir)}
 
 with open(os.path.join(temp_dir, "input_df.pkl"), "rb") as f:
     df_load = pickle.load(f)
+df_load.replace([np.inf, -np.inf], np.nan, inplace=True)
+
 
 def restricted_import(name, globals=None, locals=None, fromlist=(), level=0):
     allowed_packages = {{

@@ -16,5 +16,11 @@ Este documento contiene las reglas INQUEBRANTABLES que todo agente de IA (como y
 ## REGLA #3: El Validador de Llaves debe ser Flexible 🔑
 - Si una API Key responde con errores de cuota (429, quota, limit), **LA LLAVE ES VÁLIDA**. El validador en `bi_analyst.py` debe permitir que la llave se guarde para que el usuario pueda usar otros proveedores (como Mistral) mientras tanto. No bloquees la interfaz de usuario con errores rígidos.
 
+## REGLA #4: CARGA OBLIGATORIA DEL PROTOCOLO DE INTERACCIÓN 🤝
+- **SIEMPRE**, en el primer turno de una conversación o al abordar un nuevo requerimiento, debes leer el archivo de la skill `.codex/skills/user-interaction-protocol/SKILL.md`.
+- **MOTIVO**: Esta regla asegura que apliques los criterios de aceptación 10/10 del usuario, prevengas reprocesos y te mantengas estrictamente en el alcance estipulado. Ignorar este paso se considerará una violación grave de las reglas del proyecto.
+
 ---
 *He leído y entendido estas reglas.*
+
+
