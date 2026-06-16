@@ -100,8 +100,8 @@ def generate_ai_content(prompt, api_key, provider="gemini", temperature=0.7, mod
     clean_key = api_key.strip()
     
     import time
-    max_retries = 4
-    delay = 2.0
+    max_retries = 5
+    delay = 3.0
     backoff_factor = 2.0
     
     try:
@@ -302,6 +302,11 @@ async def analyze_data(data_context, query, api_key, chat_history=[], mode="file
         if not plan or "⚠️" in plan:
             return plan or "⚠️ Error en Planner Agent.", None, None
 
+        # Si es Groq, esperamos para enfriar la tasa de peticiones y respetar el límite de 3 RPM
+        if eng_provider == "groq":
+            logger.info("Enfriando la API de Groq por 12 segundos antes de invocar al Executor...")
+            time.sleep(12.0)
+
         # 4. Bucle Multi-Agente (Executor ➔ Execution ➔ Validator) con máximo 3 reintentos (4 intentos en total)
         retry_count = 0
         max_retries = 3
@@ -341,6 +346,11 @@ async def analyze_data(data_context, query, api_key, chat_history=[], mode="file
             )
             if not raw_code or "⚠️" in raw_code:
                 return raw_code or "⚠️ Error en Executor Agent.", None, None
+            
+            # Si es Groq, enfriamos la API antes de proceder a la validación
+            if eng_provider == "groq":
+                logger.info("Enfriando la API de Groq por 12 segundos antes de la validación...")
+                time.sleep(12.0)
             
             # Ejecutar el código en el Sandbox
             logger.info("Ejecutando código en Sandbox...")
@@ -407,6 +417,9 @@ async def analyze_data(data_context, query, api_key, chat_history=[], mode="file
                 validator_feedback = validation_result["feedback"]
                 logger.warning("Intento %d fallido. Feedback: %s", retry_count, validator_feedback)
                 retry_count += 1
+                if eng_provider == "groq" and retry_count <= max_retries:
+                    logger.info("Enfriando la API de Groq por 12 segundos antes del reintento...")
+                    time.sleep(12.0)
                 
         # 5. Generar la Narrativa Final con el Estratega
         clean_res = execution_text.split("---")[-1].strip() if "---" in execution_text else execution_text
@@ -415,6 +428,12 @@ async def analyze_data(data_context, query, api_key, chat_history=[], mode="file
 
         context_str = data_info if isinstance(data_context, dict) else f"Columnas: {data_context.columns.tolist()}"
         p_strat = prompts.STRATEGIST_PROMPT_TEMPLATE.format(query=query, real_results=clean_res, context_str=context_str)
+        
+        # Enfriamiento para Groq antes de invocar al Estratega
+        if str_provider == "groq":
+            logger.info("Enfriando la API de Groq por 12 segundos antes de invocar al Estratega...")
+            time.sleep(12.0)
+            
         logger.info("Invocando Estratega...")
         strategist_system = skill_loader.get_system_prompt_for_agent("STRATEGIST")
         final_narrative = generate_ai_content(

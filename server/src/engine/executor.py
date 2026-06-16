@@ -47,11 +47,15 @@ def _dynamic_timeout(tables: dict) -> int:
     for v in tables.values():
         if hasattr(v, '__len__'):
             total_rows += len(v)
+            
+    is_render = os.getenv("RENDER", "false").lower() == "true"
+    base_timeout = 45 if is_render else _SANDBOX_TIMEOUT_S
+    
     if total_rows > 10_000:
-        return 60  # 60s para datasets grandes en Render Free
+        return 90 if is_render else 60  # 90s para datasets grandes en Render Free
     elif total_rows > 5_000:
-        return 45
-    return _SANDBOX_TIMEOUT_S  # 15s base
+        return 75 if is_render else 45
+    return base_timeout  # 45s base en Render, 15s en local
 
 
 def _make_preexec_linux(cpu_s: int):

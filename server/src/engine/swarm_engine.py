@@ -286,9 +286,10 @@ class SwarmEngine:
             "temperature": 0.7
         }
         
-        max_retries = 4
-        delay = 2.0
+        max_retries = 5
+        delay = 3.0
         backoff_factor = 2.0
+
         
         for attempt in range(max_retries):
             try:
@@ -351,7 +352,11 @@ class SwarmEngine:
                             agent.get('personality', 'Profesional')
                         )
                 
-                await asyncio.sleep(2 + random.uniform(0, 1))
+                if self.provider == "groq":
+                    await asyncio.sleep(12 + random.uniform(0, 1))
+                else:
+                    await asyncio.sleep(2 + random.uniform(0, 1))
+
 
         synthesis_p = prompts.SWARM_REPORT_STRATEGIST_PROMPT.format(
             hypothesis=hypothesis,
