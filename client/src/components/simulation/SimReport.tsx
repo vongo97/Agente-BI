@@ -3,6 +3,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { exportSimulationPdf } from "@/lib/api";
 import { useState } from "react";
+import { useToast } from "@/context/ToastContext";
 
 import { Simulation } from "@/types/shared";
 
@@ -14,10 +15,12 @@ interface SimReportProps {
 
 export function SimReport({ activeSim, userId, polling }: SimReportProps) {
     const [downloadingPdf, setDownloadingPdf] = useState(false);
+    const { addToast } = useToast();
 
     const handleDownloadPdf = async () => {
         if (!activeSim?.id) return;
         setDownloadingPdf(true);
+        addToast("Iniciando la exportación del veredicto...", "info", 1500);
         try {
             const blob = await exportSimulationPdf(activeSim.id, userId);
             const url = window.URL.createObjectURL(blob);
@@ -28,9 +31,10 @@ export function SimReport({ activeSim, userId, polling }: SimReportProps) {
             a.click();
             window.URL.revokeObjectURL(url);
             a.remove();
+            addToast("Veredicto exportado en PDF con éxito.", "success");
         } catch (err) {
             console.error("Error al descargar PDF de simulación:", err);
-            alert("Error al descargar el veredicto en PDF de forma segura.");
+            addToast("Error al descargar el veredicto en PDF de forma segura.", "error");
         } finally {
             setDownloadingPdf(false);
         }

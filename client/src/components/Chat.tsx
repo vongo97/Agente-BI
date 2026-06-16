@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { useSession } from "next-auth/react";
 import { Bot, BarChart3, Database, TrendingUp, Search } from "lucide-react";
 import { analyzeData, pinToDashboard, exportChartAsPng, generateAutoDashboard, suggestQuestions, cleanData } from "@/lib/api";
@@ -50,16 +50,7 @@ export function Chat() {
         }
     }, [messages]);
 
-    useEffect(() => {
-        const canFetch = dataSources.length > 0 && apiKey && showAiSuggestions;
-        if (canFetch && (messages.length === 0 || autoSuggestionsEnabled)) {
-            fetchSuggestions();
-        } else if (dataSources.length === 0 || !showAiSuggestions) {
-            if (suggestions.length > 0) setSuggestions([]);
-        }
-    }, [dataSources.length, apiKey, showAiSuggestions, autoSuggestionsEnabled]);
-
-    const fetchSuggestions = async () => {
+    const fetchSuggestions = useCallback(async () => {
         if (!apiKey || dataSources.length === 0) return;
         setLoadingSuggestions(true);
         try {
@@ -72,7 +63,16 @@ export function Chat() {
         } finally {
             setLoadingSuggestions(false);
         }
-    };
+    }, [apiKey, dataSources, userId, activeChatId, aiProvider, mistralKey, setLoadingSuggestions, setSuggestions]);
+
+    useEffect(() => {
+        const canFetch = dataSources.length > 0 && apiKey && showAiSuggestions;
+        if (canFetch && (messages.length === 0 || autoSuggestionsEnabled)) {
+            fetchSuggestions();
+        } else if (dataSources.length === 0 || !showAiSuggestions) {
+            if (suggestions.length > 0) setSuggestions([]);
+        }
+    }, [dataSources.length, apiKey, showAiSuggestions, autoSuggestionsEnabled, messages.length, suggestions.length, fetchSuggestions, setSuggestions]);
 
     const handleSend = async () => {
         await handleSendAsQuery(input);
@@ -90,8 +90,8 @@ export function Chat() {
         setInput("");
         setLoading(true);
 
-        if (aiProvider === 'hybrid') setLoadingMessage("🔄 Extrayendo inteligencia estratégica...");
-        else if (aiProvider === 'mistral') setLoadingMessage("✍️ Redactando diagnóstico de negocio...");
+        if (aiProvider === 'mistral') setLoadingMessage("✍️ Redactando diagnóstico de negocio...");
+        else if (aiProvider === 'groq') setLoadingMessage("⚡ Ejecutando debate ultraveloz...");
         else setLoadingMessage("🧩 Orquestando hallazgos...");
 
         try {
@@ -173,6 +173,7 @@ export function Chat() {
             await pinToDashboard(userId, activeChatId, messageId);
             alert("¡Anclado al panel de control! 📌");
         } catch (error) {
+            console.error("Error pinning item:", error);
             alert("Error al anclar");
         }
     };
@@ -188,6 +189,7 @@ export function Chat() {
             a.click();
             window.URL.revokeObjectURL(url);
         } catch (error) {
+            console.error("Error exporting png:", error);
             alert("Error al exportar imagen");
         }
     };
@@ -266,6 +268,7 @@ export function Chat() {
                             userId={userId}
                             handleExportPng={handleExportPng}
                             handlePin={handlePin}
+                            handleSendAsQuery={handleSendAsQuery}
                         />
                     ))
                 )}

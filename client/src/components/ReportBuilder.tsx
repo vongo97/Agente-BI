@@ -45,6 +45,7 @@ export function ReportBuilder({ isOpen, onClose, messages, userId, userName }: R
             const res = await generateReportSummary(query, apiKey, userId);
             setSummary(res.summary);
         } catch (error) {
+            console.error("Error generating report summary:", error);
             alert("Error generando resumen estratégico");
         } finally {
             setGeneratingSummary(false);
@@ -93,6 +94,7 @@ export function ReportBuilder({ isOpen, onClose, messages, userId, userName }: R
             window.URL.revokeObjectURL(url);
             onClose();
         } catch (error) {
+            console.error(`Error exporting report to ${format.toUpperCase()}:`, error);
             alert(`Error al exportar el reporte profesional a ${format.toUpperCase()}`);
         } finally {
             if (format === 'pdf') setExporting(false);

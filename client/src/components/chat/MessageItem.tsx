@@ -9,9 +9,7 @@ import { Message } from "@/context/DashboardContext";
 const Plot = dynamic(() => import("react-plotly.js"), {
     ssr: false,
     loading: () => (
-        <div className="h-[360px] w-full bg-[var(--bi-surface-1)] animate-pulse rounded-lg flex items-center justify-center border border-[var(--bi-border)]">
-            <Loader2 className="w-5 h-5 text-[var(--bi-teal)] animate-spin" />
-        </div>
+        <div className="h-[360px] w-full shimmer-skeleton rounded-lg border border-[var(--bi-border)]" />
     ),
 }) as React.ComponentType<{
     data: Record<string, unknown>[];
@@ -35,12 +33,31 @@ interface MessageItemProps {
     userId: string;
     handleExportPng: (fig: unknown, content: string) => void;
     handlePin: (id: number) => void;
+    handleSendAsQuery?: (queryText: string) => void;
 }
+
+const getCTAs = (content: string) => {
+    const text = content.toLowerCase();
+    const ctas: string[] = [];
+    if (text.includes("venta") || text.includes("sale") || text.includes("ingreso") || text.includes("revenue")) {
+        ctas.push("Simular ROI de ventas", "Ver tendencia de ventas");
+    }
+    if (text.includes("anomal") || text.includes("outlier") || text.includes("desviaci") || text.includes("atípico")) {
+        ctas.push("Analizar distribución", "Magic Clean (Limpiar)");
+    }
+    if (text.includes("cliente") || text.includes("usuario") || text.includes("customer")) {
+        ctas.push("Segmentación de clientes", "Ver tasa de retención");
+    }
+    if (ctas.length < 2) {
+        ctas.push("Detectar anomalías", "Analizar distribución");
+    }
+    return ctas.slice(0, 2);
+};
 
 const isAnomaly = (content: string) =>
     content.includes("⚠️") || content.includes("Auditor de Datos");
 
-export function MessageItem({ msg, userId, handleExportPng, handlePin }: MessageItemProps) {
+export function MessageItem({ msg, userId, handleExportPng, handlePin, handleSendAsQuery }: MessageItemProps) {
     const isUser = msg.role === "user";
     const isAssistant = msg.role === "assistant";
     const anomaly = isAssistant && isAnomaly(msg.content);
@@ -82,6 +99,20 @@ export function MessageItem({ msg, userId, handleExportPng, handlePin }: Message
                             {msg.content}
                         </ReactMarkdown>
                     </div>
+
+                    {isAssistant && handleSendAsQuery && (
+                        <div className="flex flex-wrap gap-2 mt-3 pt-3 border-t border-[var(--bi-border)]">
+                            {getCTAs(msg.content).map((cta, idx) => (
+                                <button
+                                    key={idx}
+                                    onClick={() => handleSendAsQuery(cta)}
+                                    className="px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-[var(--bi-teal)] bg-[var(--bi-teal-dim)] border border-[var(--bi-teal-border)] hover:bg-[var(--bi-teal)] hover:text-black rounded transition-all cursor-pointer inline-flex items-center gap-1"
+                                >
+                                    <span>{cta}</span>
+                                </button>
+                            ))}
+                        </div>
+                    )}
                 </div>
 
                 {/* Chart */}

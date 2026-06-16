@@ -17,12 +17,14 @@ import {
 } from 'lucide-react';
 import { useState } from 'react';
 import { pinCustomDashboardItem } from '@/lib/api';
+import { useToast } from '@/context/ToastContext';
+import { ChartSkeleton } from '@/components/Skeletons';
 
 import { Metric, AutoDashItem } from '@/types/shared';
 
 const Plot = dynamic(() => import("react-plotly.js"), {
     ssr: false,
-    loading: () => <div className="h-64 bg-[var(--bg-tertiary)] rounded-xl animate-pulse"></div>
+    loading: () => <ChartSkeleton type="bar" />
 }) as React.ComponentType<{
     data: Record<string, unknown>[];
     layout: Record<string, unknown>;
@@ -50,6 +52,19 @@ interface PlotlyFigure {
     };
 }
 
+const cleanTitle = (text: string) => {
+    if (!text) return "";
+    return text
+        .replace(/[#*`~_\[\]()]/g, "") // Remueve caracteres markdown
+        .replace(/[\u{1F300}-\u{1F9FF}]/gu, "") // Emojis
+        .replace(/[\u{2700}-\u{27BF}]/gu, "") // Emojis
+        .replace(/[\u{1F600}-\u{1F64F}]/gu, "") // Emojis
+        .replace(/[\u{1F680}-\u{1F6FF}]/gu, "") // Emojis
+        .replace(/[\u{2600}-\u{26FF}]/gu, "") // Símbolos
+        .trim();
+};
+
+
 interface AutoDashGridProps {
     items: AutoDashItem[];
     metrics?: Metric[];
@@ -58,13 +73,16 @@ interface AutoDashGridProps {
 
 export default function AutoDashGrid({ items, metrics = [], userId }: AutoDashGridProps) {
     const [pinnedIndices, setPinnedIndices] = useState<number[]>([]);
+    const { addToast } = useToast();
 
     const handlePin = async (item: AutoDashItem, idx: number) => {
         try {
             await pinCustomDashboardItem(userId, item);
             setPinnedIndices(prev => [...prev, idx]);
+            addToast("Elemento anclado al panel con éxito.", "success");
         } catch (error) {
-            alert("Error al anclar ítem");
+            console.error("Error pinning custom dashboard item:", error);
+            addToast("Error al anclar el elemento al panel.", "error");
         }
     };
 
@@ -145,7 +163,7 @@ export default function AutoDashGrid({ items, metrics = [], userId }: AutoDashGr
                                     </div>
 
                                     <div className="mb-4 px-2 pr-12">
-                                        <h4 className="font-bold text-sm text-[var(--text-primary)] tracking-tight truncate" title={item.title}>{item.title}</h4>
+                                        <h4 className="font-bold text-sm text-[var(--text-primary)] tracking-tight truncate" title={cleanTitle(item.title)}>{cleanTitle(item.title)}</h4>
                                     </div>
 
                                     <div className="flex-1 min-h-[300px] relative rounded-lg overflow-hidden bg-[var(--bg-primary)]/50 border border-[var(--border-color)]/50">
@@ -154,18 +172,30 @@ export default function AutoDashGrid({ items, metrics = [], userId }: AutoDashGr
                                                 data={fig.data}
                                                 layout={{
                                                     ...fig.layout,
+                                                    title: undefined, // Desactivar título interno superpuesto
                                                     width: undefined,
                                                     height: undefined,
                                                     autosize: true,
                                                     paper_bgcolor: 'transparent',
                                                     plot_bgcolor: 'transparent',
                                                     font: { 
-                                                        color: 'var(--text-tertiary)',
-                                                        family: 'Inter, sans-serif'
+                                                        color: 'var(--bi-text-2)',
+                                                        family: 'Inter, sans-serif',
+                                                        size: 9
                                                     },
                                                     margin: { l: 40, r: 20, t: 40, b: 40 },
-                                                    xaxis: { ...(fig.layout.xaxis || {}), gridcolor: 'var(--bi-border)' },
-                                                    yaxis: { ...(fig.layout.yaxis || {}), gridcolor: 'var(--bi-border)' },
+                                                    hoverlabel: {
+                                                        bgcolor: 'var(--bi-surface-1)',
+                                                        bordercolor: 'var(--bi-border-strong)',
+                                                        font: {
+                                                            family: 'Inter, sans-serif',
+                                                            size: 10,
+                                                            color: 'var(--bi-text-1)'
+                                                        }
+                                                    },
+                                                    hovermode: 'closest',
+                                                    xaxis: { ...(fig.layout.xaxis || {}), gridcolor: 'var(--bi-border)', zerolinecolor: 'var(--bi-border)' },
+                                                    yaxis: { ...(fig.layout.yaxis || {}), gridcolor: 'var(--bi-border)', zerolinecolor: 'var(--bi-border)' },
                                                 }}
                                                 style={{ width: '100%', height: '100%' }}
                                                 useResizeHandler={true}

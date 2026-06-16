@@ -526,3 +526,65 @@ body {
 .duration-700  { animation-duration: 0.7s; }
 .duration-1000 { animation-duration: 1s; }
 .delay-300 { animation-delay: 0.3s; }
+
+/* ============================================================
+   ADVANCED PREMIUM STYLES (SHIMMER, DRAG & DROP, SPEAKER FOCUS)
+   ============================================================ */
+
+/* Shimmer loader animation */
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+.shimmer-skeleton {
+  background: linear-gradient(
+    90deg,
+    var(--bi-surface-1) 25%,
+    var(--bi-surface-2) 50%,
+    var(--bi-surface-1) 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite linear;
+}
+
+/* react-grid-layout dragging styles override */
+.react-grid-item.react-draggable-dragging {
+  opacity: 0.60 !important;
+  border: 1px dashed var(--bi-teal-border) !important;
+  box-shadow: 0 0 16px 2px rgba(45, 212, 191, 0.15) !important;
+  z-index: 100 !important;
+  transition: none !important;
+}
+
+.react-grid-item.react-grid-placeholder {
+  background: var(--bi-teal-dim) !important;
+  border: 2px dashed var(--bi-teal) !important;
+  border-radius: 0.75rem !important;
+  opacity: 0.85 !important;
+  box-shadow: inset 0 0 12px 1px rgba(45, 212, 191, 0.1) !important;
+  transition: background-color 0.1s ease-out !important;
+}
+
+/* Swarm Simulation Speaker Focus style */
+.speaker-highlight {
+  border-color: var(--module-simulation-border) !important;
+  background-color: var(--bi-surface-1) !important;
+  box-shadow: 0 0 16px 2px rgba(168, 85, 247, 0.2) !important;
+  animation: speaker-pulse 2s infinite ease-in-out;
+}
+
+@keyframes speaker-pulse {
+  0%, 100% {
+    transform: scale(1);
+    box-shadow: 0 0 16px 2px rgba(168, 85, 247, 0.2) !important;
+  }
+  50% {
+    transform: scale(1.005);
+    box-shadow: 0 0 24px 4px rgba(168, 85, 247, 0.35) !important;
+  }
+}

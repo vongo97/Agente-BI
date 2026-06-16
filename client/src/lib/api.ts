@@ -49,7 +49,7 @@ export async function uploadFile(file: File, userId: string) {
   return handleResponse(response);
 }
 
-export async function analyzeData(query: string, apiKey: string, userId: string, chatId?: number, dataSourceId?: number, provider?: "gemini" | "mistral" | "hybrid", mistralKey?: string) {
+export async function analyzeData(query: string, apiKey: string, userId: string, chatId?: number, dataSourceId?: number, provider?: "gemini" | "mistral" | "hybrid" | "groq", mistralKey?: string) {
   const formData = new FormData();
   formData.append("query", query);
   formData.append("api_key", apiKey);
@@ -166,7 +166,7 @@ export async function exportChartAsPng(figJson: unknown) {
   return response.blob();
 }
 
-export async function generateReportSummary(query: string, apiKey: string, userId: string, provider?: "gemini" | "mistral" | "hybrid", mistralKey?: string) {
+export async function generateReportSummary(query: string, apiKey: string, userId: string, provider?: "gemini" | "mistral" | "hybrid" | "groq", mistralKey?: string) {
   const formData = new FormData();
   formData.append("query", query);
   formData.append("api_key", apiKey);
@@ -201,7 +201,7 @@ export async function exportProfessionalPptx(reportData: unknown) {
   return response.blob();
 }
 
-export async function generateAutoDashboard(apiKey: string, userId: string, dataSourceId?: number, chatId?: number, provider?: "gemini" | "mistral" | "hybrid", mistralKey?: string) {
+export async function generateAutoDashboard(apiKey: string, userId: string, dataSourceId?: number, chatId?: number, provider?: "gemini" | "mistral" | "hybrid" | "groq", mistralKey?: string) {
   const formData = new FormData();
   formData.append("api_key", apiKey);
   formData.append("user_id", userId);
@@ -217,7 +217,7 @@ export async function generateAutoDashboard(apiKey: string, userId: string, data
   return handleResponse(response);
 }
 
-export async function suggestQuestions(userId: string, apiKey: string, dataSourceId?: number, chatId?: number, provider?: "gemini" | "mistral" | "hybrid", mistralKey?: string) {
+export async function suggestQuestions(userId: string, apiKey: string, dataSourceId?: number, chatId?: number, provider?: "gemini" | "mistral" | "hybrid" | "groq", mistralKey?: string) {
   const formData = new FormData();
   formData.append("user_id", userId);
   formData.append("api_key", apiKey);
@@ -257,7 +257,7 @@ export async function exportSimulationPdf(simId: number, userId: string): Promis
   return response.blob();
 }
 
-export async function cleanData(userId: string, apiKey: string, dataSourceId?: number, chatId?: number, provider?: "gemini" | "mistral" | "hybrid", mistralKey?: string) {
+export async function cleanData(userId: string, apiKey: string, dataSourceId?: number, chatId?: number, provider?: "gemini" | "mistral" | "hybrid" | "groq", mistralKey?: string) {
   const formData = new FormData();
   formData.append("user_id", userId);
   formData.append("api_key", apiKey);
@@ -307,7 +307,9 @@ export async function createSimulation(
   apiKey?: string, 
   selectedIds?: number[], 
   provider: string = "gemini", 
-  mistralKey?: string
+  mistralKey?: string,
+  numRounds?: number,
+  agents?: { name: string; role: string; description: string; personality: string }[]
 ) {
   const response = await securedFetch(`${API_URL}/simulation`, {
     method: "POST",
@@ -319,11 +321,50 @@ export async function createSimulation(
       selectedIds: selectedIds,
       apiKey: apiKey,
       provider: provider,
+      mistralKey: mistralKey,
+      numRounds: numRounds,
+      agents: agents
+    }),
+  });
+  return handleResponse(response);
+}
+
+export async function getSimulationOntology(
+  selectedIds: number[],
+  provider: string = "groq"
+) {
+  const response = await securedFetch(`${API_URL}/simulation/ontology`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      selectedIds: selectedIds,
+      provider: provider
+    }),
+  });
+  return handleResponse(response);
+}
+
+export async function generateSimulationAgents(
+  selectedIds: number[],
+  hypothesis: string,
+  provider: string = "groq",
+  apiKey?: string,
+  mistralKey?: string
+) {
+  const response = await securedFetch(`${API_URL}/simulation/generate-agents`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      selectedIds: selectedIds,
+      hypothesis: hypothesis,
+      provider: provider,
+      apiKey: apiKey,
       mistralKey: mistralKey
     }),
   });
   return handleResponse(response);
 }
+
 
 export async function getSimulationSuggestions(
   userId: string, 
@@ -345,8 +386,8 @@ export async function getSimulationSuggestions(
   return handleResponse(response);
 }
 
-export async function getSimulations(userId: string) {
-  const response = await securedFetch(`${API_URL}/simulation/user/${userId}`);
+export async function getSimulations() {
+  const response = await securedFetch(`${API_URL}/simulation`);
   return handleResponse(response);
 }
 
@@ -404,7 +445,20 @@ export async function setUserConfig(
   geminiKey?: string,
   mistralKey?: string,
   gammaKey?: string,
-  preferredProvider?: string
+  preferredProvider?: string,
+  groqKey?: string,
+  temperature?: number,
+  anomalySensitivity?: number,
+  magicCleanStrategy?: string,
+  currencyFormat?: string,
+  dateFormat?: string,
+  brandColor?: string,
+  brandLogoUrl?: string,
+  reportOrgName?: string,
+  reportFooterText?: string,
+  pdfOrientation?: string,
+  pdfIncludeDataTable?: boolean,
+  chartTheme?: string
 ) {
   const formData = new FormData();
   formData.append("user_id", userId);
@@ -412,6 +466,19 @@ export async function setUserConfig(
   if (mistralKey !== undefined) formData.append("mistral_key", mistralKey);
   if (gammaKey !== undefined) formData.append("gamma_key", gammaKey);
   if (preferredProvider !== undefined) formData.append("preferred_provider", preferredProvider);
+  if (groqKey !== undefined) formData.append("groq_key", groqKey);
+  if (temperature !== undefined) formData.append("temperature", temperature.toString());
+  if (anomalySensitivity !== undefined) formData.append("anomaly_sensitivity", anomalySensitivity.toString());
+  if (magicCleanStrategy !== undefined) formData.append("magic_clean_strategy", magicCleanStrategy);
+  if (currencyFormat !== undefined) formData.append("currency_format", currencyFormat);
+  if (dateFormat !== undefined) formData.append("date_format", dateFormat);
+  if (brandColor !== undefined) formData.append("brand_color", brandColor);
+  if (brandLogoUrl !== undefined) formData.append("brand_logo_url", brandLogoUrl);
+  if (reportOrgName !== undefined) formData.append("report_org_name", reportOrgName);
+  if (reportFooterText !== undefined) formData.append("report_footer_text", reportFooterText);
+  if (pdfOrientation !== undefined) formData.append("pdf_orientation", pdfOrientation);
+  if (pdfIncludeDataTable !== undefined) formData.append("pdf_include_data_table", pdfIncludeDataTable.toString());
+  if (chartTheme !== undefined) formData.append("chart_theme", chartTheme);
 
   const response = await securedFetch(`${API_URL}/user-config`, {
     method: "POST",

@@ -28,6 +28,11 @@ Guía de tipos visuales a seleccionar si no hay sugerencia:
 - Si compara elementos, pros y contras, ventajas y desventajas o características paralelas, usa "comparison".
 - Si describe componentes técnicos, arquitectura de sistemas, flujos de datos de red o infraestructura, usa "architecture".
 
+Reglas críticas para el código Mermaid generado:
+1. NO incluyas estilos de color en línea (como `style Node1 fill:#...`, `linkStyle...` o sentencias `classDef` con colores hexadecimales fijos). Deja que el cliente aplique los estilos dinámicamente según el modo de color de la aplicación.
+2. Evita usar caracteres especiales, guiones, barras, espacios o tildes en los IDs internos de los nodos (usa por ejemplo `node1`, `node2` o `A`, `B`, `C` en lugar de `nodo-1` o `nodo_1`). El texto a mostrar sí puede llevar espacios y caracteres especiales si lo encierras entre comillas o corchetes, por ejemplo: `node1["Texto con espacios"]` o `A[Texto del nodo]`.
+3. Mantén los diagramas limpios, concisos y bien estructurados.
+
 Contenido a resumir:
 {inputText}
 
@@ -38,7 +43,15 @@ Devuelve exactamente esta estructura JSON:
   "key_points": ["Punto clave 1", "Punto clave 2", "Punto clave 3"],
   "visual_type": "flowchart | mindmap | timeline | comparison | architecture",
   "mermaid": "Código Mermaid válido y autoconstruido que represente el contenido",
-  "confidence": "low | medium | high"
+  "confidence": "low | medium | high",
+  "graph_data": {{
+    "nodes": [
+      {{ "id": "nombre_id_nodo_unico", "label": "Texto corto y legible del nodo", "type": "root | child | leaf", "icon": "nombre_de_icono_lucide_opcional" }}
+    ],
+    "edges": [
+      {{ "source": "id_origen", "target": "id_destino", "label": "relacion_opcional" }}
+    ]
+  }}
 }}
 """
 
@@ -83,6 +96,38 @@ def validate_visual_summary_response(data: Any) -> Dict[str, Any]:
         data["confidence"] = "medium"  # Fallback seguro
     else:
         data["confidence"] = confidence
+
+    # 7. Validar graph_data
+    if "graph_data" not in data or not isinstance(data["graph_data"], dict):
+        data["graph_data"] = {"nodes": [], "edges": []}
+    else:
+        graph = data["graph_data"]
+        if "nodes" not in graph or not isinstance(graph["nodes"], list):
+            graph["nodes"] = []
+        else:
+            # Limpiar nodos vacíos o incorrectos
+            valid_nodes = []
+            for node in graph["nodes"]:
+                if isinstance(node, dict) and "id" in node and "label" in node:
+                    node["id"] = str(node["id"]).strip()
+                    node["label"] = str(node["label"]).strip()
+                    node["type"] = str(node.get("type", "child")).strip().lower()
+                    node["icon"] = str(node.get("icon", "")).strip().lower()
+                    valid_nodes.append(node)
+            graph["nodes"] = valid_nodes
+
+        if "edges" not in graph or not isinstance(graph["edges"], list):
+            graph["edges"] = []
+        else:
+            # Limpiar aristas vacías o incorrectas
+            valid_edges = []
+            for edge in graph["edges"]:
+                if isinstance(edge, dict) and "source" in edge and "target" in edge:
+                    edge["source"] = str(edge["source"]).strip()
+                    edge["target"] = str(edge["target"]).strip()
+                    edge["label"] = str(edge.get("label", "")).strip()
+                    valid_edges.append(edge)
+            graph["edges"] = valid_edges
         
     return data
 

@@ -1,9 +1,20 @@
 'use client';
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Brain, Download, PlusCircle, Menu } from "lucide-react";
 import { useDashboard } from "@/context/DashboardContext";
-import { createSimulation, getSimulations, getSimulationDetails, getSimulationMessages, exportSimulationPdf, getDataSources, getSimulationSuggestions } from "@/lib/api";
+import { useToast } from "@/context/ToastContext";
+import { 
+  createSimulation, 
+  getSimulations, 
+  getSimulationDetails, 
+  getSimulationMessages, 
+  exportSimulationPdf, 
+  getDataSources, 
+  getSimulationSuggestions,
+  getSimulationOntology,
+  generateSimulationAgents
+} from "@/lib/api";
 import { Simulation, SimulationMessage, DataSource } from "@/types/shared";
 
 // Sub-componentes refactorizados
@@ -11,11 +22,16 @@ import { SimHistory } from "./simulation/SimHistory";
 import { SimForm } from "./simulation/SimForm";
 import { SimDebate } from "./simulation/SimDebate";
 import { SimReport } from "./simulation/SimReport";
+import { SimOntologyGraph } from "./simulation/SimOntologyGraph";
+import { SimAgentConfig } from "./simulation/SimAgentConfig";
+
 
 export function SimulationSandbox() {
-    const { apiKey, mistralKey, aiProvider, setAiProvider, userId, dataSources, setSidebarOpen } = useDashboard();
+    const { apiKey, mistralKey, groqKey, aiProvider, setAiProvider, userId, dataSources, setSidebarOpen } = useDashboard();
+    const { addToast } = useToast();
     const [title, setTitle] = useState("");
     const [hypothesis, setHypothesis] = useState("");
+    const [numRounds, setNumRounds] = useState(3);
     const [loading, setLoading] = useState(false);
     const [simulations, setSimulations] = useState<Simulation[]>([]);
     const [activeSim, setActiveSim] = useState<Simulation | null>(null);
@@ -27,9 +43,17 @@ export function SimulationSandbox() {
     const [loadingSuggestions, setLoadingSuggestions] = useState(false);
     const [downloadingPdf, setDownloadingPdf] = useState(false);
 
+    // Flujo MiroFish: form -> ontology -> agents
+    const [sandboxStep, setSandboxStep] = useState<'form' | 'ontology' | 'agents'>('form');
+    const [ontologyData, setOntologyData] = useState<{ nodes: any[]; edges: any[] }>({ nodes: [], edges: [] });
+    const [loadingOntology, setLoadingOntology] = useState(false);
+    const [agentsData, setAgentsData] = useState<any[]>([]);
+    const [generatingAgents, setGeneratingAgents] = useState(false);
+
     const handleDownloadPdf = async () => {
         if (!activeSim?.id) return;
         setDownloadingPdf(true);
+        addToast("Iniciando la exportación del veredicto...", "info", 1500);
         try {
             const blob = await exportSimulationPdf(activeSim.id, userId);
             const url = window.URL.createObjectURL(blob);
@@ -40,27 +64,37 @@ export function SimulationSandbox() {
             a.click();
             window.URL.revokeObjectURL(url);
             a.remove();
+            addToast("Veredicto exportado en PDF con éxito.", "success");
         } catch (err) {
             console.error("Error al descargar PDF de simulación:", err);
-            alert("Error al descargar el veredicto en PDF de forma segura.");
+            addToast("Error al exportar el veredicto en PDF.", "error");
         } finally {
             setDownloadingPdf(false);
         }
     };
 
-    useEffect(() => {
-        fetchSimulations();
-        fetchHistoricalSources();
-    }, [userId]);
+    const fetchSimulations = useCallback(async () => {
+        try {
+            const data = await getSimulations() as Simulation[];
+            setSimulations(data);
+        } catch (err) {
+            console.error("Error fetching simulations", err);
+        }
+    }, []);
 
-    const fetchHistoricalSources = async () => {
+    const fetchHistoricalSources = useCallback(async () => {
         try {
             const data = await getDataSources(userId);
             setAllHistoricalSources(data);
         } catch (e) {
             console.error("Error fetching historical sources", e);
         }
-    };
+    }, [userId]);
+
+    useEffect(() => {
+        fetchSimulations();
+        fetchHistoricalSources();
+    }, [userId, fetchSimulations, fetchHistoricalSources]);
 
     useEffect(() => {
         if (dataSources.length > 0) {
@@ -78,11 +112,17 @@ export function SimulationSandbox() {
 
     const fetchSuggestions = async () => {
         const currentUserId = userId || localStorage.getItem("userId") || "invitado@agente-bi.local";
-        if (selectedSources.size === 0 || (!apiKey && !mistralKey)) return;
+        if (selectedSources.size === 0 || (!apiKey && !mistralKey && !groqKey)) return;
         setLoadingSuggestions(true);
         try {
             const ids = Array.from(selectedSources);
-            const data = await getSimulationSuggestions(currentUserId, ids, apiKey, aiProvider, mistralKey);
+            let currentApiKey = apiKey;
+            if (aiProvider === 'mistral') {
+                currentApiKey = mistralKey;
+            } else if (aiProvider === 'groq') {
+                currentApiKey = groqKey;
+            }
+            const data = await getSimulationSuggestions(currentUserId, ids, currentApiKey, aiProvider, mistralKey);
             setSuggestions(data);
         } catch (err) {
             console.error("Error fetching suggestions", err);
@@ -111,51 +151,107 @@ export function SimulationSandbox() {
             }, 2000);
         }
         return () => clearInterval(interval);
-    }, [polling, activeSim]);
+    }, [polling, activeSim, fetchSimulations]);
 
-    const fetchSimulations = async () => {
-        try {
-            const data = await getSimulations(userId) as Simulation[];
-            setSimulations(data);
-        } catch (err) {
-            console.error("Error fetching simulations", err);
-        }
-    };
 
-    const handleStart = async () => {
-        const currentUserId = userId || localStorage.getItem("userId") || "invitado@agente-bi.local";
-        const currentApiKey = aiProvider === 'mistral' ? mistralKey : apiKey;
-        
-        if (!currentApiKey && aiProvider !== 'hybrid') {
-            alert("Asegúrate de tener una API Key para el motor seleccionado.");
-            return;
-        }
+
+    const handleExtractOntology = async () => {
         if (!title || !hypothesis) {
-            alert("Completa el título y la hipótesis.");
+            addToast("Completa el título y la hipótesis de debate.", "warning");
             return;
         }
         if (selectedSources.size === 0) {
-            alert("Selecciona al menos un archivo.");
+            addToast("Selecciona al menos un archivo para fundamentar el debate.", "warning");
             return;
         }
+
+        setSandboxStep('ontology');
+        setLoadingOntology(true);
+        setOntologyData({ nodes: [], edges: [] });
+        try {
+            const ids = Array.from(selectedSources);
+            const data = await getSimulationOntology(ids, aiProvider === 'groq' ? 'groq' : 'gemini');
+            setOntologyData(data);
+        } catch (err) {
+            console.error("Error al extraer ontología:", err);
+            addToast("Error al modelar el Reality Graph de los datos.", "error");
+            setSandboxStep('form');
+        } finally {
+            setLoadingOntology(false);
+        }
+    };
+
+    const handleGenerateAgents = async () => {
+        setGeneratingAgents(true);
+        try {
+            const ids = Array.from(selectedSources);
+            let currentApiKey = apiKey;
+            if (aiProvider === 'mistral') {
+                currentApiKey = mistralKey;
+            } else if (aiProvider === 'groq') {
+                currentApiKey = groqKey;
+            }
+            const data = await generateSimulationAgents(ids, hypothesis, aiProvider, currentApiKey, mistralKey);
+            setAgentsData(data);
+            setSandboxStep('agents');
+        } catch (err) {
+            console.error("Error al generar agentes:", err);
+            addToast("Error al estructurar el enjambre de agentes consultores.", "error");
+        } finally {
+            setGeneratingAgents(false);
+        }
+    };
+
+    const handleStartDebate = async () => {
+        const currentUserId = userId || localStorage.getItem("userId") || "invitado@agente-bi.local";
+        let currentApiKey = apiKey;
+        if (aiProvider === 'mistral') {
+            currentApiKey = mistralKey;
+        } else if (aiProvider === 'groq') {
+            currentApiKey = groqKey;
+        }
+        
+        if (!currentApiKey) {
+            addToast("Asegúrate de tener una API Key para el motor seleccionado en Configuración.", "warning");
+            return;
+        }
+        
         setLoading(true);
+        addToast("Iniciando debate con enjambre personalizado...", "info", 2000);
         try {
             const ids = Array.from(selectedSources);
             const res = await createSimulation(
-                currentUserId, title, hypothesis, undefined, apiKey, ids, aiProvider, mistralKey
+                currentUserId, 
+                title, 
+                hypothesis, 
+                undefined, 
+                currentApiKey, 
+                ids, 
+                aiProvider, 
+                mistralKey, 
+                numRounds,
+                agentsData
             );
             const initialDetails = await getSimulationDetails(res.simulation_id) as Simulation;
             setActiveSim(initialDetails);
             setMessages([]);
             setPolling(true);
+            
+            // Limpiar formulario y resetear paso
             setTitle("");
             setHypothesis("");
+            setSandboxStep('form');
+            setAgentsData([]);
+            setOntologyData({ nodes: [], edges: [] });
+            addToast("Debate iniciado con éxito.", "success");
         } catch (err) {
-            alert("Error al iniciar simulación");
+            console.error("Error starting simulation:", err);
+            addToast("Error al iniciar el debate de agentes.", "error");
         } finally {
             setLoading(false);
         }
     };
+
 
     const loadSim = async (sim: Simulation) => {
         setActiveSim(sim);
@@ -213,16 +309,37 @@ export function SimulationSandbox() {
 
                 <div className="flex-1 overflow-y-auto p-6 lg:p-8 space-y-12 custom-scrollbar bg-[var(--bi-canvas)]">
                     {!activeSim ? (
-                        <SimForm 
-                            aiProvider={aiProvider} setAiProvider={setAiProvider}
-                            title={title} setTitle={setTitle}
-                            hypothesis={hypothesis} setHypothesis={setHypothesis}
-                            suggestions={suggestions} fetchSuggestions={fetchSuggestions}
-                            loadingSuggestions={loadingSuggestions} applySuggestion={applySuggestion}
-                            allHistoricalSources={allHistoricalSources} selectedSources={selectedSources}
-                            toggleSource={toggleSource} dataSources={dataSources}
-                            handleStart={handleStart} loading={loading}
-                        />
+                        sandboxStep === 'form' ? (
+                            <SimForm 
+                                aiProvider={aiProvider} setAiProvider={setAiProvider}
+                                title={title} setTitle={setTitle}
+                                hypothesis={hypothesis} setHypothesis={setHypothesis}
+                                suggestions={suggestions} fetchSuggestions={fetchSuggestions}
+                                loadingSuggestions={loadingSuggestions} applySuggestion={applySuggestion}
+                                allHistoricalSources={allHistoricalSources} selectedSources={selectedSources}
+                                toggleSource={toggleSource} dataSources={dataSources}
+                                handleStart={handleExtractOntology} loading={loading}
+                                numRounds={numRounds} setNumRounds={setNumRounds}
+                            />
+                        ) : sandboxStep === 'ontology' ? (
+                            <SimOntologyGraph
+                                nodes={ontologyData.nodes}
+                                edges={ontologyData.edges}
+                                loading={loadingOntology}
+                                onNext={() => setSandboxStep('agents')}
+                                onGenerateAgents={handleGenerateAgents}
+                                generatingAgents={generatingAgents}
+                                hasGeneratedAgents={agentsData.length > 0}
+                            />
+                        ) : (
+                            <SimAgentConfig
+                                agents={agentsData}
+                                onChange={setAgentsData}
+                                onBack={() => setSandboxStep('ontology')}
+                                onStart={handleStartDebate}
+                                loading={loading}
+                            />
+                        )
                     ) : (
                         <div className="flex flex-col h-full animate-in fade-in duration-500">
                             <div className="grid grid-cols-12 gap-8 h-full">

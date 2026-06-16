@@ -76,6 +76,8 @@ export interface SimulationMessage {
     agent_id?: number;
     agent_name?: string;
     agent_role?: string;
+    agent_description?: string;
+    agent_personality?: string;
     content: string;
     round_number: number;
     created_at: string;
@@ -85,5 +87,6 @@ export interface UserConfig {
     gemini_key: string;
     mistral_key: string;
     gamma_key: string;
+    groq_key?: string;
     preferred_provider: string;
 }

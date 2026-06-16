@@ -52,7 +52,23 @@ async def export_pdf_report(request: Request, chat_id: int, db: Session = Depend
                 "fig": json.loads(m.figure_json) if m.figure_json else None
             })
         
-        pdf_bytes = generate_pdf_report(authenticated_user, messages_list)
+        # Obtener configuración del usuario
+        from src.database import UserConfig
+        cfg = db.query(UserConfig).filter(UserConfig.user_id == authenticated_user).first()
+        
+        brand_color = cfg.brand_color if cfg and cfg.brand_color else "#2dd4bf"
+        report_org_name = cfg.report_org_name if cfg and cfg.report_org_name else "VEKTRA BI"
+        report_footer_text = cfg.report_footer_text if cfg and cfg.report_footer_text else "Confidencial - Solo uso interno"
+        pdf_orientation = cfg.pdf_orientation if cfg and cfg.pdf_orientation else "portrait"
+        
+        pdf_bytes = generate_pdf_report(
+            user_name=authenticated_user, 
+            messages=messages_list,
+            brand_color=brand_color,
+            report_org_name=report_org_name,
+            report_footer_text=report_footer_text,
+            pdf_orientation=pdf_orientation
+        )
         return Response(
             content=bytes(pdf_bytes), 
             media_type="application/pdf",
@@ -68,7 +84,7 @@ async def export_pdf_report(request: Request, chat_id: int, db: Session = Depend
 @router.post("/export/report")
 @limiter.limit("5/minute")
 @limiter.limit("20/hour")
-async def export_pro_report(request: Request, data: dict):
+async def export_pro_report(request: Request, data: dict, db: Session = Depends(get_db)):
     """
     Genera un Reporte PDF Profesional basado en los datos curados por el usuario.
     """
@@ -81,8 +97,30 @@ async def export_pro_report(request: Request, data: dict):
 
     from src.utils.exporter import generate_pro_report
     
+    # Obtener configuración del usuario
+    from src.database import UserConfig
+    cfg = db.query(UserConfig).filter(UserConfig.user_id == authenticated_user).first()
+    
+    brand_color = cfg.brand_color if cfg and cfg.brand_color else "#2dd4bf"
+    report_org_name = cfg.report_org_name if cfg and cfg.report_org_name else "VEKTRA BI"
+    report_footer_text = cfg.report_footer_text if cfg and cfg.report_footer_text else "Confidencial - Solo uso interno"
+    pdf_orientation = cfg.pdf_orientation if cfg and cfg.pdf_orientation else "portrait"
+    pdf_include_data_table = cfg.pdf_include_data_table if cfg and cfg.pdf_include_data_table is not None else True
+    chart_theme = cfg.chart_theme if cfg and cfg.chart_theme else "neon"
+    
     try:
-        pdf_bytes = generate_pro_report(title, summary, user_name, items)
+        pdf_bytes = generate_pro_report(
+            title=title, 
+            summary=summary, 
+            user_name=user_name, 
+            items=items,
+            brand_color=brand_color,
+            report_org_name=report_org_name,
+            report_footer_text=report_footer_text,
+            pdf_orientation=pdf_orientation,
+            pdf_include_data_table=pdf_include_data_table,
+            chart_theme=chart_theme
+        )
         return Response(
             content=bytes(pdf_bytes),
             media_type="application/pdf",

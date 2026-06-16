@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine, Column, Integer, String, Text, ForeignKey, DateTime, text
+from sqlalchemy import create_engine, Column, Integer, String, Text, ForeignKey, DateTime, Float, Boolean, text
 from sqlalchemy.orm import sessionmaker, relationship, DeclarativeBase
 from datetime import datetime
 import os
@@ -79,7 +79,20 @@ class UserConfig(Base):
     gemini_key = Column(String, nullable=True)
     mistral_key = Column(String, nullable=True)
     gamma_key = Column(String, nullable=True)
+    groq_key = Column(String, nullable=True)
     preferred_provider = Column(String, default="gemini")
+    temperature = Column(Float, default=0.2, nullable=True)
+    anomaly_sensitivity = Column(Float, default=2.5, nullable=True)
+    magic_clean_strategy = Column(String, default="remove", nullable=True)
+    currency_format = Column(String, default="USD", nullable=True)
+    date_format = Column(String, default="DD/MM/YYYY", nullable=True)
+    brand_color = Column(String, default="#2dd4bf", nullable=True)
+    brand_logo_url = Column(String, nullable=True)
+    report_org_name = Column(String, default="VEKTRA BI", nullable=True)
+    report_footer_text = Column(String, default="Confidencial - Solo uso interno", nullable=True)
+    pdf_orientation = Column(String, default="portrait", nullable=True)
+    pdf_include_data_table = Column(Boolean, default=True, nullable=True)
+    chart_theme = Column(String, default="neon", nullable=True)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 class DashboardItem(Base):
@@ -154,6 +167,29 @@ def init_db():
     try:
         Base.metadata.create_all(bind=engine)
         logger.info("Tablas sincronizadas con Base.metadata.create_all")
+        # Migración rápida en caliente para agregar nuevas columnas si no existen
+        with engine.connect() as conn:
+            for col, col_type in [
+                ("groq_key", "VARCHAR"),
+                ("temperature", "FLOAT"),
+                ("anomaly_sensitivity", "FLOAT"),
+                ("magic_clean_strategy", "VARCHAR"),
+                ("currency_format", "VARCHAR"),
+                ("date_format", "VARCHAR"),
+                ("brand_color", "VARCHAR"),
+                ("brand_logo_url", "VARCHAR"),
+                ("report_org_name", "VARCHAR"),
+                ("report_footer_text", "VARCHAR"),
+                ("pdf_orientation", "VARCHAR"),
+                ("pdf_include_data_table", "BOOLEAN"),
+                ("chart_theme", "VARCHAR")
+            ]:
+                try:
+                    conn.execute(text(f"ALTER TABLE user_configs ADD COLUMN {col} {col_type};"))
+                    conn.commit()
+                    logger.info(f"Migrada DB: columna {col} añadida a user_configs.")
+                except Exception:
+                    pass
     except Exception as e:
         logger.error("ERROR en init_db: %s", sanitize_db_error(str(e)))
 

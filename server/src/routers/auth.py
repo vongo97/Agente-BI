@@ -39,12 +39,39 @@ async def get_user_config(db: Session = Depends(get_db)):
     check_authorization(authenticated_user)
     config = db.query(UserConfig).filter(UserConfig.user_id == authenticated_user).first()
     if not config:
-        return {"gemini_key": "", "mistral_key": "", "gamma_key": "", "preferred_provider": "gemini"}
+        return {
+            "gemini_key": "", "mistral_key": "", "gamma_key": "", "groq_key": "", "preferred_provider": "gemini",
+            "temperature": 0.2,
+            "anomaly_sensitivity": 2.5,
+            "magic_clean_strategy": "remove",
+            "currency_format": "USD",
+            "date_format": "DD/MM/YYYY",
+            "brand_color": "#2dd4bf",
+            "brand_logo_url": "",
+            "report_org_name": "VEKTRA BI",
+            "report_footer_text": "Confidencial - Solo uso interno",
+            "pdf_orientation": "portrait",
+            "pdf_include_data_table": True,
+            "chart_theme": "neon"
+        }
     return {
         "gemini_key": mask_key(config.gemini_key),
         "mistral_key": mask_key(config.mistral_key),
         "gamma_key": mask_key(config.gamma_key),
-        "preferred_provider": config.preferred_provider or "gemini"
+        "groq_key": mask_key(config.groq_key),
+        "preferred_provider": config.preferred_provider or "gemini",
+        "temperature": config.temperature if config.temperature is not None else 0.2,
+        "anomaly_sensitivity": config.anomaly_sensitivity if config.anomaly_sensitivity is not None else 2.5,
+        "magic_clean_strategy": config.magic_clean_strategy or "remove",
+        "currency_format": config.currency_format or "USD",
+        "date_format": config.date_format or "DD/MM/YYYY",
+        "brand_color": config.brand_color or "#2dd4bf",
+        "brand_logo_url": config.brand_logo_url or "",
+        "report_org_name": config.report_org_name or "VEKTRA BI",
+        "report_footer_text": config.report_footer_text or "Confidencial - Solo uso interno",
+        "pdf_orientation": config.pdf_orientation or "portrait",
+        "pdf_include_data_table": config.pdf_include_data_table if config.pdf_include_data_table is not None else True,
+        "chart_theme": config.chart_theme or "neon"
     }
 
 @router.post("/user-config")
@@ -52,7 +79,20 @@ async def set_user_config(
     gemini_key: Optional[str] = Form(None),
     mistral_key: Optional[str] = Form(None),
     gamma_key: Optional[str] = Form(None),
+    groq_key: Optional[str] = Form(None),
     preferred_provider: Optional[str] = Form(None),
+    temperature: Optional[float] = Form(None),
+    anomaly_sensitivity: Optional[float] = Form(None),
+    magic_clean_strategy: Optional[str] = Form(None),
+    currency_format: Optional[str] = Form(None),
+    date_format: Optional[str] = Form(None),
+    brand_color: Optional[str] = Form(None),
+    brand_logo_url: Optional[str] = Form(None),
+    report_org_name: Optional[str] = Form(None),
+    report_footer_text: Optional[str] = Form(None),
+    pdf_orientation: Optional[str] = Form(None),
+    pdf_include_data_table: Optional[bool] = Form(None),
+    chart_theme: Optional[str] = Form(None),
     db: Session = Depends(get_db)
 ):
     authenticated_user = get_authenticated_user()
@@ -76,8 +116,25 @@ async def set_user_config(
         config.gamma_key = encrypt_key(gamma_key)
     elif gamma_key == "":
         config.gamma_key = None
+
+    if groq_key is not None and not is_masked(groq_key) and groq_key.strip() != "":
+        config.groq_key = encrypt_key(groq_key)
+    elif groq_key == "":
+        config.groq_key = None
         
     if preferred_provider is not None: config.preferred_provider = preferred_provider
+    if temperature is not None: config.temperature = temperature
+    if anomaly_sensitivity is not None: config.anomaly_sensitivity = anomaly_sensitivity
+    if magic_clean_strategy is not None: config.magic_clean_strategy = magic_clean_strategy
+    if currency_format is not None: config.currency_format = currency_format
+    if date_format is not None: config.date_format = date_format
+    if brand_color is not None: config.brand_color = brand_color
+    if brand_logo_url is not None: config.brand_logo_url = brand_logo_url
+    if report_org_name is not None: config.report_org_name = report_org_name
+    if report_footer_text is not None: config.report_footer_text = report_footer_text
+    if pdf_orientation is not None: config.pdf_orientation = pdf_orientation
+    if pdf_include_data_table is not None: config.pdf_include_data_table = pdf_include_data_table
+    if chart_theme is not None: config.chart_theme = chart_theme
     
     db.commit()
     return {"message": "Configuración guardada correctamente"}

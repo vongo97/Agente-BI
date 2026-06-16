@@ -6,7 +6,7 @@ import {
     FileText, X, Brain, Sparkles,
     MessageSquare, History, LayoutDashboard, LogIn
 } from "lucide-react";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import {
     uploadFile, connectSql, connectGoogleSheets,
     getHistory, getChatDetails, getDataSources,
@@ -42,25 +42,24 @@ export function Sidebar() {
     const [showGSheetsInput, setShowGSheetsInput] = useState(false);
     const [sqlUrl, setSqlUrl] = useState("");
     const [gsheetsUrl, setGsheetsUrl] = useState("");
-    const saveConnection = false;
     const [history, setHistory] = useState<ChatSession[]>([]);
     const [savedSources, setSavedSources] = useState<DataSource[]>([]);
 
     const userId = session?.user?.email || "invitado@agente-bi.local";
 
-    useEffect(() => {
-        if (userId) { fetchHistory(); fetchSources(); }
-    }, [userId, activeChatId]);
-
-    const fetchSources = async () => {
+    const fetchSources = useCallback(async () => {
         try { const data = await getDataSources(userId); setSavedSources(data); }
         catch (err) { console.error("Error fetching sources:", err); }
-    };
+    }, [userId]);
 
-    const fetchHistory = async () => {
+    const fetchHistory = useCallback(async () => {
         try { const data = await getHistory(userId); setHistory(data); }
         catch (err) { console.error("Error fetching history:", err); }
-    };
+    }, [userId]);
+
+    useEffect(() => {
+        if (userId) { fetchHistory(); fetchSources(); }
+    }, [userId, activeChatId, fetchHistory, fetchSources]);
 
     const loadChat = async (id: number) => {
         try {
@@ -77,7 +76,10 @@ export function Sidebar() {
             }
             setView('chat');
             if (window.innerWidth < 1024) setSidebarOpen(false);
-        } catch (err) { alert("Error al cargar chat"); }
+        } catch (err) {
+            console.error("Error loading chat:", err);
+            alert("Error al cargar chat");
+        }
     };
 
 
@@ -344,6 +346,7 @@ export function Sidebar() {
                     {session?.user && (
                         <div className="flex items-center gap-2 px-1">
                             {session.user.image
+                                // eslint-disable-next-line @next/next/no-img-element
                                 ? <img src={session.user.image} className="w-6 h-6 rounded-full border border-[var(--bi-border)]" alt="Avatar" />
                                 : <div className="w-6 h-6 rounded-full bg-[var(--bi-surface-2)] flex items-center justify-center"><LogIn className="w-3 h-3 text-[var(--bi-text-3)]" /></div>
                             }

@@ -170,19 +170,19 @@ ESCENARIO DE LA SIMULACIÓN:
 Hipótesis a debatir: "{hypothesis}"
 Ronda de simulación: {round_number}
 
-DATOS Y HECHOS REALES (Resumen de tus documentos):
+DATOS Y HECHOS REALES DE TU NEGOCIO (Semilla factual):
 {context_str}
 
-CONTEXTO DE LA DISCUSIÓN PREVIA:
+CONTEXTO DE LA DISCUSIÓN PREVIA ENTRE AGENTES:
 {history_str}
 
-TU MISIÓN:
-1. Participa en el debate de forma natural y humana.
-2. Mantén tu personalidad y sesgos en todo momento. No seas complaciente si tu rol no lo es.
-3. Puedes reaccionar a lo que dijeron otros agentes o introducir nuevos puntos de vista basados en tus motivaciones.
-4. Tu respuesta debe ser breve y directa (máximo 3-4 frases).
+TU MISIÓN EN ESTE TURNO:
+1. **Participa de forma natural:** Habla con un tono humano y fluido que corresponda a tu personalidad.
+2. **Cita datos reales:** Fundamenta tus afirmaciones citando columnas o datos reales descritos en los "DATOS Y HECHOS REALES". Está prohibido inventar datos ficticios.
+3. **Dinámica de Debate (Confrontación):** Si estás en la ronda de simulación 2 o superior, debes responder o cuestionar directamente los argumentos expuestos por otros agentes en la "DISCUSIÓN PREVIA" para rebatirlos o complementarlos de forma racional.
+4. **Brevedad:** Tu réplica debe ser muy concisa, directa y al grano (máximo 3-4 oraciones de puro valor analítico).
 
-REGLA DE ORO: NO menciones que eres una IA. Habla como el personaje que se te asignó.
+REGLA DE ORO: NO menciones que eres un modelo de lenguaje o IA. Habla en primera persona como el personaje asignado.
 """
 
 # 3. El Estratega de Futuros (Deep Think Report)
@@ -304,6 +304,8 @@ REGLAS ESTRICTAS PARA LA GENERACIÓN DE CÓDIGO PYTHON:
    - Asegúrate de configurar los títulos de ejes y etiquetas correctamente.
    - NUNCA uses matplotlib ni guardes archivos de imágenes en disco.
    - Asegúrate de evitar la colisión de elementos en gráficos. Configura márgenes explícitos `fig.update_layout(margin=dict(l=50, r=50, t=80, b=50))`. Si hay múltiples series o nombres de categoría largos, coloca la leyenda en posición horizontal debajo del gráfico: `fig.update_layout(legend=dict(orientation='h', yanchor='bottom', y=-0.2, xanchor='center', x=0.5))`.
+   - **Líneas de Referencia (Benchmarks / Opportunity Thresholds):** Cuando el análisis involucre metas, promedios o comparaciones de rendimiento, añade siempre una línea de referencia discontinua (`fig.add_hline(y=promedio, line_dash="dash", line_color="gray", annotation_text="Promedio")` o `add_vline`).
+   - **Colores Dinámicos:** En gráficos de barras o dispersión que analicen crecimiento, rentabilidad o cumplimiento de metas, usa colores semánticos dinámicos (ej: verde para oportunidades/crecimiento positivo, y rojo o ámbar para devaluaciones o valores por debajo del promedio). Puedes lograr esto pasando una lista de colores calculada según las condiciones del dataset a la propiedad `color_discrete_sequence` o usando escalas de color secuenciales adecuadas de Plotly.
 4. Robustez:
    - Si manejas fechas, conviértelas a datetime primero usando `pd.to_datetime` con `errors='coerce'`. Evita usar `.str` sobre columnas de fecha antes de convertirlas.
    - Controla posibles KeyErrors o errores de tipo.
@@ -350,4 +352,29 @@ Debes responder ÚNICAMENTE con un objeto JSON válido con la siguiente estructu
   "feedback": "Instrucciones técnicas específicas y accionables para corregir el código en la próxima iteración. Sé sumamente preciso con los nombres de columnas o funciones a corregir."
 }}
 """
+
+SIMULATION_ONTOLOGY_PROMPT = """
+Eres un Ingeniero de Grafos de Conocimiento y Arquitecto de Datos de primer nivel. Tu objetivo es analizar la estructura y la muestra de datos del negocio para extraer una ontología (Grafo de Realidad) estructurada que codifique las entidades y relaciones más importantes de los datos.
+
+DATOS DISPONIBLES (Contexto Técnico):
+{context_str}
+
+MUESTRA REAL DE DATOS:
+{head_str}
+
+REGLAS DE ORO (INCUMPLIMIENTO = ERROR):
+1. **ENTIDADES REALES**: Los nodos deben ser columnas clave del dataset, nombres de métricas clave, variables numéricas importantes, sectores o tipos de datos representativos que aparezcan en los archivos.
+2. **RELACIONES LÓGICAS**: Las aristas deben modelar dependencias reales de negocio (ej: "ingresos" -> "afecta_a" -> "ganancia", o "total_pasivos" -> "aumenta" -> "ratio_endeudamiento").
+3. **MÁXIMO 8 NODOS**: Para evitar la saturación visual, extrae únicamente entre 5 y 8 entidades principales y sus relaciones directas más críticas.
+4. **FORMATO JSON EXCLUSIVO**: Debes responder únicamente con un objeto JSON estructurado con el siguiente formato, sin explicaciones ni markdown:
+{{
+  "nodes": [
+    {{"id": "id_del_nodo_en_minuscula", "label": "Etiqueta Legible del Nodo", "type": "Metric | Entity | Category"}}
+  ],
+  "edges": [
+    {{"source": "id_del_nodo_origen", "target": "id_del_nodo_destino", "relationship": "relacion_corta"}}
+  ]
+}}
+"""
+
 

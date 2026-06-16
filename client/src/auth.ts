@@ -3,40 +3,36 @@ import Google from "next-auth/providers/google"
 import Credentials from "next-auth/providers/credentials"
 
 const isProd = process.env.NODE_ENV === "production";
-const providers: any[] = [
-  Google({
-    clientId: process.env.AUTH_GOOGLE_ID || process.env.GOOGLE_CLIENT_ID,
-    clientSecret: process.env.AUTH_GOOGLE_SECRET || process.env.GOOGLE_CLIENT_SECRET,
-  }),
-];
-
-if (!isProd) {
-  providers.push(
-    Credentials({
-      name: "Invitado",
-      credentials: {},
-      async authorize() {
-        // En local, permitimos acceso como invitado
-        return { 
-          id: "guest-id", 
-          name: "Usuario Invitado", 
-          email: "invitado@agente-bi.local",
-          image: "https://ui-avatars.com/api/?name=Invitado&background=0D8ABC&color=fff"
-        }
-      }
-    })
-  );
-}
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
   trustHost: true,
   secret: process.env.AUTH_SECRET || process.env.NEXTAUTH_SECRET,
-  providers,
+  providers: [
+    Google({
+      clientId: process.env.AUTH_GOOGLE_ID || process.env.GOOGLE_CLIENT_ID,
+      clientSecret: process.env.AUTH_GOOGLE_SECRET || process.env.GOOGLE_CLIENT_SECRET,
+    }),
+    ...(!isProd ? [
+      Credentials({
+        name: "Invitado",
+        credentials: {},
+        async authorize() {
+          // En local, permitimos acceso como invitado
+          return { 
+            id: "guest-id", 
+            name: "Usuario Invitado", 
+            email: "invitado@agente-bi.local",
+            image: "https://ui-avatars.com/api/?name=Invitado&background=0D8ABC&color=fff"
+          }
+        }
+      })
+    ] : [])
+  ],
   pages: {
     signIn: "/login",
   },
   callbacks: {
-    async session({ session, token }) {
+    async session({ session }) {
       if (session.user && session.user.email) {
         const envSecret = process.env.AUTH_SECRET || process.env.NEXTAUTH_SECRET;
         const isProd = process.env.NODE_ENV === "production";
@@ -86,6 +82,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
             .replace(/\+/g, "-")
             .replace(/\//g, "_");
 
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           (session as any).accessToken = `${dataToSign}.${signatureBase64}`;
         } catch (err) {
           console.error("Error al generar auth token:", err);

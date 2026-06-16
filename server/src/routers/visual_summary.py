@@ -38,10 +38,12 @@ def get_visual_summary(
     check_authorization(authenticated_user)
     
     # 3. Auto-recuperación y descifrado de claves API
-    if len(api_key) < 10 or "..." in api_key or (provider == "mistral" and (not mistral_key or len(mistral_key) < 10 or "..." in mistral_key)):
+    if len(api_key) < 10 or "..." in api_key or provider == "groq" or (provider == "mistral" and (not mistral_key or len(mistral_key) < 10 or "..." in mistral_key)):
         user_config = db.query(UserConfig).filter(UserConfig.user_id == authenticated_user).first()
         if user_config:
-            if (len(api_key) < 10 or "..." in api_key) and user_config.gemini_key:
+            if provider == "groq" and user_config.groq_key:
+                api_key = decrypt_key(user_config.groq_key)
+            elif (len(api_key) < 10 or "..." in api_key) and user_config.gemini_key:
                 api_key = decrypt_key(user_config.gemini_key)
             if provider == "mistral" and (not mistral_key or len(mistral_key) < 10 or "..." in mistral_key) and user_config.mistral_key:
                 mistral_key = decrypt_key(user_config.mistral_key)
@@ -55,6 +57,8 @@ def get_visual_summary(
         raise HTTPException(status_code=400, detail="Clave API de Gemini no válida o corrupta. Por favor, re-ingresa tu clave API en Ajustes.")
     elif provider == "mistral" and not mistral_key:
         raise HTTPException(status_code=400, detail="Clave API de Mistral no válida o corrupta. Por favor, re-ingresa tu clave API en Ajustes.")
+    elif provider == "groq" and not api_key:
+        raise HTTPException(status_code=400, detail="Clave API de Groq no válida o corrupta. Por favor, re-ingresa tu clave API en Ajustes.")
     elif provider == "hybrid":
         if not api_key:
             raise HTTPException(status_code=400, detail="Clave API de Gemini no válida o corrupta. Por favor, re-ingresa tu clave API en Ajustes.")

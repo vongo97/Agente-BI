@@ -9,7 +9,7 @@ from datetime import datetime
 from typing import Optional, List
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Depends, Request
 from sqlalchemy.orm import Session
-from src.database import get_db, DataSource
+from src.database import get_db, DataSource, UserConfig
 from src.connectors.data_connectors import load_file_data, load_gsheets_data, get_sql_engine, get_db_schema
 from src.utils.common import check_authorization, get_user_data, get_session_file, get_session_key, data_store, DATA_SOURCES_DIR, upload_file_to_cloud, get_authenticated_user
 from src.engine.bi_analyst import ai_data_cleaner
@@ -324,10 +324,38 @@ async def clean_data(
     request: Request,
     api_key: str = Form(...),
     provider: str = Form("gemini"),
-    mistral_key: Optional[str] = Form(None)
+    mistral_key: Optional[str] = Form(None),
+    db: Session = Depends(get_db)
 ):
     authenticated_user = get_authenticated_user()
     check_authorization(authenticated_user)
+    
+    # Cargar configuración una vez
+    user_config = db.query(UserConfig).filter(UserConfig.user_id == authenticated_user).first()
+    
+    # --- AUTO-RECUPERACIÓN DE LLAVES CIFRADAS ---
+    from src.utils.security import decrypt_key
+    if len(api_key) < 10 or "..." in api_key or provider == "groq" or (provider == "mistral" and (not mistral_key or len(mistral_key) < 10 or "..." in mistral_key)):
+        if user_config:
+            if provider == "groq" and user_config.groq_key:
+                api_key = decrypt_key(user_config.groq_key)
+            elif (len(api_key) < 10 or "..." in api_key) and user_config.gemini_key:
+                api_key = decrypt_key(user_config.gemini_key)
+            if provider == "mistral" and (not mistral_key or len(mistral_key) < 10 or "..." in mistral_key) and user_config.mistral_key:
+                mistral_key = decrypt_key(user_config.mistral_key)
+    else:
+        api_key = decrypt_key(api_key)
+        if mistral_key:
+            mistral_key = decrypt_key(mistral_key)
+            
+    # Validar que las llaves descifradas no sean vacías o None si el proveedor las requiere
+    if provider == "gemini" and not api_key:
+        raise HTTPException(status_code=400, detail="Clave API de Gemini no válida o corrupta. Por favor, re-ingresa tu clave API en Ajustes.")
+    elif provider == "mistral" and not mistral_key:
+        raise HTTPException(status_code=400, detail="Clave API de Mistral no válida o corrupta. Por favor, re-ingresa tu clave API en Ajustes.")
+    elif provider == "groq" and not api_key:
+        raise HTTPException(status_code=400, detail="Clave API de Groq no válida o corrupta. Por favor, re-ingresa tu clave API en Ajustes.")
+
     session_data = get_user_data(authenticated_user)
     if not session_data:
         raise HTTPException(status_code=400, detail="No hay datos cargados para limpiar.")
@@ -337,7 +365,11 @@ async def clean_data(
     
     try:
         df = next(iter(session_data["data"].values()))
-        cleaned_df, summary = ai_data_cleaner(df, api_key, provider, mistral_key)
+        
+        # Recuperar estrategia de limpieza personalizada del usuario
+        strategy = user_config.magic_clean_strategy if user_config and user_config.magic_clean_strategy else "remove"
+        
+        cleaned_df, summary = ai_data_cleaner(df, api_key, provider, mistral_key, strategy=strategy)
         
         # Actualizar cache y persistencia
         session_data["data"][next(iter(session_data["data"].keys()))] = cleaned_df
