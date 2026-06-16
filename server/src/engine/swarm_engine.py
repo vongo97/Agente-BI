@@ -87,7 +87,7 @@ class SwarmEngine:
             if isinstance(df, pd.DataFrame):
                 cols = df.columns.tolist()
                 sample = df.head(3).to_dict(orient='records')
-                context_parts.append(f"--- TABLA: {name} ---\nColumnas: {cols}\nMuestra: {json.dumps(sample)}")
+                context_parts.append(f"--- TABLA: {name} ---\nColumnas: {cols}\nMuestra: {json.dumps(sample, default=str)}")
         return "\n\n".join(context_parts)
 
     async def generate_agents(self, hypothesis: str, data_context: str) -> List[Dict]:
