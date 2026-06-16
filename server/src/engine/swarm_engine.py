@@ -125,6 +125,7 @@ class SwarmEngine:
         ]
 
     async def run_simulation(self, title: str, hypothesis: str, session_data: Dict, on_message=None, num_rounds: int = 3, agents: Optional[List[Dict]] = None):
+        logger.info("[SwarmEngine] Iniciando run_simulation. Tipo de agents recibido: %s, valor: %s", type(agents), agents)
         data_context = self._get_data_context(session_data)
         
         # Si no se proporcionan agentes preconfigurados, los generamos dinámicamente

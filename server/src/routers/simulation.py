@@ -136,10 +136,10 @@ async def process_simulation(sim_id: int, api_key: str, provider: str, mistral_k
         sim.status = "completed"
         db.commit()
     except Exception as e:
-        logger.error("[Sim-%d] FALLO: %s", sim_id, type(e).__name__)
+        logger.exception("[Sim-%d] FALLO INESPERADO:", sim_id)
         if sim:
             sim.status = "error"
-            sim.result_report = f"Error: {type(e).__name__}"
+            sim.result_report = f"Error: {type(e).__name__} - {str(e)}"
             db.commit()
     finally:
         db.close()
