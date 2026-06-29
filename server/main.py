@@ -31,21 +31,20 @@ from src.utils.logging_config import setup_logging
 setup_logging()
 logger = logging.getLogger(__name__)
 
-# Configurar CORS
+# Configurar CORS restringido solo a dominios de producción
 ALLOWED_ORIGINS = [
-    "http://localhost:3000",
-    "http://127.0.0.1:3000",
-    "http://localhost:3001",
-    "http://127.0.0.1:3001",
     "https://agente-bi.vercel.app",
+    # Agregar dominios corporativos específicos aquí en producción
+    # Ej: "https://app.ejemplo.com", "https://admin.ejemplo.com"
 ]
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type"],
+    expose_headers=["*"],
 )
 
 # ── Middleware: Security Headers ──────────────────────────────────────────────

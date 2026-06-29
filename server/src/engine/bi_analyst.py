@@ -16,6 +16,8 @@ from . import prompts
 from . import skill_loader
 from src.utils.common import SafeJSONEncoder
 
+# Requiere re ya importado arriba
+
 logger = logging.getLogger(__name__)
 
 # Configuración de Modelos (Gemini 3.x - Optimizado Capa Gratuita)
@@ -81,19 +83,59 @@ def get_client(api_key):
 
 def validate_api_key(api_key, provider="gemini"):
     if not api_key: return False, "API Key vacía."
-    if len(api_key) < 10: return False, "API Key demasiado corta."
     
+    # Longitud mínima más estricta por proveedor
+    min_lengths = {
+        "gemini": 32,
+        "mistral": 32,
+        "groq": 32,
+        "default": 24
+    }
+    min_len = min_lengths.get(provider, min_lengths["default"])
+    
+    if len(api_key) < min_len: 
+        return False, f"API Key demasiado corta. Mínimo {min_len} caracteres requerido."
+    
+    # Validaciones básicas de formato por proveedor
     try:
-        # Bypasseamos la validación por red temporalmente debido a bugs del SDK de Google 
-        # (Client has been closed) en instanciaciones rápidas.
-        # Si la llave tiene un formato medianamente lógico, la aceptamos.
+        if provider == "gemini":
+            # Gemini keys típicas suelen empezar con "AIzaSy" o largo con números/letras
+            if not re.match(r"^[A-Za-z0-9_-]{32,}$", api_key.strip()):
+                return False, "API Key de Gemini con formato inválido."
+        elif provider == "mistral":
+            # Mistral keys suelen ser strings largos alfanuméricos
+            if not re.match(r"^[A-Za-z0-9_-]{24,}$", api_key.strip()):
+                return False, "API Key de Mistral con formato inválido."
+        elif provider == "groq":
+            # Groq keys también suelen ser strings alfanuméricos largos
+            if not re.match(r"^[A-Za-z0-9_-]{32,}$", api_key.strip()):
+                return False, "API Key de Groq con formato inválido."
+        else:
+            # Validación alfanumérica genérica para otros proveedores
+            if not re.match(r"^[A-Za-z0-9_-]{24,}$", api_key.strip()):
+                return False, "API Key con formato inválido."
+        
+        # Verificar que no sean patrones básicos de placeholders
+        invalid_patterns = ["your_api_key_here", "api_key", "test_key", "placeholder", "demo"]
+        normalized_key = api_key.strip().lower()
+        if any(pattern in normalized_key for pattern in invalid_patterns):
+            return False, "API Key parece ser un placeholder o demo."
+        
+        # Validación con red simple si es posible (opcional, puede ser costoso)
         return True, None
+        
     except Exception as e:
         err = str(e).lower()
-        # Si es un error de cuota o de modelo, la llave SÍ es válida (solo está agotada)
+        # Errores de cuota/rate limit -> la key sí es válida
         if "429" in err or "quota" in err or "limit" in err:
-            return True, None # Permitimos guardar aunque esté agotada
-        return False, str(e)
+            return True, None
+        return False, f"Formato inválido: {str(e)}"
+
+# Flag de seguridad para evitar validaciones muy agresivas en producción
+_SECURITY_MODE_STRICT = os.getenv("SECURITY_MODE_STRICT", "false").lower() == "true"
+
+# Mensaje seguro para logs de validación de API keys
+_SECURITY_LOG_PREFIX = "VALIDATION_"
 
 def generate_ai_content(prompt, api_key, provider="gemini", temperature=0.7, model_level="SWARM", system_instruction=None):
     """Generación con manejo de niveles de potencia (Gemini 3.1) e inyección de System Prompt."""

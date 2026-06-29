@@ -93,6 +93,9 @@ class UserConfig(Base):
     pdf_orientation = Column(String, default="portrait", nullable=True)
     pdf_include_data_table = Column(Boolean, default=True, nullable=True)
     chart_theme = Column(String, default="neon", nullable=True)
+    # Columnas para PKCE OAuth2
+    code_verifier = Column(String, nullable=True)
+    code_verifier_expires = Column(DateTime, nullable=True)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 class DashboardItem(Base):

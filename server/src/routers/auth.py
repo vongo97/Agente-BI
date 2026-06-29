@@ -22,6 +22,21 @@ def is_masked(key: str) -> bool:
     if not key: return False
     return "..." in key or key.startswith("xxxx")
 
+def generate_code_verifier(length: int = 64) -> str:
+    """Genera un code_verifier seguro usando caracteres URL-safe."""
+    import secrets
+    import string
+    alphabet = string.ascii_letters + string.digits + "-_.~"
+    return ''.join(secrets.choice(alphabet) for _ in range(length))
+
+def derive_code_challenge(code_verifier: str) -> str:
+    """Deriva un code_challenge usando SHA256 y base64 URL-safe sin padding."""
+    import hashlib
+    import base64
+    sha256 = hashlib.sha256(code_verifier.encode('utf-8'))
+    challenge = base64.urlsafe_b64encode(sha256.digest()).decode('utf-8').replace('=', '')
+    return challenge
+
 def mask_key(encrypted_key: Optional[str]) -> str:
     if not encrypted_key: return ""
     try:
