@@ -243,6 +243,73 @@ def load_file_data(file_path):
         logger.error("Error crítico cargando archivo file=%s: %s", basename, type(e).__name__)
         raise Exception(f"Error al leer el archivo: {type(e).__name__}")
 
+
+def load_file_data_from_bytes(raw_bytes: bytes, filename: str) -> pd.DataFrame:
+    """Carga un CSV o Excel desde bytes en memoria (sin escribir a disco).
+    
+    Usado para leer archivos cifrados: se descifran en RAM y se parsean
+    directamente desde el buffer, nunca tocando el sistema de archivos.
+    """
+    import io
+    basename = filename or "buffer"
+    ext = (filename or "").lower()
+    try:
+        if ext.endswith('.csv'):
+            encodings = ['utf-8', 'utf-8-sig', 'cp1252', 'iso-8859-1', 'latin-1']
+            separators = [';', ',', '\t']
+            for encoding in encodings:
+                for sep in separators:
+                    try:
+                        decimal = ',' if sep == ';' else '.'
+                        df = pd.read_csv(
+                            io.BytesIO(raw_bytes),
+                            encoding=encoding, sep=sep, decimal=decimal
+                        )
+                        if len(df.columns) > 1:
+                            logger.debug("CSV (bytes) cargado (sep=%r, enc=%s)", sep, encoding)
+                            return _clean_dataframe(df)
+                    except Exception:
+                        continue
+            # Último recurso
+            for encoding in encodings:
+                try:
+                    df = pd.read_csv(io.BytesIO(raw_bytes), encoding=encoding, sep=None, engine='python', on_bad_lines='skip')
+                    return _clean_dataframe(df)
+                except Exception:
+                    continue
+            raise Exception("No se pudo determinar el formato del CSV cifrado.")
+        elif ext.endswith(('.xls', '.xlsx', '.xlsm')):
+            engine = 'openpyxl' if ext.endswith('.xlsx') else None
+            best_df = None
+            max_cells = -1
+            with pd.ExcelFile(io.BytesIO(raw_bytes), engine=engine) as excel_file:
+                for sheet in excel_file.sheet_names:
+                    try:
+                        temp_df = pd.read_excel(excel_file, sheet_name=sheet, header=None)
+                        cells_count = temp_df.notnull().sum().sum()
+                        if cells_count > max_cells:
+                            max_cells = cells_count
+                            best_df = temp_df
+                    except Exception:
+                        continue
+            if best_df is not None:
+                return _clean_dataframe(best_df)
+            raise Exception("El archivo Excel cifrado parece estar vacío.")
+        else:
+            # Fallback: intentar como CSV
+            for encoding in ['utf-8-sig', 'utf-8', 'cp1252', 'latin-1']:
+                try:
+                    df = pd.read_csv(io.BytesIO(raw_bytes), sep=None, engine='python', encoding=encoding)
+                    if df.shape[1] > 1:
+                        return _clean_dataframe(df)
+                except Exception:
+                    continue
+            raise Exception("Formato de archivo cifrado no reconocido.")
+    except Exception as e:
+        logger.error("Error crítico cargando bytes file=%s: %s", basename, type(e).__name__)
+        raise Exception(f"Error al leer el archivo cifrado: {type(e).__name__}")
+
+
 def load_gsheets_data(gs_url):
     """Carga datos de una URL pública de Google Sheets y limpia los nombres de columnas."""
     try:

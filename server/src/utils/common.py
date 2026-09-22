@@ -189,7 +189,17 @@ def get_user_data(user_id: str, chat_id: Optional[int] = None):
     try:
         session_file = get_session_file(user_id)
         if os.path.exists(session_file):
-            stored_data = pd.read_pickle(session_file)
+            import pickle
+            from src.utils.security import cipher_suite
+            with open(session_file, 'rb') as f:
+                raw = f.read()
+            # Intentar descifrar (archivos nuevos)
+            try:
+                decrypted = cipher_suite.decrypt(raw)
+                stored_data = pickle.loads(decrypted)
+            except Exception:
+                # Fallback: leer como pickle plano (archivos de sesión anteriores sin cifrar)
+                stored_data = pd.read_pickle(session_file)
             if isinstance(stored_data, pd.DataFrame):
                 stored_data = {"type": "file", "data": {"dataset_1": stored_data}, "sources": []}
             data_store[session_key] = stored_data
@@ -208,13 +218,18 @@ def get_user_data(user_id: str, chat_id: Optional[int] = None):
     return None
 
 def save_user_data(user_id: str, data: dict):
-    """Guarda los datos de la sesión en disco para persistencia y nube."""
+    """Guarda los datos de la sesión en disco (cifrada) y en la nube."""
     if data is None: return
     try:
+        import pickle
+        from src.utils.security import cipher_suite
         session_file = get_session_file(user_id)
-        # Usamos pickle para guardar el diccionario completo de DataFrames
-        pd.to_pickle(data, session_file)
-        logger.info(f"Sesión persistida en disco para {user_id}")
+        # Serializar y cifrar antes de escribir a disco
+        raw = pickle.dumps(data)
+        encrypted = cipher_suite.encrypt(raw)
+        with open(session_file, 'wb') as f:
+            f.write(encrypted)
+        logger.info(f"Sesión cifrada y persistida en disco para {user_id}")
         
         # Sincronización en la Nube
         try:
@@ -254,8 +269,21 @@ def load_source_to_session(user_id: str, source, chat_id: Optional[int] = None) 
         if source.type == 'file':
             actual_url = source.url
             if os.path.exists(actual_url):
-                from src.connectors.data_connectors import load_file_data
-                df = load_file_data(actual_url)
+                is_encrypted = getattr(source, 'is_encrypted', False)
+                if is_encrypted:
+                    # Descifrar en memoria, nunca en disco
+                    from src.utils.security import decrypt_file_to_bytes
+                    from src.connectors.data_connectors import load_file_data_from_bytes
+                    try:
+                        raw_bytes = decrypt_file_to_bytes(actual_url)
+                        df = load_file_data_from_bytes(raw_bytes, source.name)
+                    except Exception as dec_err:
+                        logger.error("Error descifrando archivo %s: %s", actual_url, dec_err)
+                        return False
+                else:
+                    # Fallback: archivos anteriores sin cifrar
+                    from src.connectors.data_connectors import load_file_data
+                    df = load_file_data(actual_url)
                 
                 # Nombre seguro para la tabla
                 safe_name = "".join([c if c.isalnum() else "_" for c in source.name.split('.')[0]])

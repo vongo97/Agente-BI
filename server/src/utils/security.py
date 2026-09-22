@@ -60,3 +60,38 @@ def decrypt_key(encrypted_key: str) -> str:
         logger.error("Error al descifrar clave (tipo=%s)", type(e).__name__)
         return None
 
+
+def encrypt_file(source_path: str, dest_path: str) -> bool:
+    """Cifra un archivo completo con Fernet y lo escribe en dest_path.
+    
+    Usa un archivo temporal para garantizar atomicidad: si algo falla,
+    el archivo original no queda corrupto.
+    """
+    import tempfile, shutil, os as _os
+    tmp_dest = dest_path + ".encrypting"
+    try:
+        with open(source_path, 'rb') as f:
+            data = f.read()
+        encrypted = cipher_suite.encrypt(data)
+        with open(tmp_dest, 'wb') as f:
+            f.write(encrypted)
+        # Mover atómicamente solo si todo fue bien
+        shutil.move(tmp_dest, dest_path)
+        return True
+    except Exception as e:
+        logger.error("Error cifrando archivo %s (tipo=%s)", source_path, type(e).__name__)
+        if _os.path.exists(tmp_dest):
+            _os.remove(tmp_dest)
+        return False
+
+
+def decrypt_file_to_bytes(file_path: str) -> bytes:
+    """Descifra un archivo cifrado con Fernet y retorna los bytes en claro.
+    
+    El descifrado ocurre en memoria (RAM): nunca se escribe el contenido
+    descifrado a disco, protegiendo los datos del cliente.
+    Raises Exception si el archivo no puede descifrarse.
+    """
+    with open(file_path, 'rb') as f:
+        data = f.read()
+    return cipher_suite.decrypt(data)
