@@ -35,7 +35,12 @@ try:
     if "sqlite" in DB_URL:
         engine = create_engine(DB_URL, connect_args={"check_same_thread": False})
     else:
-        engine = create_engine(DB_URL)
+        engine = create_engine(
+            DB_URL,
+            connect_args={"connect_timeout": 10},
+            pool_pre_ping=True,
+            pool_recycle=300
+        )
 except Exception as e:
     logger.critical("CRITICAL: Fallo al crear engine de DB: %s. Usando SQLite fallback.",
                     sanitize_db_error(str(e)))

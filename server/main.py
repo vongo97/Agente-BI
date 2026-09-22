@@ -99,10 +99,14 @@ app.include_router(exports.router, prefix="/api/v1")
 app.include_router(simulation.router, prefix="/api/v1")
 app.include_router(visual_summary.router, prefix="/api/v1")
 
-# Inicializar Base de Datos
-init_db()
+# Inicializar Base de Datos de forma segura
+try:
+    init_db()
+except Exception as e:
+    logger.error("No se pudo completar init_db al iniciar: %s", e)
 
 @app.get("/")
+@app.get("/health")
 async def root():
     return {
         "status": "online",
