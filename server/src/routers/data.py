@@ -42,21 +42,28 @@ async def upload_file(request: Request, file: UploadFile = File(...), db: Sessio
         authenticated_user = get_authenticated_user()
         check_authorization(authenticated_user)
         
-        # 1. Sanitizar nombre de archivo
-        clean_name = "".join([c if c.isalnum() or c in "._-" else "_" for c in file.filename])
-        
+        # 1. Validar path traversal en el nombre original
+        raw_name = file.filename or ""
+        if ".." in raw_name or "/" in raw_name or "\\" in raw_name:
+            logger.warning("SECURITY_REJECTED path_traversal filename='%s' user=%s", raw_name, authenticated_user)
+            raise HTTPException(status_code=400, detail="Nombre de archivo inválido.")
+
+        # Sanitizar nombre de archivo
+        clean_name = "".join([c if c.isalnum() or c in "._-" else "_" for c in raw_name])
+
         # Validar extensión
         _, ext = os.path.splitext(clean_name.lower())
         if ext not in _ALLOWED_EXTENSIONS:
+            logger.warning("SECURITY_REJECTED invalid_extension filename='%s' ext='%s' user=%s", raw_name, ext, authenticated_user)
             raise HTTPException(status_code=400, detail="Extensión de archivo no permitida. Sube solo archivos CSV o Excel.")
 
         # Validar MIME type: permitido directo o octet-stream con extensión válida (fallback)
         content_type = (file.content_type or "").split(";")[0].strip().lower()
         if content_type not in _ALLOWED_MIME_TYPES:
             if ext in _ALLOWED_EXTENSIONS:
-                # Fallback condicionado: aceptamos si la extensión es válida, dado que los browsers pueden enviar diferentes MIME types
                 logger.debug("MIME %s aceptado por extensión válida: %s", content_type, ext)
             else:
+                logger.warning("SECURITY_REJECTED invalid_mime filename='%s' mime='%s' ext='%s' user=%s", raw_name, content_type, ext, authenticated_user)
                 raise HTTPException(
                     status_code=400,
                     detail=f"Tipo de archivo no permitido (MIME: {content_type}). Sube solo archivos CSV o Excel."
@@ -67,6 +74,8 @@ async def upload_file(request: Request, file: UploadFile = File(...), db: Sessio
         file_size = file.file.tell()
         file.file.seek(0)
         if file_size > _QUOTA_MAX_FILE_MB * 1024 * 1024:
+            size_mb = file_size / (1024 * 1024)
+            logger.warning("SECURITY_REJECTED file_too_large filename='%s' size_mb=%.2f limit_mb=%d user=%s", raw_name, size_mb, _QUOTA_MAX_FILE_MB, authenticated_user)
             raise HTTPException(status_code=400, detail=f"El archivo excede el tamaño máximo permitido de {_QUOTA_MAX_FILE_MB}MB.")
 
         # Validar cuota: máx {_QUOTA_MAX_SOURCES} fuentes activas por usuario
@@ -97,50 +106,66 @@ async def upload_file(request: Request, file: UploadFile = File(...), db: Sessio
         safe_user = hashlib.md5(authenticated_user.encode()).hexdigest()
         permanent_name = f"{safe_user}_{int(datetime.utcnow().timestamp())}_{clean_name}"
         permanent_path = os.path.join(DATA_SOURCES_DIR, permanent_name)
-        
-        # 2. Guardar archivo físico
+        temp_path = permanent_path + ".tmp"
+
+        # 2. Guardar temporalmente en texto plano para parsear
         file.file.seek(0)
-        with open(permanent_path, "wb") as buffer:
+        with open(temp_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
-        
-        # 3. Procesar datos
-        df = load_file_data(permanent_path)
+
+        # 3. Procesar datos desde el temporal (en claro)
+        df = load_file_data(temp_path)
         safe_filename = "".join([c if c.isalnum() else "_" for c in clean_name.split('.')[0]])
-        
-        # 4. Actualizar sesión en memoria
+
+        # 4. Cifrar el archivo permanente y eliminar el temporal
+        from src.utils.security import encrypt_file
+        encrypt_ok = encrypt_file(temp_path, permanent_path)
+        try:
+            os.remove(temp_path)
+        except Exception:
+            pass
+
+        if not encrypt_ok:
+            # Si falló el cifrado (no debería ocurrir), usar el temporal como fallback
+            import shutil as _shutil
+            _shutil.move(temp_path, permanent_path)
+            logger.error("Cifrado de archivo falló para %s — guardado en texto plano como fallback.", permanent_name)
+
+        # 5. Actualizar sesión en memoria
         session_data = get_user_data(authenticated_user)
         if session_data is None or session_data.get("type") != "file":
             session_data = {"type": "file", "data": {}, "sources": []}
-        
+
         session_data["data"][safe_filename] = df
-        
-        # 5. Guardar en Base de Datos
+
+        # 6. Guardar en Base de Datos (marcando si está cifrado)
         new_source = DataSource(
             user_id=authenticated_user,
             name=file.filename,
             type="file",
             url=permanent_path,
-            columns=json.dumps(df.columns.tolist())
+            columns=json.dumps(df.columns.tolist()),
+            is_encrypted=encrypt_ok
         )
         db.add(new_source)
         db.commit()
         db.refresh(new_source)
-        
+
         session_data["sources"].append(new_source.id)
         data_store[f"{authenticated_user}_active"] = session_data
-        
-        # 6. Persistencia PKL
+
+        # 7. Persistencia PKL
         session_file = get_session_file(authenticated_user)
         pd.to_pickle(session_data, session_file)
-        
-        # 7. Sincronización Nube (Opcional, no bloqueante ante errores de API)
+
+        # 8. Sincronización Nube (el archivo ya está cifrado en permanent_path)
         try:
             upload_file_to_cloud(permanent_path, f"data_sources/{permanent_name}")
-            # También subimos el pkl de sesión para recuperarlo si el servidor se reinicia
             import os as _os
             upload_file_to_cloud(session_file, f"sessions/{_os.path.basename(session_file)}")
         except Exception:
             logger.warning("Nube: falló upload de %s (archivo guardado localmente).", permanent_name)
+
 
         return {
             "id": int(new_source.id),

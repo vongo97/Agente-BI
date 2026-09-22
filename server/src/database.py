@@ -117,6 +117,7 @@ class DataSource(Base):
     type = Column(String)
     url = Column(Text)
     columns = Column(Text, nullable=True)
+    is_encrypted = Column(Boolean, default=False, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
     chats = relationship("Chat", back_populates="data_source")
@@ -172,6 +173,15 @@ def init_db():
         logger.info("Tablas sincronizadas con Base.metadata.create_all")
         # Migración rápida en caliente para agregar nuevas columnas si no existen
         with engine.connect() as conn:
+            # Migración: columna is_encrypted en data_sources
+            try:
+                conn.execute(text("ALTER TABLE data_sources ADD COLUMN is_encrypted BOOLEAN DEFAULT FALSE;"))
+                conn.commit()
+                logger.info("Migrada DB: columna is_encrypted añadida a data_sources.")
+            except Exception:
+                pass
+
+            # Migración: columnas de user_configs
             for col, col_type in [
                 ("groq_key", "VARCHAR"),
                 ("temperature", "FLOAT"),
@@ -195,6 +205,7 @@ def init_db():
                     pass
     except Exception as e:
         logger.error("ERROR en init_db: %s", sanitize_db_error(str(e)))
+
 
 def get_db():
     db = SessionLocal()
