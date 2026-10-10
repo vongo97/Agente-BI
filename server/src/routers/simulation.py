@@ -149,7 +149,8 @@ async def process_simulation(sim_id: int, api_key: str, provider: str, mistral_k
 @limiter.limit("15/hour")
 async def create_simulation(request: Request, req: SimulationRequest, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
     authenticated_user = get_authenticated_user()
-    logger.info(f"Creando simulación {req.provider} para {authenticated_user}")
+    from src.utils.common import mask_email
+    logger.info("Creando simulación %s para %s", req.provider, mask_email(authenticated_user))
     check_authorization(authenticated_user)
     
     try:

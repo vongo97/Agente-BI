@@ -66,7 +66,7 @@ export function MermaidPreview({ code }: MermaidPreviewProps) {
                 mermaid.initialize({
                     startOnLoad: false,
                     theme: 'base',
-                    securityLevel: 'loose',
+                    securityLevel: 'strict',
                     themeVariables: {
                         background: 'transparent',
                         primaryColor: isDark ? '#1e293b' : '#f1f5f9', // Fondo de nodos
@@ -103,6 +103,14 @@ export function MermaidPreview({ code }: MermaidPreviewProps) {
                     let cleanSvg = svg;
                     cleanSvg = cleanSvg.replace(/width="[^"]+"/, 'width="100%"');
                     cleanSvg = cleanSvg.replace(/style="max-width:[^;]+;"/, 'style="max-width:100%;"');
+                    
+                    // SEGURIDAD: sanitizar el SVG (contenido generado por IA) antes
+                    // de inyectarlo en el DOM (anti-XSS).
+                    const DOMPurify = (await import('dompurify')).default;
+                    cleanSvg = DOMPurify.sanitize(cleanSvg, {
+                        USE_PROFILES: { svg: true, svgFilters: true },
+                        FORBID_TAGS: ['script', 'foreignObject', 'iframe', 'object', 'embed'],
+                    }) || '';
                     
                     setSvgContent(cleanSvg);
                     setError(null);

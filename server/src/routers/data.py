@@ -11,7 +11,7 @@ from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Depends, R
 from sqlalchemy.orm import Session
 from src.database import get_db, DataSource, UserConfig
 from src.connectors.data_connectors import load_file_data, load_gsheets_data, get_sql_engine, get_db_schema
-from src.utils.common import check_authorization, get_user_data, get_session_file, get_session_key, data_store, DATA_SOURCES_DIR, upload_file_to_cloud, get_authenticated_user
+from src.utils.common import check_authorization, get_user_data, get_session_file, get_session_key, data_store, DATA_SOURCES_DIR, upload_file_to_cloud, get_authenticated_user, save_user_data
 from src.engine.bi_analyst import ai_data_cleaner
 from src.utils.limiter import limiter
 
@@ -115,6 +115,15 @@ async def upload_file(request: Request, file: UploadFile = File(...), db: Sessio
 
         # 3. Procesar datos desde el temporal (en claro)
         df = load_file_data(temp_path)
+        # Protección contra zip-bombs / hojas masivas (mismo límite que Google Sheets)
+        _MAX_CELLS = 1_000_000
+        if int(df.size) > _MAX_CELLS:
+            try: os.remove(temp_path)
+            except Exception: pass
+            raise HTTPException(
+                status_code=400,
+                detail=f"El archivo supera el límite de {_MAX_CELLS:,} celdas. Reduce su tamaño e inténtalo de nuevo."
+            )
         safe_filename = "".join([c if c.isalnum() else "_" for c in clean_name.split('.')[0]])
 
         # 4. Cifrar el archivo permanente y eliminar el temporal
@@ -126,10 +135,18 @@ async def upload_file(request: Request, file: UploadFile = File(...), db: Sessio
             pass
 
         if not encrypt_ok:
-            # Si falló el cifrado (no debería ocurrir), usar el temporal como fallback
-            import shutil as _shutil
-            _shutil.move(temp_path, permanent_path)
-            logger.error("Cifrado de archivo falló para %s — guardado en texto plano como fallback.", permanent_name)
+            # Si falló el cifrado, ABORTAR la subida: nunca persistir datos del
+            # cliente en texto plano.
+            logger.error("Cifrado de archivo falló para %s — subida abortada.", permanent_name)
+            try:
+                if os.path.exists(temp_path): os.remove(temp_path)
+                if os.path.exists(permanent_path): os.remove(permanent_path)
+            except Exception:
+                pass
+            raise HTTPException(
+                status_code=500,
+                detail="Error interno de seguridad al procesar el archivo. Inténtalo de nuevo más tarde."
+            )
 
         # 5. Actualizar sesión en memoria
         session_data = get_user_data(authenticated_user)
@@ -154,15 +171,13 @@ async def upload_file(request: Request, file: UploadFile = File(...), db: Sessio
         session_data["sources"].append(new_source.id)
         data_store[f"{authenticated_user}_active"] = session_data
 
-        # 7. Persistencia PKL
-        session_file = get_session_file(authenticated_user)
-        pd.to_pickle(session_data, session_file)
+        # 7. Persistencia cifrada del estado de sesión
+        save_user_data(authenticated_user, session_data)
 
-        # 8. Sincronización Nube (el archivo ya está cifrado en permanent_path)
+        # 8. Sincronización Nube (el archivo ya está cifrado en permanent_path;
+        #    la sesión ya se sube cifrada desde save_user_data)
         try:
             upload_file_to_cloud(permanent_path, f"data_sources/{permanent_name}")
-            import os as _os
-            upload_file_to_cloud(session_file, f"sessions/{_os.path.basename(session_file)}")
         except Exception:
             logger.warning("Nube: falló upload de %s (archivo guardado localmente).", permanent_name)
 
@@ -196,6 +211,13 @@ async def connect_sql(request: Request, url: str = Form(...), db: Session = Depe
     authenticated_user = get_authenticated_user()
     check_authorization(authenticated_user)
     
+    # Validación SSRF: rechazar hosts locales/privados/no permitidos ANTES de conectar
+    from src.utils.security import validate_external_url_host
+    try:
+        validate_external_url_host(url)
+    except ValueError as ve:
+        raise HTTPException(status_code=400, detail=f"Conexión rechazada por seguridad: {ve}")
+    
     # Validar cuota de 10 fuentes
     existing_count = db.query(DataSource).filter(DataSource.user_id == authenticated_user).count()
     if existing_count >= _QUOTA_MAX_SOURCES:
@@ -208,8 +230,10 @@ async def connect_sql(request: Request, url: str = Form(...), db: Session = Depe
         engine = get_sql_engine(url)
         schema = get_db_schema(engine)
         
-        # Guardar en DB
-        new_source = DataSource(user_id=authenticated_user, name="SQL Connection", type="sql", url=url, columns=schema[:500])
+        # Guardar en DB (URL cifrada en reposo: contiene credenciales)
+        from src.utils.security import encrypt_key
+        encrypted_url = encrypt_key(url)
+        new_source = DataSource(user_id=authenticated_user, name="SQL Connection", type="sql", url=encrypted_url, columns=schema[:500])
         db.add(new_source)
         db.commit()
         db.refresh(new_source)
@@ -506,31 +530,6 @@ async def list_data_sources(request: Request, db: Session = Depends(get_db)):
         logger.error("Error al obtener sources: %s", safe_error_message(e))
         raise HTTPException(status_code=500, detail="Error al obtener las fuentes de datos.")
 
-@router.post("/sources/clear-force")
-@limiter.limit("2/minute")
-async def clear_force(request: Request, db: Session = Depends(get_db)):
-    is_render = os.getenv("RENDER", "false").lower() == "true"
-    is_dev = os.getenv("ENVIRONMENT", "development").lower() == "development"
-    if is_render or not is_dev:
-        raise HTTPException(
-            status_code=403, 
-            detail="Acceso denegado: este endpoint solo está disponible en desarrollo local."
-        )
-        
-    authenticated_user = get_authenticated_user()
-    check_authorization(authenticated_user)
-    
-    from sqlalchemy import text
-    try:
-        db.execute(text("UPDATE chats SET data_source_id = NULL"))
-        db.execute(text("UPDATE simulations SET data_source_id = NULL"))
-        db.execute(text("DELETE FROM data_sources"))
-        db.commit()
-        return {"status": "success", "message": "Todas las fuentes de la base de datos local han sido eliminadas."}
-    except Exception as e:
-        from src.utils.logging_config import safe_error_message
-        logger.error("Error crítico en clear_force: %s", safe_error_message(e))
-        raise HTTPException(
-            status_code=500, 
-            detail="Error interno al limpiar las fuentes de datos de desarrollo."
-        )
+# NOTA DE SEGURIDAD: el endpoint global /sources/clear-force fue eliminado (auditoría 2026-02).
+# Borraba TODA la tabla data_sources sin filtro por usuario bajo ciertos entornos.
+# Para depuración local, usa el borrado por fuente existente (DELETE /sources/{id}).

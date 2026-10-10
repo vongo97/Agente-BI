@@ -153,14 +153,43 @@ def validate_code_safety(code):
     forbidden_attrs = {
         '__globals__', '__subclasses__', '__mro__', '__builtins__', 
         '__qualname__', '__module__', '__dict__', 'func_globals', 
-        'func_code', 'gi_frame', 'gi_code'
+        'func_code', 'gi_frame', 'gi_code',
+        # Deuda de auditoría: bloquear I/O de disco/red desde el sandbox
+        'read_csv', 'read_excel', 'read_json', 'read_parquet', 'read_pickle',
+        'read_feather', 'read_hdf', 'read_html', 'read_xml', 'read_clipboard',
+        'read_sql', 'read_sql_query', 'read_sql_table',
+        'to_pickle', 'to_excel', 'to_feather', 'to_hdf', 'to_parquet', 'to_sql',
+        'open', 'getenv', 'environ', 'system', 'popen', 'listdir', 'walk',
+        'remove', 'rmdir', 'unlink', 'rename', 'chmod', 'kill', 'fork', 'spawn',
+        'ExcelFile', 'ExcelWriter', 'HDFStore',
+        'NamedTemporaryFile', 'TemporaryFile', 'mkstemp', 'mkdtemp',
     }
     
     forbidden_calls = {
         'eval', 'exec', 'open', 'breakpoint', 'input', 'help'
     }
 
+    # Módulos prohibidos (complemento del runtime restricted_import):
+    # bloquear también a nivel AST para rechazar el código ANTES del sandbox.
+    forbidden_imports = {
+        'os', 'sys', 'subprocess', 'ctypes', 'socket', 'requests', 'urllib',
+        'http', 'shutil', 'pickle', 'builtins', 'io', 'pathlib', 'tempfile',
+        'glob', 'platform', 'signal', 'base64', 'codecs', 'importlib',
+        'multiprocessing', 'threading', 'webbrowser', 'ftplib', 'smtplib',
+    }
+
     for node in ast.walk(tree):
+        # 0. Bloquear importaciones de módulos peligrosos
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                if alias.name.split('.')[0] in forbidden_imports:
+                    raise SecurityError(f"Importación prohibida del módulo '{alias.name}'.")
+        if isinstance(node, ast.ImportFrom):
+            if node.module and node.module.split('.')[0] in forbidden_imports:
+                raise SecurityError(f"Importación prohibida del módulo '{node.module}'.")
+        # Bloquear dunder-import manual: __import__('os')
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == '__import__':
+            raise SecurityError("Uso prohibido de '__import__' dinámico.")
         # 1. Bloquear bucles while para evitar bucles infinitos y DoS
         if isinstance(node, ast.While):
             raise SecurityError("Uso prohibido de bucles 'while'. Utiliza bucles 'for' acotados.")
@@ -253,9 +282,9 @@ def get_safe_environment(var_name=None, context_obj=None):
     def restricted_import(name, globals=None, locals=None, fromlist=(), level=0):
         allowed_packages = {
             'pandas', 'pd', 'numpy', 'np', 'plotly', 'px', 'json', 're',
-            'math', 'datetime', 'collections', 'itertools', 'io', 'six', 'pytz',
+            'math', 'datetime', 'collections', 'itertools', 'six', 'pytz',
             'scipy', 'statsmodels', 'matplotlib', 'plt', 'sklearn', 'stats',
-            'pandas_datareader', 'textwrap', 'functools', 'operator',
+            'textwrap', 'functools', 'operator',
             'decimal', 'fractions', 'random', 'string', 'copy',
             'warnings', 'numbers', 'statistics'
         }
@@ -427,9 +456,9 @@ class SmartDataContext(dict):
 def restricted_import(name, globals=None, locals=None, fromlist=(), level=0):
     allowed_packages = {{
         'pandas', 'pd', 'numpy', 'np', 'plotly', 'px', 'json', 're',
-        'math', 'datetime', 'collections', 'itertools', 'io', 'six', 'pytz',
+        'math', 'datetime', 'collections', 'itertools', 'six', 'pytz',
         'scipy', 'statsmodels', 'matplotlib', 'plt', 'sklearn', 'stats',
-        'pandas_datareader', 'textwrap', 'functools', 'operator',
+        'textwrap', 'functools', 'operator',
         'decimal', 'fractions', 'random', 'string', 'copy',
         'warnings', 'numbers', 'statistics'
     }}
@@ -503,6 +532,24 @@ for _tname, _tdf in loaded_tables.items():
             _tdf[_col] = pd.to_numeric(_tdf[_col], downcast='float')
     loaded_tables[_tname] = _tdf
 
+# [SEGURIDAD] Bloqueo en tiempo de ejecución de I/O arbitraria (anti-RCE/SSRF del sandbox)
+def _blocked_io(*_a, **_k):
+    raise PermissionError("Operación de I/O bloqueada en el sandbox de análisis.")
+for _fn in ("read_csv", "read_excel", "read_json", "read_parquet", "read_pickle",
+            "read_feather", "read_hdf", "read_html", "read_xml", "read_clipboard",
+            "read_sql", "read_sql_query", "read_sql_table", "ExcelFile", "ExcelWriter"):
+    if hasattr(pd, _fn):
+        setattr(pd, _fn, _blocked_io)
+for _w in ("to_pickle", "to_excel", "to_feather", "to_hdf", "to_parquet", "to_sql"):
+    if hasattr(pd.DataFrame, _w):
+        setattr(pd.DataFrame, _w, _blocked_io)
+try:
+    import io as _io_mod
+    _io_mod.open = _blocked_io
+    sys.modules["io"] = _io_mod
+except Exception:
+    pass
+
 smart_context = SmartDataContext(loaded_tables)
 
 if var_name:
@@ -564,22 +611,18 @@ with open(os.path.join(temp_dir, "output.json"), "w", encoding="utf-8") as f:
         with open(orchestrator_path, "w", encoding="utf-8") as f:
             f.write(orchestrator_code)
 
-        # 3. Invocar al subproceso con entorno mínimo + límites de recursos
         # 3. Invocar al subproceso con entorno mínimo pero conservando paths de sistema
         # Esto es vital para Render donde PYTHONPATH, VIRTUAL_ENV y LD_LIBRARY_PATH son necesarios
-        env_clean = os.environ.copy()
+        # [SEGURIDAD] Whitelist estricta: NUNCA propagar otras variables del entorno
+        # (secretos, tokens, credenciales) al proceso del sandbox.
+        _allowed_env = {
+            "PATH", "PYTHONPATH", "VIRTUAL_ENV", "LD_LIBRARY_PATH",
+            "HOME", "TMP", "TEMP", "TMPDIR",
+            "SYSTEMROOT", "WINDIR", "PATHEXT", "COMSPEC",  # Windows runtime
+        }
+        env_clean = {k: v for k, v in os.environ.items() if k.upper() in _allowed_env}
         env_clean["PYTHONIOENCODING"] = "utf-8"
         env_clean["MPLBACKEND"] = "Agg"
-        
-        # Ocultar secretos del entorno del sandbox por seguridad
-        sensitive_keys = [
-            "DATABASE_URL", "DIRECT_URL", "SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY", 
-            "ENCRYPTION_KEY", "AUTH_SECRET", "GEMINI_API_KEY", "MISTRAL_API_KEY", 
-            "OPENAI_API_KEY", "ANTHROPIC_API_KEY"
-        ]
-        for k in sensitive_keys:
-            if k in env_clean:
-                del env_clean[k]
 
         # Fix #1: Usar timeout dinámico basado en el volumen de filas del dataset
         effective_timeout = _dynamic_timeout(tables_to_save)
@@ -696,6 +739,24 @@ with open(os.path.join(temp_dir, "input_df.pkl"), "rb") as f:
     df_load = pickle.load(f)
 df_load.replace([np.inf, -np.inf], np.nan, inplace=True)
 
+# [SEGURIDAD] Bloqueo en tiempo de ejecución de I/O arbitraria (anti-RCE/SSRF del sandbox)
+def _blocked_io(*_a, **_k):
+    raise PermissionError("Operación de I/O bloqueada en el sandbox de limpieza.")
+for _fn in ("read_csv", "read_excel", "read_json", "read_parquet", "read_pickle",
+            "read_feather", "read_hdf", "read_html", "read_xml", "read_clipboard",
+            "read_sql", "read_sql_query", "read_sql_table", "ExcelFile", "ExcelWriter"):
+    if hasattr(pd, _fn):
+        setattr(pd, _fn, _blocked_io)
+for _w in ("to_pickle", "to_excel", "to_feather", "to_hdf", "to_parquet", "to_sql"):
+    if hasattr(pd.DataFrame, _w):
+        setattr(pd.DataFrame, _w, _blocked_io)
+try:
+    import io as _io_mod
+    _io_mod.open = _blocked_io
+    sys.modules["io"] = _io_mod
+except Exception:
+    pass
+
 
 def restricted_import(name, globals=None, locals=None, fromlist=(), level=0):
     allowed_packages = {{
@@ -755,20 +816,17 @@ with open(os.path.join(temp_dir, "output.json"), "w", encoding="utf-8") as f:
         with open(orchestrator_path, "w", encoding="utf-8") as f:
             f.write(orchestrator_code)
 
-        # Fix #3: Estandarizar entorno — usar copia completa con secrets eliminados
-        # (igual que execute_analysis) para que PYTHONPATH/VIRTUAL_ENV/LD_LIBRARY_PATH
-        # estén disponibles en Render Linux
-        env_clean = os.environ.copy()
+        # Fix #3: Estandarizar entorno — usar whitelist estricta para que
+        # PYTHONPATH/VIRTUAL_ENV/LD_LIBRARY_PATH estén disponibles en Render Linux,
+        # pero NUNCA propagar secretos del entorno al sandbox.
+        _allowed_env = {
+            "PATH", "PYTHONPATH", "VIRTUAL_ENV", "LD_LIBRARY_PATH",
+            "HOME", "TMP", "TEMP", "TMPDIR",
+            "SYSTEMROOT", "WINDIR", "PATHEXT", "COMSPEC",  # Windows runtime
+        }
+        env_clean = {k: v for k, v in os.environ.items() if k.upper() in _allowed_env}
         env_clean["PYTHONIOENCODING"] = "utf-8"
         env_clean["MPLBACKEND"] = "Agg"
-        sensitive_keys = [
-            "DATABASE_URL", "DIRECT_URL", "SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY",
-            "ENCRYPTION_KEY", "AUTH_SECRET", "GEMINI_API_KEY", "MISTRAL_API_KEY",
-            "OPENAI_API_KEY", "ANTHROPIC_API_KEY"
-        ]
-        for k in sensitive_keys:
-            if k in env_clean:
-                del env_clean[k]
 
         result = _run_subprocess_with_limits(
             [sys.executable, orchestrator_path],
@@ -814,14 +872,42 @@ with open(os.path.join(temp_dir, "output.json"), "w", encoding="utf-8") as f:
             logger.error(f"Error limpiando directorio temporal de sandbox de limpieza: {cleanup_err}")
 
 def validate_sql_safety(sql_query):
-    query_upper = sql_query.upper().strip()
+    """
+    Valida que la consulta SQL sea de SOLO LECTURA.
+    Enfoque de lista blanca estricta (auditoría 2026-02):
+    - Un único statement (rechaza multi-statement con ';').
+    - Debe comenzar por SELECT o WITH.
+    - Rechaza tokens peligrosos en CUALQUIER posición (incl. dentro de CTEs):
+      DDL/DML, funciones de I/O, control de permisos, comandos de extensión, etc.
+    """
+    # Un único statement: no se permiten ';' internos (solo opcional al final)
+    stripped = sql_query.strip()
+    inner = stripped[:-1] if stripped.endswith(";") else stripped
+    if ";" in inner:
+        raise SecurityError("Solo se permite un único statement SQL.")
+
+    query_upper = stripped.upper().strip()
     if not query_upper.startswith("SELECT") and not query_upper.startswith("WITH"):
-        raise SecurityError("La consulta debe ser de tipo SELECT.")
-    
-    forbidden = [r'\bDROP\b', r'\bDELETE\b', r'\bUPDATE\b', r'\bINSERT\b', r'\bALTER\b']
+        raise SecurityError("La consulta debe ser de tipo SELECT (solo lectura).")
+
+    forbidden = [
+        # DDL / DML destructivos
+        r'\bDROP\b', r'\bDELETE\b', r'\bUPDATE\b', r'\bINSERT\b', r'\bALTER\b',
+        r'\bCREATE\b', r'\bTRUNCATE\b', r'\bMERGE\b', r'\bREPLACE\b',
+        # Control de permisos y sesión
+        r'\bGRANT\b', r'\bREVOKE\b', r'\bSET\b', r'\bRESET\b',
+        # Ejecución y procedimientos
+        r'\bEXEC\b', r'\bEXECUTE\b', r'\bCALL\b', r'\bDO\b',
+        # I/O y funciónes de archivo (PostgreSQL / SQLite / MySQL / MSSQL)
+        r'\bCOPY\b', r'\bATTACH\b', r'\bDETACH\b', r'\bVACUUM\b', r'\bANALYZE\b',
+        r'\bPRAGMA\b', r'\bPG_READ_FILE\b', r'\bPG_WRITE_FILE\b', r'\bPG_LS_DIR\b',
+        r'\bLO_EXPORT\b', r'\bLO_IMPORT\b', r'\bXP_CMDSHELL\b', r'\bOPENROWSET\b',
+        r'\bLOAD_FILE\b', r'\bINTO\s+OUTFILE\b', r'\bINTO\s+DUMPFILE\b',
+        r'\bDBLINK\b', r'\bBULK\b',
+    ]
     for word in forbidden:
         if re.search(word, query_upper):
-            raise SecurityError(f"Palabra prohibida: {word}")
+            raise SecurityError(f"Keyword prohibido en consulta SQL: {word}")
     return True
 
 def execute_sql_safe(engine, raw_sql_response):

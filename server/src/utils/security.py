@@ -85,9 +85,47 @@ def encrypt_file(source_path: str, dest_path: str) -> bool:
         return False
 
 
+def validate_external_url_host(url: str) -> None:
+    """Valida que la URL (ej. conexión SQLAlchemy) no apunte a hosts internos/privados.
+
+    Mitiga SSRF: rechaza loopback, RFC1918, link-local, metadata cloud y
+    cualquier host que no esté en la allowlist opcional ALLOWED_SQL_HOSTS.
+    Raises ValueError si la URL no es válida.
+    """
+    import ipaddress
+    from urllib.parse import urlparse
+    import socket
+
+    parsed = urlparse(url)
+    host = parsed.hostname
+    if not host:
+        raise ValueError("URL sin host válido.")
+
+    allowed = [h.strip().lower() for h in os.getenv("ALLOWED_SQL_HOSTS", "").split(",") if h.strip()]
+    if allowed:
+        if host.lower() not in allowed:
+            raise ValueError(f"El host '{host}' no está en la lista de hosts permitidos (ALLOWED_SQL_HOSTS).")
+        return
+
+    blocked_names = {"localhost", "localhost.localdomain"}
+    if host.lower() in blocked_names:
+        raise ValueError("No se permiten conexiones a hosts locales.")
+
+    # Resolver a IP y bloquear rangos privados
+    try:
+        addr_info = socket.getaddrinfo(host, None)
+        ip = ipaddress.ip_address(addr_info[0][4][0])
+    except Exception as e:
+        raise ValueError(f"No se pudo resolver el host: {type(e).__name__}")
+
+    if (ip.is_private or ip.is_loopback or ip.is_link_local or
+            ip.is_reserved or ip.is_multicast or ip.is_unspecified):
+        raise ValueError("No se permiten conexiones a direcciones IP privadas, locales o reservadas.")
+
+
 def decrypt_file_to_bytes(file_path: str) -> bytes:
     """Descifra un archivo cifrado con Fernet y retorna los bytes en claro.
-    
+
     El descifrado ocurre en memoria (RAM): nunca se escribe el contenido
     descifrado a disco, protegiendo los datos del cliente.
     Raises Exception si el archivo no puede descifrarse.

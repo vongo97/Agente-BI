@@ -40,11 +40,20 @@ async def get_chat_details(chat_id: int, db: Session = Depends(get_db)):
     
     source_info = None
     if chat.data_source:
+        # Nunca exponer credenciales: la URL SQL está cifrada en reposo; al cliente
+        # solo le es útil el nombre/host, no la cadena de conexión completa.
+        display_url = chat.data_source.url
+        if chat.data_source.type == "sql":
+            from src.utils.security import decrypt_key
+            real_url = decrypt_key(chat.data_source.url) or chat.data_source.url
+            # Redactar credenciales antes de enviar: protocolo://**@host/db
+            import re
+            display_url = re.sub(r"(://)[^@/]*@", r"\1***@", real_url)
         source_info = {
             "id": chat.data_source.id,
             "name": chat.data_source.name,
             "type": chat.data_source.type,
-            "url": chat.data_source.url,
+            "url": display_url,
             "columns": json.loads(chat.data_source.columns) if chat.data_source.columns else []
         }
 

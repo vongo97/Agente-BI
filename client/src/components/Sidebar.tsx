@@ -13,6 +13,7 @@ import {
     removeSessionSource, clearSession
 } from "@/lib/api";
 import { useDashboard } from "@/context/DashboardContext";
+import { useToast } from "@/context/ToastContext";
 import { ChatSession, DataSource } from "@/types/shared";
 import { ThemeToggle } from "./ThemeToggle";
 
@@ -36,6 +37,7 @@ export function Sidebar() {
         setMessages, setActiveChatId, activeChatId,
         view, setView
     } = useDashboard();
+    const { addToast } = useToast();
 
     const [uploading, setUploading] = useState(false);
     const [showSqlInput, setShowSqlInput] = useState(false);
@@ -78,7 +80,7 @@ export function Sidebar() {
             if (window.innerWidth < 1024) setSidebarOpen(false);
         } catch (err) {
             console.error("Error loading chat:", err);
-            alert("Error al cargar chat");
+            addToast("Error al cargar chat", "error");
         }
     };
 
@@ -96,7 +98,7 @@ export function Sidebar() {
             setView('chat');
         } catch (err) {
             const error = err as Error;
-            alert("Error al subir archivos: " + (error.message || "Error desconocido"));
+            addToast("Error al subir archivos: " + (error.message || "Error desconocido"), "error");
         } finally {
             setUploading(false);
             if (e.target) e.target.value = '';
@@ -112,7 +114,7 @@ export function Sidebar() {
             setShowSqlInput(false); setSqlUrl("");
         } catch (err) {
             const error = err as Error;
-            alert("Error SQL: " + (error.message || "Error de conexión"));
+            addToast("Error SQL: " + (error.message || "Error de conexión"), "error");
         } finally { setUploading(false); }
     };
 
@@ -125,7 +127,7 @@ export function Sidebar() {
             setShowGSheetsInput(false); setGsheetsUrl("");
         } catch (err) {
             const error = err as Error;
-            alert("Error Google Sheets: " + (error.message || "Verifica que la hoja sea pública"));
+            addToast("Error Google Sheets: " + (error.message || "Verifica que la hoja sea pública"), "error");
         } finally { setUploading(false); }
     };
 

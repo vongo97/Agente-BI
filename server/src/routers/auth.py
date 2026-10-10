@@ -90,7 +90,9 @@ async def get_user_config(db: Session = Depends(get_db)):
     }
 
 @router.post("/user-config")
+@limiter.limit("10/minute")
 async def set_user_config(
+    request: Request,
     gemini_key: Optional[str] = Form(None),
     mistral_key: Optional[str] = Form(None),
     gamma_key: Optional[str] = Form(None),

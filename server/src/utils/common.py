@@ -42,6 +42,13 @@ def json_serializable(obj):
     """Convierte un objeto a un diccionario serializable a JSON usando el encoder seguro."""
     return json.loads(json.dumps(obj, cls=SafeJSONEncoder))
 
+def mask_email(email: Optional[str]) -> str:
+    """Enmascara un email para logs: 'usuario@dominio.com' → 'u***@dominio.com'."""
+    if not email or "@" not in email:
+        return "***"
+    local, domain = email.split("@", 1)
+    return f"{local[:1]}***@{domain}"
+
 # Directorios de Almacenamiento (Persistencia en Render)
 STORAGE_ROOT = "/data" if os.path.exists("/data") else "."
 SESSIONS_DIR = os.path.join(STORAGE_ROOT, "sessions_cache")
@@ -63,6 +70,30 @@ def verify_token(token: str, secret: str) -> Optional[dict]:
         logger.warning(f"Token inválido: {e}")
         return None
 
+def _request_is_local(request: Request) -> bool:
+    """Determina si la petición proviene de una interfaz local (desarrollo en máquina local)."""
+    try:
+        client_host = request.client.host if request.client else None
+        url_host = (request.url.hostname or "").lower()
+        return client_host in ("127.0.0.1", "::1", "localhost") or url_host in ("localhost", "127.0.0.1", "::1")
+    except Exception:
+        return False
+
+def _resolve_auth_secret(request: Optional[Request], allow_bypass: bool) -> str:
+    """Resuelve el secreto para verificar JWT.
+    El fallback de desarrollo solo se permite si la petición es estrictamente local
+    (evita que un entorno 'development' público en un VPS quede falsificable)."""
+    secret = os.getenv("AUTH_SECRET") or os.getenv("NEXTAUTH_SECRET")
+    if secret:
+        return secret
+    if not allow_bypass or not (request and _request_is_local(request)):
+        raise HTTPException(
+            status_code=500,
+            detail="Error de configuracion de seguridad: falta definir AUTH_SECRET o NEXTAUTH_SECRET en produccion."
+        )
+    logger.warning("USANDO SECRETO DE DESARROLLO POR DEFECTO - solo válido en localhost. Define AUTH_SECRET.")
+    return "secreto-desarrollo-por-defecto"
+
 def get_authenticated_user() -> str:
     """Extrae y valida el Bearer token del request actual.
     Retorna el email del usuario autenticado (user_id).
@@ -81,16 +112,8 @@ def get_authenticated_user() -> str:
     auth_header = request.headers.get("Authorization")
     if auth_header and auth_header.startswith("Bearer "):
         token = auth_header.split(" ")[1]
-        secret = os.getenv("AUTH_SECRET") or os.getenv("NEXTAUTH_SECRET")
+        secret = _resolve_auth_secret(request, allow_bypass)
         
-        if not secret:
-            if not allow_bypass:
-                raise HTTPException(
-                    status_code=500, 
-                    detail="Error de configuracion de seguridad: falta definir AUTH_SECRET o NEXTAUTH_SECRET en produccion."
-                )
-            secret = "secreto-desarrollo-por-defecto"
-            
         payload = verify_token(token, secret)
         if not payload:
             raise HTTPException(status_code=401, detail="Token de sesión inválido o expirado.")
@@ -113,16 +136,8 @@ def check_authorization(email: str):
         auth_header = request.headers.get("Authorization")
         if auth_header and auth_header.startswith("Bearer "):
             token = auth_header.split(" ")[1]
-            secret = os.getenv("AUTH_SECRET") or os.getenv("NEXTAUTH_SECRET")
+            secret = _resolve_auth_secret(request, allow_bypass)
             
-            if not secret:
-                if not allow_bypass:
-                    raise HTTPException(
-                        status_code=500,
-                        detail="Error de configuracion de seguridad: falta definir AUTH_SECRET o NEXTAUTH_SECRET en produccion."
-                    )
-                secret = "secreto-desarrollo-por-defecto"
-                
             payload = verify_token(token, secret)
             if not payload:
                 raise HTTPException(status_code=401, detail="Token de sesión inválido o expirado.")
@@ -198,14 +213,22 @@ def get_user_data(user_id: str, chat_id: Optional[int] = None):
                 decrypted = cipher_suite.decrypt(raw)
                 stored_data = pickle.loads(decrypted)
             except Exception:
-                # Fallback: leer como pickle plano (archivos de sesión anteriores sin cifrar)
-                stored_data = pd.read_pickle(session_file)
+                # Migración segura: solo aceptar pickle plano si claramente es un archivo
+                # heredado (no empieza con token Fernet 'gAAA...') y nunca contienen
+                # datos arbitrarios de terceros: los re-ciframos de inmediato.
+                if raw.strip().startswith(b"gAAA"):
+                    logger.error("Archivo de sesión cifrado inválido; se ignora para prevenir RCE.")
+                    raise ValueError("Sesión cifrada corrupta o manipulada")
+                logger.warning("Migrando sesión heredada sin cifrar (%s) a formato cifrado.", session_file)
+                stored_data = pickle.loads(raw)
             if isinstance(stored_data, pd.DataFrame):
                 stored_data = {"type": "file", "data": {"dataset_1": stored_data}, "sources": []}
+            # Re-persistir en formato cifrado si venía de archivo plano heredado
+            save_user_data(user_id, stored_data)
             data_store[session_key] = stored_data
             return stored_data
     except Exception as e:
-        logger.error(f"Error cargando sesión persistente para {user_id}: {e}")
+        logger.error("Error cargando sesión persistente para %s: %s", mask_email(user_id), e)
     
     # 3. FALLBACK: Heredar de sesión activa
     if chat_id:
@@ -229,18 +252,18 @@ def save_user_data(user_id: str, data: dict):
         encrypted = cipher_suite.encrypt(raw)
         with open(session_file, 'wb') as f:
             f.write(encrypted)
-        logger.info(f"Sesión cifrada y persistida en disco para {user_id}")
+        logger.info("Sesión cifrada y persistida en disco para %s", mask_email(user_id))
         
         # Sincronización en la Nube
         try:
             remote_path = f"sessions/{os.path.basename(session_file)}"
             upload_file_to_cloud(session_file, remote_path)
-            logger.info(f"Sesión persistida en la nube para {user_id}")
+            logger.info("Sesión persistida en la nube para %s", mask_email(user_id))
         except Exception as upload_err:
-            logger.error(f"Error al subir sesión a la nube para {user_id}: {upload_err}")
+            logger.error("Error al subir sesión a la nube para %s: %s", mask_email(user_id), upload_err)
             
     except Exception as e:
-        logger.error(f"Error al persistir sesión para {user_id}: {e}")
+        logger.error("Error al persistir sesión para %s: %s", mask_email(user_id), e)
 
 def promote_active_session(user_id: str, chat_id: int):
     """Vincula los datos de la sesión activa a un chat específico recién creado."""
@@ -249,7 +272,7 @@ def promote_active_session(user_id: str, chat_id: int):
     
     if active_key in data_store and data_store[active_key] is not None:
         data_store[chat_key] = data_store[active_key]
-        logger.info(f"Sesión activa promocionada al chat {chat_id} para {user_id}")
+        logger.info("Sesión activa promocionada al chat %s para %s", chat_id, mask_email(user_id))
         return True
     return False
 
@@ -297,7 +320,8 @@ def load_source_to_session(user_id: str, source, chat_id: Optional[int] = None) 
                 return True
         elif source.type == 'sql':
             from src.connectors.data_connectors import get_sql_engine, get_db_schema
-            engine = get_sql_engine(source.url)
+            from src.utils.security import decrypt_key
+            engine = get_sql_engine(decrypt_key(source.url) or source.url)
             schema = get_db_schema(engine)
             session_data = {"type": "sql", "data": engine, "schema": schema, "source_id": source.id}
             data_store[session_key] = session_data

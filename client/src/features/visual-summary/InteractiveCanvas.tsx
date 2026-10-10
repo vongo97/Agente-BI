@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { useTheme } from '@/context/ThemeContext';
+import { useToast } from '@/context/ToastContext';
 import * as Icons from 'lucide-react';
 import { 
     ZoomIn, 
@@ -60,6 +61,7 @@ function DynamicIcon({ name, className }: { name: string; className?: string }) 
 export function InteractiveCanvas({ nodes: initialNodes, edges: initialEdges, visualType, onGraphChange }: InteractiveCanvasProps) {
     const canvasRef = useRef<HTMLDivElement>(null);
     const { theme } = useTheme();
+    const { addToast } = useToast();
     const isDark = theme === 'dark';
 
     // Estados del grafo y posiciones
@@ -439,7 +441,7 @@ export function InteractiveCanvas({ nodes: initialNodes, edges: initialEdges, vi
         // Evitar dejar el grafo huérfano si borramos el raíz único
         const node = nodes.find(n => n.id === nodeId);
         if (node?.type === 'root' && nodes.filter(n => n.type === 'root').length === 1 && nodes.length > 1) {
-            alert("No puedes borrar el nodo central raíz del diagrama.");
+            addToast("No puedes borrar el nodo central raíz del diagrama.", "warning");
             return;
         }
 

@@ -4,6 +4,7 @@ import { useState } from "react";
 import { X, FileText, Download, Sparkles, Loader2, CheckCircle2 } from "lucide-react";
 import { generateReportSummary, exportProfessionalReport, exportProfessionalPptx } from "@/lib/api";
 import { useDashboard, Message } from "@/context/DashboardContext";
+import { useToast } from "@/context/ToastContext";
 
 interface ReportBuilderProps {
     isOpen: boolean;
@@ -15,6 +16,7 @@ interface ReportBuilderProps {
 
 export function ReportBuilder({ isOpen, onClose, messages, userId, userName }: ReportBuilderProps) {
     const { apiKey } = useDashboard();
+    const { addToast } = useToast();
     const [title, setTitle] = useState("Informe Ejecutivo de Análisis BI");
     const [summary, setSummary] = useState("");
     const [generatingSummary, setGeneratingSummary] = useState(false);
@@ -46,7 +48,7 @@ export function ReportBuilder({ isOpen, onClose, messages, userId, userName }: R
             setSummary(res.summary);
         } catch (error) {
             console.error("Error generating report summary:", error);
-            alert("Error generando resumen estratégico");
+            addToast("Error generando resumen estratégico", "error");
         } finally {
             setGeneratingSummary(false);
         }
@@ -54,7 +56,7 @@ export function ReportBuilder({ isOpen, onClose, messages, userId, userName }: R
 
     const handleExport = async (format: 'pdf' | 'pptx' = 'pdf') => {
         if (selectedMessageIds.length === 0) {
-            alert("Selecciona al menos un gráfico para el reporte.");
+            addToast("Selecciona al menos un gráfico para el reporte.", "warning");
             return;
         }
 
@@ -95,7 +97,7 @@ export function ReportBuilder({ isOpen, onClose, messages, userId, userName }: R
             onClose();
         } catch (error) {
             console.error(`Error exporting report to ${format.toUpperCase()}:`, error);
-            alert(`Error al exportar el reporte profesional a ${format.toUpperCase()}`);
+            addToast(`Error al exportar el reporte profesional a ${format.toUpperCase()}`, "error");
         } finally {
             if (format === 'pdf') setExporting(false);
             else setExportingPptx(false);

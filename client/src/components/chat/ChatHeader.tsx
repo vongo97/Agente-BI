@@ -2,6 +2,7 @@ import { Menu, Bot, Sparkles, LayoutDashboard, FileText, FileDown, Plus, Loader2
 import { exportPdf } from "@/lib/api";
 import { useState } from "react";
 import { ChatMessage, DataSource } from "@/types/shared";
+import { useToast } from "@/context/ToastContext";
 
 interface ChatHeaderProps {
     setSidebarOpen: (open: boolean) => void;
@@ -45,6 +46,7 @@ export function ChatHeader({
     aiProvider,
 }: ChatHeaderProps) {
     const [downloadingPdf, setDownloadingPdf] = useState(false);
+    const { addToast } = useToast();
 
     const handleDownloadPdf = async () => {
         if (!activeChatId) return;
@@ -61,7 +63,7 @@ export function ChatHeader({
             a.remove();
         } catch (err) {
             console.error("Error al descargar PDF:", err);
-            alert("Error al descargar el PDF.");
+            addToast("Error al descargar el PDF.", "error");
         } finally {
             setDownloadingPdf(false);
         }

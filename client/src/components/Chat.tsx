@@ -5,6 +5,7 @@ import { useSession } from "next-auth/react";
 import { Bot, BarChart3, Database, TrendingUp, Search } from "lucide-react";
 import { analyzeData, pinToDashboard, exportChartAsPng, generateAutoDashboard, suggestQuestions, cleanData } from "@/lib/api";
 import { useDashboard, Message } from "@/context/DashboardContext";
+import { useToast } from "@/context/ToastContext";
 import { ReportBuilder } from "./ReportBuilder";
 
 // Sub-componentes refactorizados
@@ -32,6 +33,7 @@ export function Chat() {
         showAiSuggestions,
         autoSuggestionsEnabled
     } = useDashboard();
+    const { addToast } = useToast();
     
     const [input, setInput] = useState("");
     const [loading, setLoading] = useState(false);
@@ -81,7 +83,7 @@ export function Chat() {
     const handleSendAsQuery = async (queryText: string) => {
         if (!queryText.trim() || loading) return;
         if (dataSources.length === 0) {
-            alert("Por favor, sube al menos una fuente de datos primero.");
+            addToast("Por favor, sube al menos una fuente de datos primero.", "warning");
             return;
         }
 
@@ -121,7 +123,7 @@ export function Chat() {
 
     const handleAutoDash = async () => {
         if (dataSources.length === 0 || !apiKey) {
-            alert("Necesitas datos y API Key.");
+            addToast("Necesitas datos y API Key.", "warning");
             return;
         }
         setLoadingAutoDash(true);
@@ -138,7 +140,7 @@ export function Chat() {
             setMessages(prev => [...prev, newMessage]);
         } catch (err) {
             const error = err as Error;
-            alert("Error generando dashboard: " + (error.message || "Desconocido"));
+            addToast("Error generando dashboard: " + (error.message || "Desconocido"), "error");
         } finally {
             setLoadingAutoDash(false);
             setLoadingMessage("");
@@ -147,7 +149,7 @@ export function Chat() {
 
     const handleCleanData = async () => {
         if (!apiKey) {
-            alert("Por favor, introduce tu API Key en la barra lateral.");
+            addToast("Por favor, introduce tu API Key en la barra lateral.", "warning");
             return;
         }
         setCleaningData(true);
@@ -161,7 +163,7 @@ export function Chat() {
             setMessages(prev => [...prev, newMessage]);
         } catch (err) {
             const error = err as Error;
-            alert("Error en la limpieza de datos: " + (error.message || "Desconocido"));
+            addToast("Error en la limpieza de datos: " + (error.message || "Desconocido"), "error");
         } finally {
             setCleaningData(false);
         }
@@ -171,10 +173,10 @@ export function Chat() {
         if (!activeChatId) return;
         try {
             await pinToDashboard(userId, activeChatId, messageId);
-            alert("¡Anclado al panel de control! 📌");
+            addToast("¡Anclado al panel de control! 📌", "success");
         } catch (error) {
             console.error("Error pinning item:", error);
-            alert("Error al anclar");
+            addToast("Error al anclar", "error");
         }
     };
 
@@ -190,7 +192,7 @@ export function Chat() {
             window.URL.revokeObjectURL(url);
         } catch (error) {
             console.error("Error exporting png:", error);
-            alert("Error al exportar imagen");
+            addToast("Error al exportar imagen", "error");
         }
     };
 
