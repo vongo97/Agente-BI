@@ -32,11 +32,18 @@ setup_logging()
 logger = logging.getLogger(__name__)
 
 # Configurar CORS restringido solo a dominios de producción
-ALLOWED_ORIGINS = [
-    "https://agente-bi.vercel.app",
-    # Agregar dominios corporativos específicos aquí en producción
-    # Ej: "https://app.ejemplo.com", "https://admin.ejemplo.com"
-]
+# Se lee de la variable de entorno ALLOWED_ORIGINS (separada por comas) para
+# poder cambiar de dominio del frontend sin tocar código. Si no está definida,
+# se usa el dominio histórico por defecto.
+_allowed_origins_env = os.getenv("ALLOWED_ORIGINS", "").strip()
+if _allowed_origins_env:
+    ALLOWED_ORIGINS = [o.strip() for o in _allowed_origins_env.split(",") if o.strip()]
+else:
+    ALLOWED_ORIGINS = [
+        "https://agente-bi.vercel.app",
+        # Agregar dominios corporativos específicos aquí en producción
+        # Ej: "https://app.ejemplo.com", "https://admin.ejemplo.com"
+    ]
 
 app.add_middleware(
     CORSMiddleware,
