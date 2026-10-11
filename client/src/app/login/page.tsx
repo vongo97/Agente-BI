@@ -73,10 +73,19 @@ export default function LoginPage() {
                     )}
                 </div>
 
-                {/* Footer note */}
-                <p className="mt-6 text-center text-[10px] text-[var(--bi-text-3)] uppercase tracking-wider">
-                    Análisis de datos con IA · 2026
-                </p>
+                {/* Footer note + enlaces legales */}
+                <div className="mt-6 space-y-2">
+                    <div className="flex items-center justify-center gap-3 text-[10px] text-[var(--bi-text-3)]">
+                        <a href="/legal/privacidad" className="hover:text-[var(--bi-teal)] transition-colors">Privacidad</a>
+                        <span aria-hidden>·</span>
+                        <a href="/legal/terminos" className="hover:text-[var(--bi-teal)] transition-colors">Términos</a>
+                        <span aria-hidden>·</span>
+                        <a href="/legal/cookies" className="hover:text-[var(--bi-teal)] transition-colors">Cookies</a>
+                    </div>
+                    <p className="text-center text-[10px] text-[var(--bi-text-3)] uppercase tracking-wider">
+                        Análisis de datos con IA · 2026
+                    </p>
+                </div>
             </div>
         </div>
     );
