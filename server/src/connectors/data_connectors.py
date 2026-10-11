@@ -4,6 +4,7 @@ import requests
 import pandas as pd
 from sqlalchemy import create_engine, inspect
 from urllib.parse import quote_plus
+from typing import Optional
 import urllib.parse
 
 logger = logging.getLogger(__name__)
@@ -308,6 +309,31 @@ def load_file_data_from_bytes(raw_bytes: bytes, filename: str) -> pd.DataFrame:
     except Exception as e:
         logger.error("Error crítico cargando bytes file=%s: %s", basename, type(e).__name__)
         raise Exception(f"Error al leer el archivo cifrado: {type(e).__name__}")
+
+
+def load_source_df(file_path: str, is_encrypted: bool, filename: str, nrows: Optional[int] = None) -> pd.DataFrame:
+    """Carga un DataFrame desde la ruta física de un DataSource respetando el cifrado.
+
+    - Si `is_encrypted`, descifra en memoria (Fernet) y parsea desde el buffer,
+      sin escribir el contenido descifrado a disco.
+    - `nrows` limita las filas leídas para previews/contexto (p. ej. simulador).
+    """
+    import io
+    lower = (file_path or "").lower()
+    if is_encrypted:
+        from src.utils.security import decrypt_file_to_bytes
+        raw = decrypt_file_to_bytes(file_path)
+        if nrows is not None:
+            if lower.endswith('.csv'):
+                return pd.read_csv(io.BytesIO(raw), nrows=nrows)
+            return pd.read_excel(io.BytesIO(raw), nrows=nrows)
+        return load_file_data_from_bytes(raw, filename)
+
+    if nrows is not None:
+        if lower.endswith('.csv'):
+            return pd.read_csv(file_path, nrows=nrows)
+        return pd.read_excel(file_path, nrows=nrows)
+    return load_file_data(file_path)
 
 
 def load_gsheets_data(gs_url):

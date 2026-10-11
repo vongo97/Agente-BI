@@ -17,6 +17,8 @@ router = APIRouter(tags=["Exports"])
 @limiter.limit("10/minute")
 @limiter.limit("40/hour")
 async def export_chart(request: Request, fig_json: dict):
+    authenticated_user = get_authenticated_user()
+    check_authorization(authenticated_user)
     try:
         img_bytes = export_plotly_to_image(json.dumps(fig_json))
         if not img_bytes:

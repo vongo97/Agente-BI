@@ -79,10 +79,10 @@ async def process_simulation(sim_id: int, api_key: str, provider: str, mistral_k
             if os.path.exists(file_path):
                 df = None
                 try:
-                    from src.connectors.data_connectors import load_file_data
-                    df = load_file_data(file_path)
-                except:
-                    pass
+                    from src.connectors.data_connectors import load_source_df
+                    df = load_source_df(file_path, getattr(src, "is_encrypted", False), src.name)
+                except Exception as e:
+                    logger.warning("[Sim-%s] No se pudo cargar %s: %s", sim_id, src.name, type(e).__name__)
                 if df is not None:
                     session_data[src.name] = df
             else:
@@ -326,7 +326,8 @@ async def get_simulation_suggestions(request: Request, req: SuggestionRequest, d
             if final_path:
                 try:
                     full_p_str = str(final_path.absolute())
-                    df = pd.read_csv(full_p_str, nrows=8) if full_p_str.endswith('.csv') else pd.read_excel(full_p_str, nrows=8)
+                    from src.connectors.data_connectors import load_source_df
+                    df = load_source_df(full_p_str, getattr(src, "is_encrypted", False), src.name, nrows=8)
                     if df is not None:
                         full_context_str += f"\nArchivo: {src.name}\nColumnas: {list(df.columns)}\n"
                         head_sample += f"\n--- {src.name} ---\n{df.head(5).to_string()}\n"
@@ -548,7 +549,8 @@ async def get_simulation_ontology(request: Request, req: OntologyRequest, db: Se
             if final_path:
                 try:
                     full_p_str = str(final_path.absolute())
-                    df = pd.read_csv(full_p_str, nrows=20) if full_p_str.endswith('.csv') else pd.read_excel(full_p_str, nrows=20)
+                    from src.connectors.data_connectors import load_source_df
+                    df = load_source_df(full_p_str, getattr(src, "is_encrypted", False), src.name, nrows=20)
                     if df is not None:
                         full_context_str += f"\nArchivo: {src.name}\nColumnas: {list(df.columns)}\n"
                         head_sample += f"\n--- {src.name} ---\n{df.head(15).to_string()}\n"
@@ -751,7 +753,8 @@ async def generate_agents_endpoint(request: Request, req: GenerateAgentsRequest,
             if final_path:
                 try:
                     full_p_str = str(final_path.absolute())
-                    df = pd.read_csv(full_p_str, nrows=20) if full_p_str.endswith('.csv') else pd.read_excel(full_p_str, nrows=20)
+                    from src.connectors.data_connectors import load_source_df
+                    df = load_source_df(full_p_str, getattr(src, "is_encrypted", False), src.name, nrows=20)
                     if df is not None:
                         full_context_str += f"\nArchivo: {src.name}\nColumnas: {list(df.columns)}\n"
                 except Exception as e:
