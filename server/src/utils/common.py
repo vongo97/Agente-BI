@@ -145,6 +145,10 @@ def check_authorization(email: str):
             # El email autenticado por el token DEBE coincidir con el email de la consulta
             token_email = payload.get("user_id", "").lower()
             if token_email != email.lower():
+                logger.warning(
+                    "AUTH_REJECTED motivo=token_user_mismatch token_user=%s requested_user=%s",
+                    mask_email(token_email), mask_email(email)
+                )
                 raise HTTPException(status_code=403, detail="El token de sesión no coincide con el usuario solicitado.")
         else:
             # Exigir token obligatorio en producción para todos (sin bypass para test_user)
@@ -160,15 +164,24 @@ def check_authorization(email: str):
     
     if not authorized_env:
         if not allow_bypass:
+            logger.warning(
+                "AUTH_REJECTED motivo=authorized_emails_vacia user=%s "
+                "(definir AUTHORIZED_EMAILS en el panel del servicio)",
+                mask_email(email)
+            )
             raise HTTPException(status_code=403, detail="Acceso denegado: AUTHORIZED_EMAILS no configurada en producción.")
         return True
         
-    authorized_list = [e.strip().lower() for e in authorized_env.split(",")]
+    authorized_list = [e.strip().lower() for e in authorized_env.split(",") if e.strip()]
     # En producción test_user_persistence NO se exime si no está en la lista blanca
     if allow_bypass and email.lower() == "test_user_persistence@example.com":
         return True
     if email.lower() in authorized_list:
         return True
+    logger.warning(
+        "AUTH_REJECTED motivo=no_autorizado user=%s (AUTHORIZED_EMAILS contiene %d correo/s)",
+        mask_email(email), len(authorized_list)
+    )
     raise HTTPException(status_code=403, detail="Usuario no autorizado")
 
 def get_session_file(user_id: str, source_id: Optional[int] = None):

@@ -34,6 +34,8 @@ exports/
 # Data files
 *.csv
 *.xlsx
+datasets_vektra/stress/
+.freebuff/
 server/.venv-codex/
 server/scratch/
 server/scratch_test.py

@@ -101,6 +101,19 @@ async def catch_exceptions_middleware(request, call_next):
                 content={"detail": f"Internal Server Error: {type(e).__name__}"}
             )
 
+# ── Auditoría de configuración de autorización ───────────────────────────────
+# Si AUTHORIZED_EMAILS no está definida, TODOS los endpoints protegidos
+# responden 403 y el navegador muestra un error genérico. Se avisa al arrancar.
+_authorized_env = os.getenv("AUTHORIZED_EMAILS", "").strip()
+_authorized_list = [e.strip() for e in _authorized_env.split(",") if e.strip()]
+if not _authorized_list:
+    logger.warning(
+        "CONFIG: AUTHORIZED_EMAILS vacía o ausente -> todos los endpoints "
+        "protegidos responderán 403 'Acceso denegado'. Defínela en el panel del servicio."
+    )
+else:
+    logger.info("CONFIG: %d correo(s) en la lista blanca AUTHORIZED_EMAILS", len(_authorized_list))
+
 # Registrar Routers
 app.include_router(auth.router, prefix="/api/v1")
 app.include_router(data.router, prefix="/api/v1")
