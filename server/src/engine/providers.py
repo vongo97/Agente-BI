@@ -439,7 +439,8 @@ def resolve_keys(provider: str, api_key: Optional[str], mistral_key: Optional[st
     if provider in PROVIDERS and not api_key and not mistral_key:
         return api_key, mistral_key, (
             f"No hay ninguna clave de {meta['label']} guardada. "
-            f"Abre Ajustes → Inteligencia Artificial y pega una clave de {meta['console']}."
+            f"Abre Configuración → Seguridad y Llaves, pega una clave y pulsa Validar "
+            f"(la encontrarás en {meta['console']})."
         )
     return api_key, mistral_key, None
 

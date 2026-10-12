@@ -38,8 +38,8 @@ def list_provider_models(provider_id: str):
     return list_models(provider_id)
 
 @router.post("/validate-key")
-@limiter.limit("5/minute")
-@limiter.limit("20/hour")
+@limiter.limit("10/minute")
+@limiter.limit("40/hour")
 def validate_key(request: Request, api_key: str = Form(...), provider: str = Form("gemini")):
     authenticated_user = get_authenticated_user()
     check_authorization(authenticated_user)

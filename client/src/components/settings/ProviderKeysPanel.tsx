@@ -144,9 +144,17 @@ export function ProviderKeysPanel({ compact = false }: { compact?: boolean }) {
                                 disabled={st.kind === "checking"}
                                 className="shrink-0 px-4 rounded-xl bg-[var(--bi-surface-1)] border border-[var(--bi-green-border)] text-[var(--bi-green)] text-[10px] font-bold uppercase tracking-wider hover:bg-[var(--bi-surface-2)] transition-colors disabled:opacity-50"
                             >
-                                {st.kind === "checking" ? "..." : "Validar"}
+                                {st.kind === "checking" ? "..." : st.kind === "ok" ? "Guardada" : "Validar"}
                             </button>
                         </div>
+                        {/* Aviso mientras la clave está escrita pero sin validar: antes pasaba
+                            inadvertido y el análisis fallaba con "no hay clave guardada". */}
+                        {(values[p.id] || "").trim() && st.kind !== "ok" && st.kind !== "checking" && (
+                            <p className="text-[10px] pl-1 text-[var(--bi-purple)]">
+                                Pulsa <strong>Validar</strong> para comprobar y guardar esta clave. Mientras
+                                no lo hagas, no se usará en el análisis.
+                            </p>
+                        )}
                         {models[p.id] && models[p.id].length > 1 && (
                             <select
                                 value={selectedModel[p.id] || ""}
