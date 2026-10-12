@@ -132,10 +132,14 @@ except Exception as e:
 @app.get("/")
 @app.get("/health")
 async def root():
+    from src.database import db_diagnostic
     return {
         "status": "online",
         "message": "Agente BI API is running (Modular Mode)",
-        "version": "1.0.0"
+        "version": "1.0.0",
+        # Solo el dialecto: permite verificar desde fuera que los datos se guardan
+        # en algo persistente. Nunca se expone host, usuario ni contraseña.
+        "database": db_diagnostic(),
     }
 
 if __name__ == "__main__":

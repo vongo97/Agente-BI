@@ -49,6 +49,28 @@ except Exception as e:
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
+def db_diagnostic() -> dict:
+    """Información segura del engine para diagnóstico (sin host ni credenciales).
+    'dialect' permite saber desde fuera si los datos son persistentes (postgres)
+    o efímeros (SQLite en el contenedor, que se borra en cada deploy)."""
+    dialect = engine.dialect.name
+    return {
+        "dialect": dialect,
+        "persistent": dialect not in ("sqlite",),
+    }
+
+# Aviso temprano: en Render el disco es efímero, así que SQLite significa perder
+# chats, fuentes y configuración guardada en cada reinicio.
+_db_info = db_diagnostic()
+if not _db_info["persistent"]:
+    logger.warning(
+        "CONFIG: usando SQLite (%s). Los datos NO sobreviven a un reinicio/deploy. "
+        "Define DATABASE_URL (PostgreSQL) en el panel del servicio para tener persistencia.",
+        DB_URL.split("///")[-1] if "///" in DB_URL else DB_URL
+    )
+else:
+    logger.info("CONFIG: base de datos %s (persistente)", dialect)
+
 class Base(DeclarativeBase):
     """Base de SQLAlchemy 2.0"""
     pass
