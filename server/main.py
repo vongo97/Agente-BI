@@ -149,6 +149,11 @@ if __name__ == "__main__":
         reload_enabled,
         port
     )
-    uvicorn.run("main:app", host="0.0.0.0", port=port, reload=reload_enabled)
+    # Sin reload se pasa el objeto app directamente: usar el string "main:app"
+    # obligaba a reimportar todo main.py (y con el, pandas/matplotlib/statsmodels/
+    # supabase...) una segunda vez, duplicando el arranque hasta ~35 s y haciendo
+    # que Render perdiera la ventana de deteccion de puerto.
+    target = "main:app" if reload_enabled else app
+    uvicorn.run(target, host="0.0.0.0", port=port, reload=reload_enabled)
 
 
