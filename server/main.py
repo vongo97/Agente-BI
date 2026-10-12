@@ -41,6 +41,7 @@ if _allowed_origins_env:
 else:
     ALLOWED_ORIGINS = [
         "https://agente-bi.vercel.app",
+        "https://agente-bi.onrender.com",
         # Agregar dominios corporativos específicos aquí en producción
         # Ej: "https://app.ejemplo.com", "https://admin.ejemplo.com"
     ]

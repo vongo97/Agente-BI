@@ -37,3 +37,4 @@ exports/
 server/.venv-codex/
 server/scratch/
 server/scratch_test.py
+server/requirements-local.txt
