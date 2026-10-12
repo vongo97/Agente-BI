@@ -27,7 +27,7 @@ services:
       # dominio real del frontend desplegado, si no el navegador bloquea con
       # "Failed to fetch" aunque el backend esté vivo.
       - key: ALLOWED_ORIGINS
-        value: https://agente-bi.onrender.com,https://agente-bi.vercel.app
+        value: https://agente-bi.onrender.com,https://agente-bi.vercel.app,https://vektra-bi-eight.vercel.app
       # AUTH_SECRET: firma JWT. Configurar en el Dashboard de Render con un secreto
       # aleatorio seguro (mínimo 32 chars). Ej: openssl rand -hex 32
       - key: AUTH_SECRET
