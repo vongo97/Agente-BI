@@ -13,8 +13,10 @@ Aquí se centraliza:
 - verify_key(): validación REAL contra el endpoint /models del proveedor (no consume tokens).
 - chat(): llamada de generación con el mismo formato para todos.
 """
+import json
 import logging
 import re
+from contextvars import ContextVar
 from typing import Optional, Tuple
 
 import requests
@@ -197,11 +199,30 @@ def _verify_openai_style(provider: str, key: str) -> Tuple[bool, Optional[str]]:
     return False, f"El proveedor respondió {resp.status_code} al validar la clave."
 
 
-def _openai_call(provider: str, key: str, payload_extra: dict, timeout: int):
+def get_model(provider: str, user_config=None) -> Optional[str]:
+    """Modelo elegido por el usuario para ese proveedor, si guardó uno válido."""
+    if not user_config:
+        return None
+    raw = getattr(user_config, "provider_models", None)
+    if not raw:
+        return None
+    try:
+        chosen = json.loads(raw).get(provider)
+    except Exception:
+        return None
+    meta = get_meta(provider)
+    # Si el proveedor retiró ese modelo del catálogo, se ignora la elección y se usa
+    # el por defecto (que a su vez tiene reservas).
+    disponibles = [meta["model"], *meta.get("model_fallbacks", [])]
+    return chosen if chosen in disponibles else None
+
+
+def _openai_call(provider: str, key: str, payload_extra: dict, timeout: int, model_override: Optional[str] = None):
     """POST a /chat/completions probando el modelo principal y, si el proveedor lo
     ha retirado (410/404), los de reserva. Devuelve (respuesta, modelo_usado)."""
     meta = PROVIDERS[provider]
-    modelos = [meta["model"], *meta.get("model_fallbacks", [])]
+    principal = model_override or meta["model"]
+    modelos = [principal] + [m for m in meta.get("model_fallbacks", []) if m != principal]
     ultimo = None
     for model in modelos:
         headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
@@ -316,6 +337,60 @@ def verify_key(provider: str, key: str, timeout_note: bool = True) -> Tuple[bool
     return _verify_openai_style(provider, key)
 
 
+_models_cache: dict = {"at": 0.0, "data": None}
+_MODELS_TTL = 3600  # 1 hora: el catalogo de NVIDIA cambia pocas veces
+
+# Modelo elegido por el usuario para esta peticion. Se propaga con ContextVar (igual
+# que request_var en utils/common.py) en vez de añadir un parámetro a las diez
+# funciones del motor: el contexto es por petición, así que dos usuarios simultáneos
+# con modelos distintos no se pisan.
+_model_override: ContextVar = ContextVar("ai_model_override", default=None)
+
+
+def set_model_override(model: Optional[str]):
+    return _model_override.set(model)
+
+
+def get_model_override() -> Optional[str]:
+    return _model_override.get()
+
+
+def list_models(provider: str) -> dict:
+    """Modelos disponibles para un proveedor.
+
+    NVIDIA publica su catalogo sin clave (GET /models responde 200 a cualquiera), asi
+    que se listan en vivo y se cachean una hora. Para el resto se devuelve el modelo
+    por defecto mas sus reservas.
+    """
+    meta = get_meta(provider)
+    if provider != "nvidia":
+        return {
+            "provider": provider,
+            "models": [meta["model"], *meta.get("model_fallbacks", [])],
+            "live": False,
+        }
+
+    import time
+    now = time.time()
+    if _models_cache["data"] and now - _models_cache["at"] < _MODELS_TTL:
+        return {"provider": provider, "models": _models_cache["data"], "live": True}
+
+    try:
+        resp = requests.get(f"{meta['base_url']}/models", timeout=KEY_TIMEOUT)
+        ids = [m["id"] for m in resp.json().get("data", []) if m.get("id")]
+    except Exception as e:
+        logger.warning("No se pudo listar el catalogo de NVIDIA: %s", type(e).__name__)
+        ids = []
+
+    # Se filtran los que no sirven para chatear (embeddings, visión, guardas).
+    excluir = ("embed", "guard", "retriev", "detector", "safety", "topic-control", "parse")
+    utiles = [i for i in ids if not any(e in i.lower() for e in excluir)]
+    utiles.sort()
+    _models_cache["data"] = utiles
+    _models_cache["at"] = now
+    return {"provider": provider, "models": utiles, "live": True}
+
+
 def resolve_keys(provider: str, api_key: Optional[str], mistral_key: Optional[str],
                  user_config) -> Tuple[str, str, Optional[str]]:
     """Resuelve la clave efectiva de un proveedor.
@@ -370,7 +445,8 @@ def resolve_keys(provider: str, api_key: Optional[str], mistral_key: Optional[st
 
 
 def chat(provider: str, key: str, prompt: str, temperature: float = 0.7,
-         system_instruction: Optional[str] = None, timeout: int = 90) -> str:
+         system_instruction: Optional[str] = None, timeout: int = 90,
+         model_override: Optional[str] = None) -> str:
     """Generación unificada. Lanza excepción para que el llamador la gestione."""
     key = normalize_key(key)
     meta = get_meta(provider)
@@ -408,7 +484,7 @@ def chat(provider: str, key: str, prompt: str, temperature: float = 0.7,
 
     # OpenAI y compatibles
     payload = {"messages": messages, "temperature": temperature}
-    resp, _model = _openai_call(provider, key, payload, timeout=timeout)
+    resp, _model = _openai_call(provider, key, payload, timeout=timeout, model_override=model_override)
     if resp is None:
         raise RuntimeError("Ningún modelo disponible en este proveedor ahora mismo.")
     resp.raise_for_status()

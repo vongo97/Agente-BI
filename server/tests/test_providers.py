@@ -215,6 +215,87 @@ class TestModeloRetirado:
         assert "retir" in msg.lower() or "disponible" in msg.lower()
 
 
+class TestListModels:
+    """El desplegable de Ajustes se alimenta de aquí, para no mantener a mano una
+    lista de modelos que queda obsoleta cuando el proveedor retira modelos."""
+
+    def test_otros_proveedores_devuelven_el_por_defecto(self):
+        r = providers.list_models("groq")
+        assert r["live"] is False
+        assert r["models"][0] == providers.get_meta("groq")["model"]
+
+    def test_nvidia_consulta_el_catalogo_en_vivo(self, monkeypatch):
+        class Resp:
+            def json(self):
+                return {"data": [
+                    {"id": "nvidia/nemotron-3-super-120b-a12b"},
+                    {"id": "nvidia/nv-embedqa-mistral-7b-v2"},   # embedding: debe filtrarse
+                    {"id": "meta/llama-guard-4-12b"},             # guard: fuera
+                    {"id": "moonshotai/kimi-k3"},
+                ]}
+
+        monkeypatch.setattr(providers.requests, "get", lambda *a, **k: Resp())
+        providers._models_cache.update({"at": 0.0, "data": None})
+        r = providers.list_models("nvidia")
+        assert r["live"] is True
+        assert "moonshotai/kimi-k3" in r["models"]
+        assert not any("embed" in m for m in r["models"])
+        assert not any("guard" in m for m in r["models"])
+
+    def test_cache_de_una_hora(self, monkeypatch):
+        llamadas = []
+
+        class Resp:
+            def json(self):
+                return {"data": [{"id": "moonshotai/kimi-k3"}]}
+
+        def fake_get(*a, **k):
+            llamadas.append(1)
+            return Resp()
+
+        monkeypatch.setattr(providers.requests, "get", fake_get)
+        providers._models_cache.update({"at": 0.0, "data": None})
+        providers.list_models("nvidia")
+        providers.list_models("nvidia")
+        providers.list_models("nvidia")
+        assert len(llamadas) == 1, "el catálogo debe consultarse una vez por hora"
+
+    def test_sin_red_devuelve_lista_vacia_sin_romper(self, monkeypatch):
+        def boom(*a, **k):
+            raise providers.requests.RequestException("sin red")
+
+        monkeypatch.setattr(providers.requests, "get", boom)
+        providers._models_cache.update({"at": 0.0, "data": None})
+        assert providers.list_models("nvidia")["models"] == []
+
+
+class TestModeloElegidoPorUsuario:
+    class Cfg:
+        def __init__(self, raw):
+            self.provider_models = raw
+
+    def test_usa_el_modelo_elegido(self):
+        cfg = self.Cfg('{"nvidia": "moonshotai/kimi-k3"}')
+        assert providers.get_model("nvidia", cfg) == "moonshotai/kimi-k3"
+
+    def test_ignora_json_corrupto(self):
+        assert providers.get_model("nvidia", self.Cfg("no es json")) is None
+        assert providers.get_model("nvidia", self.Cfg(None)) is None
+        assert providers.get_model("nvidia", None) is None
+
+    def test_ignora_modelo_que_nvidia_ya_retiro(self):
+        """Elegir un modelo que sale del catálogo no debe romper el análisis: se
+        vuelve al por defecto (que a su vez tiene reservas)."""
+        cfg = self.Cfg('{"nvidia": "meta/llama-3.3-70b-instruct"}')
+        assert providers.get_model("nvidia", cfg) is None
+
+    def test_contextvar_a_isla_peticiones(self):
+        token = providers.set_model_override("moonshotai/kimi-k3")
+        assert providers.get_model_override() == "moonshotai/kimi-k3"
+        providers._model_override.reset(token)
+        assert providers.get_model_override() is None
+
+
 class TestCatalog:
     def test_no_expone_secretos(self):
         items = providers.catalog()

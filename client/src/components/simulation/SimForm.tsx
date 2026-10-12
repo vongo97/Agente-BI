@@ -1,5 +1,7 @@
 import { Sparkles, Brain, Activity, ChevronRight, FileText, AlertCircle, Loader2, Zap, Layers, Cpu } from "lucide-react";
+import { useEffect, useState } from "react";
 import { DataSource } from "@/types/shared";
+import { getAiProviders } from "@/lib/api";
 
 interface SimFormProps {
     aiProvider: string;
@@ -28,6 +30,42 @@ export function SimForm({
     allHistoricalSources, selectedSources, toggleSource, dataSources,
     handleStart, loading, numRounds, setNumRounds
 }: SimFormProps) {
+    // Motores disponibles: vienen del backend para que esta pantalla no tenga su
+    // propia lista (antes se quedaba en 3 y no incluía OpenAI/NVIDIA/DeepSeek...).
+    const [providers, setProviders] = useState<{ id: string; label: string; desc: string; icon: React.ReactNode }[]>([]);
+    useEffect(() => {
+        const icon = <Sparkles className="w-3.5 h-3.5" />;
+        const desc: Record<string, string> = {
+            gemini: "Rápido y analítico",
+            openai: "GPT industrial",
+            anthropic: "Razonamiento largo",
+            deepseek: "Coste bajo",
+            mistral: "Precisión semántica",
+            groq: "Debate ultraveloz",
+            nvidia: "Catálogo gratis",
+            openrouter: "Muchos modelos",
+        };
+        getAiProviders()
+            .then((r) => {
+                const list = (r?.providers ?? []).map((p: { id: string }) => ({
+                    id: p.id,
+                    label: p.id === "gemini" ? "Gemini" : p.id.toUpperCase().slice(0, 12),
+                    desc: desc[p.id] ?? "Motor de IA",
+                    icon,
+                }));
+                setProviders(list.length ? list : [
+                    { id: "gemini", label: "Gemini", desc: desc.gemini, icon },
+                    { id: "mistral", label: "Mistral", desc: desc.mistral, icon },
+                    { id: "groq", label: "Groq", desc: desc.groq, icon },
+                ]);
+            })
+            .catch(() => setProviders([
+                { id: "gemini", label: "Gemini", desc: desc.gemini, icon },
+                { id: "mistral", label: "Mistral", desc: desc.mistral, icon },
+                { id: "groq", label: "Groq", desc: desc.groq, icon },
+            ]));
+    }, []);
+
     return (
         <div className="max-w-6xl mx-auto py-2 lg:py-4">
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
@@ -47,18 +85,14 @@ export function SimForm({
                             Motor de Inteligencia
                         </label>
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                            {[
-                                { id: 'gemini', label: 'Gemini 3.1', desc: 'Rápido y analítico', icon: <Sparkles className="w-3.5 h-3.5" /> },
-                                { id: 'mistral', label: 'Mistral Large', desc: 'Precisión semántica', icon: <Brain className="w-3.5 h-3.5" /> },
-                                { id: 'groq', label: 'Groq Llama 3.3', desc: 'Debate ultraveloz', icon: <Sparkles className="w-3.5 h-3.5" /> }
-                            ].map((p) => (
+                            {providers.map((p) => (
                                 <button
                                     key={p.id}
                                     type="button"
                                     onClick={() => setAiProvider(p.id)}
                                     className={`flex flex-col items-center justify-center gap-1.5 px-3 py-3 rounded-lg border text-center transition-all duration-200 cursor-pointer ${
-                                        aiProvider === p.id 
-                                        ? 'bg-[var(--module-simulation-accent-soft)] border-[var(--module-simulation-accent)] text-[var(--bi-text-1)] ring-1 ring-[var(--module-simulation-accent)] shadow-lg shadow-[rgba(168,85,247,0.15)]' 
+                                        aiProvider === p.id
+                                        ? 'bg-[var(--module-simulation-accent-soft)] border-[var(--module-simulation-accent)] text-[var(--bi-text-1)] ring-1 ring-[var(--module-simulation-accent)] shadow-lg shadow-[rgba(168,85,247,0.15)]'
                                         : 'bg-[var(--bi-surface-1)] border-[var(--bi-border)] text-[var(--bi-text-2)] hover:border-[var(--bi-border-strong)] hover:bg-[var(--bi-surface-2)]'
                                     }`}
                                 >

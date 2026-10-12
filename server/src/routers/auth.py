@@ -24,6 +24,19 @@ def list_providers():
     from src.engine.providers import catalog
     return {"providers": catalog()}
 
+@router.get("/providers/{provider_id}/models")
+def list_provider_models(provider_id: str):
+    """Modelos disponibles de un proveedor.
+
+    NVIDIA se consulta en vivo a su catalogo publico (con cache de 1 hora), de modo
+    que el desplegable de Ajustes no dependa de una lista escrita a mano que se queda
+    obsoleta cuando el proveedor retira modelos.
+    """
+    from src.engine.providers import PROVIDERS, list_models
+    if provider_id not in PROVIDERS:
+        raise HTTPException(status_code=404, detail=f"Proveedor '{provider_id}' desconocido.")
+    return list_models(provider_id)
+
 @router.post("/validate-key")
 @limiter.limit("5/minute")
 @limiter.limit("20/hour")
@@ -101,6 +114,11 @@ async def get_user_config(db: Session = Depends(get_db)):
 
     payload = {f: mask_key(getattr(config, f, None)) for f in PROVIDER_KEY_FIELDS}
     payload["gamma_key"] = mask_key(config.gamma_key)
+    import json as _json
+    try:
+        payload["provider_models"] = _json.loads(config.provider_models or "{}")
+    except Exception:
+        payload["provider_models"] = {}
     for field, fallback in defaults.items():
         value = getattr(config, field, None)
         payload[field] = fallback if value is None else value
@@ -132,6 +150,7 @@ async def set_user_config(
     pdf_orientation: Optional[str] = Form(None),
     pdf_include_data_table: Optional[bool] = Form(None),
     chart_theme: Optional[str] = Form(None),
+    provider_models: Optional[str] = Form(None),
     db: Session = Depends(get_db)
 ):
     authenticated_user = get_authenticated_user()
@@ -156,6 +175,24 @@ async def set_user_config(
             setattr(config, field, encrypt_key(value))
         
     if preferred_provider is not None: config.preferred_provider = preferred_provider
+
+    # Modelos elegidos por el usuario (JSON). Se fusiona con lo que ya habia: el
+    # frontend puede enviar solo el proveedor que acaba de cambiar sin borrar el resto.
+    if provider_models:
+        import json as _json
+        try:
+            elegidos = _json.loads(provider_models)
+        except Exception:
+            elegidos = None
+        if isinstance(elegidos, dict) and elegidos:
+            actuales = {}
+            if config.provider_models:
+                try:
+                    actuales = _json.loads(config.provider_models) or {}
+                except Exception:
+                    actuales = {}
+            actuales.update({str(k): str(v) for k, v in elegidos.items() if v})
+            config.provider_models = _json.dumps(actuales)
     if temperature is not None: config.temperature = temperature
     if anomaly_sensitivity is not None: config.anomaly_sensitivity = anomaly_sensitivity
     if magic_clean_strategy is not None: config.magic_clean_strategy = magic_clean_strategy

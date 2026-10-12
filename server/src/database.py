@@ -114,6 +114,8 @@ class UserConfig(Base):
     deepseek_key = Column(String, nullable=True)
     openrouter_key = Column(String, nullable=True)
     nvidia_key = Column(String, nullable=True)
+    # Modelo elegido por el usuario por proveedor, en JSON: {"nvidia": "moonshotai/kimi-k3"}
+    provider_models = Column(Text, nullable=True)
     preferred_provider = Column(String, default="gemini")
     temperature = Column(Float, default=0.2, nullable=True)
     anomaly_sensitivity = Column(Float, default=2.5, nullable=True)
@@ -223,6 +225,7 @@ def init_db():
                 ("deepseek_key", "VARCHAR"),
                 ("openrouter_key", "VARCHAR"),
                 ("nvidia_key", "VARCHAR"),
+                ("provider_models", "TEXT"),
                 ("temperature", "FLOAT"),
                 ("anomaly_sensitivity", "FLOAT"),
                 ("magic_clean_strategy", "VARCHAR"),

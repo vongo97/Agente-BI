@@ -259,7 +259,7 @@ export async function exportPdf(chatId: number, userId: string): Promise<Blob> {
 
 export async function exportSimulationPdf(simId: number, userId: string): Promise<Blob> {
   const response = await securedFetch(`${API_URL}/export/simulation/${simId}?user_id=${userId}`);
-  if (!response.ok) throw new Error("Error exportando PDF de simulaciÃ³n");
+  if (!response.ok) throw new Error("Error exportando PDF de simulación");
   return response.blob();
 }
 
@@ -451,8 +451,26 @@ export async function getAiProviders() {
   return handleResponse(response);
 }
 
+// Modelos disponibles de un proveedor (en vivo para NVIDIA, con cache de 1 h en el
+// backend). Evita mantener listas de modelos escritas a mano que quedan obsoletas.
+export async function getProviderModels(providerId: string) {
+  const response = await securedFetch(`${API_URL}/providers/${encodeURIComponent(providerId)}/models`);
+  return handleResponse(response);
+}
+
+// Guarda la elección de modelo por proveedor: {"nvidia": "moonshotai/kimi-k3"}
+export async function saveProviderModels(models: Record<string, string>) {
+  const formData = new FormData();
+  formData.append("provider_models", JSON.stringify(models));
+  const response = await securedFetch(`${API_URL}/user-config`, {
+    method: "POST",
+    body: formData,
+  });
+  return handleResponse(response);
+}
+
 // Guarda solo claves de proveedor (campos sueltos), sin depender del orden posicional
-// de setUserConfig: aÃ±adir un proveedor nuevo no obliga a tocar SYNC_FIELD_ORDER.
+// de setUserConfig: añadir un proveedor nuevo no obliga a tocar SYNC_FIELD_ORDER.
 export async function saveProviderKeys(keys: Record<string, string>) {
   const formData = new FormData();
   Object.entries(keys).forEach(([field, value]) => formData.append(field, value));

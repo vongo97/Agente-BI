@@ -3,7 +3,8 @@
 import { useState, useEffect } from "react";
 import { Settings, Key, Cpu, Shield, Save, CheckCircle2, AlertCircle, Sparkles, Menu, Palette, Sliders, Activity, Eye, EyeOff, FileText, Columns } from "lucide-react";
 import { useDashboard } from "@/context/DashboardContext";
-import { validateApiKey, getAiProviders, saveProviderKeys } from "@/lib/api";
+import { getAiProviders } from "@/lib/api";
+import { ProviderKeysPanel } from "@/components/settings/ProviderKeysPanel";
 
 type TabType = "ai" | "security" | "appearance";
 
@@ -30,90 +31,48 @@ export function SettingsView() {
 
     const [status, setStatus] = useState<"idle" | "saving" | "success" | "error">("idle");
     const [msg, setMsg] = useState("");
-    const [activeTab, setActiveTab] = useState<TabType>("ai");
 
     // Catálogo de proveedores desde el backend: añadir uno nuevo en el servidor lo
     // muestra aquí sin tocar este componente.
     type AiProvider = { id: string; label: string; console: string; free_tier: boolean; min_len: number; prefixes: string[] };
     const [aiProviders, setAiProviders] = useState<AiProvider[]>([]);
-    const [providerKeys, setProviderKeys] = useState<Record<string, string>>({});
-    const [providerState, setProviderState] = useState<Record<string, { kind: "idle" | "checking" | "ok" | "warn" | "error"; text: string }>>({});
-    const [showProviderKey, setShowProviderKey] = useState<Record<string, boolean>>({});
+    const [activeTab, setActiveTab] = useState<TabType>("ai");
 
     useEffect(() => {
         let cancelled = false;
         getAiProviders()
             .then((r) => { if (!cancelled && r?.providers) setAiProviders(r.providers); })
-            .catch(() => { /* el catálogo es informativo: si falla, se muestran los conocidos */ });
+            .catch(() => { /* catálogo informativo: si falla, se muestran los conocidos */ });
         return () => { cancelled = true; };
     }, []);
 
-    const handleValidateProvider = async (provider: AiProvider) => {
-        const key = (providerKeys[provider.id] || "").trim();
-        if (!key || key.includes("...")) {
-            setProviderState((s) => ({ ...s, [provider.id]: { kind: "error", text: "Pega tu clave para validarla." } }));
-            return;
-        }
-        setProviderState((s) => ({ ...s, [provider.id]: { kind: "checking", text: "Comprobando con el proveedor…" } }));
-        try {
-            const res = await validateApiKey(key, provider.id);
-            if (res.valid) {
-                let text = res.message || "Clave válida.";
-                if (res.detected_provider && res.detected_provider !== provider.id) {
-                    text = `Clave válida, pero parece ser de ${res.detected_provider}. Guárdala en su campo.`;
-                    setProviderState((s) => ({ ...s, [provider.id]: { kind: "warn", text } }));
-                    return;
-                }
-                await saveProviderKeys({ [`${provider.id}_key`]: key });
-                setProviderState((s) => ({ ...s, [provider.id]: { kind: "ok", text } }));
-            } else {
-                setProviderState((s) => ({ ...s, [provider.id]: { kind: "error", text: res.error || "El proveedor rechazó la clave." } }));
-            }
-        } catch (err) {
-            setProviderState((s) => ({ ...s, [provider.id]: { kind: "error", text: (err as Error).message } }));
-        }
-    };
+    const DESC = {
+        gemini: "Rendimiento Extremo (Flash 3)",
+        openai: "GPT (estándar de la industria)",
+        anthropic: "Razonamiento largo sobre datos",
+        deepseek: "Coste muy bajo, gran volumen",
+        mistral: "Precisión Estratégica (Large)",
+        groq: "Velocidad Extrema (70B)",
+        nvidia: "Llama, Kimi, DeepSeek… gratis",
+        openrouter: "Una clave, muchos modelos",
+    } as Record<string, string>;
+    const COLOR = {
+        gemini: "border-[var(--bi-blue-border)] bg-[var(--bi-blue-dim)] text-[var(--bi-blue)] ring-1 ring-[var(--bi-blue-border)]",
+        openai: "border-[var(--bi-green-border)] bg-[var(--bi-green-dim)] text-[var(--bi-green)] ring-1 ring-[var(--bi-green-border)]",
+        anthropic: "border-[var(--bi-purple)] bg-[var(--bi-surface-2)] text-[var(--bi-purple)] ring-1 ring-[var(--bi-purple)]",
+        deepseek: "border-[var(--sim-accent)] bg-[var(--sim-accent-soft)] text-[var(--sim-accent)] ring-1 ring-[var(--sim-accent)]",
+        mistral: "border-[var(--bi-teal-border)] bg-[var(--bi-teal-dim)] text-[var(--bi-teal)] ring-1 ring-[var(--bi-teal-border)]",
+        groq: "border-[var(--sim-border)] bg-[var(--sim-accent-soft)] text-[var(--sim-accent)] ring-1 ring-[var(--sim-border)]",
+        nvidia: "border-[var(--bi-green-border)] bg-[var(--bi-green-dim)] text-[var(--bi-green)] ring-1 ring-[var(--bi-green-border)]",
+        openrouter: "border-[var(--bi-border-strong)] bg-[var(--bi-surface-2)] text-[var(--bi-text-1)] ring-1 ring-[var(--bi-border-strong)]",
+    } as Record<string, string>;
     
-    // States for toggling visibility of API keys
-    const [showGeminiKey, setShowGeminiKey] = useState(false);
-    const [showMistralKey, setShowMistralKey] = useState(false);
-    const [showGroqKey, setShowGroqKey] = useState(false);
-
+    // Las claves ya no se validan aquí: cada proveedor se valida y guarda en su propia
+    // fila (ProviderKeysPanel). Este botón solo confirma el resto de ajustes.
     const handleSave = async () => {
-        setStatus("saving");
-        try {
-            // Validar Gemini
-            if (apiKey && apiKey.length > 10 && !apiKey.includes("...")) {
-                const res = await validateApiKey(apiKey, "gemini");
-                if (!res.valid) {
-                    throw new Error(res.error || "API Key de Gemini rechazada por el servidor.");
-                }
-            }
-            
-            // Validar Mistral (opcional)
-            if (mistralKey && mistralKey.length > 10 && !mistralKey.includes("...")) {
-                const res = await validateApiKey(mistralKey, "mistral");
-                if (!res.valid) {
-                    throw new Error(res.error || "API Key de Mistral rechazada por el servidor.");
-                }
-            }
-            
-            // Validar Groq (opcional)
-            if (groqKey && groqKey.length > 10 && !groqKey.includes("...")) {
-                const res = await validateApiKey(groqKey, "groq");
-                if (!res.valid) {
-                    throw new Error(res.error || "API Key de Groq rechazada por el servidor.");
-                }
-            }
-
-            setStatus("success");
-            setMsg("Configuración guardada correctamente");
-            setTimeout(() => setStatus("idle"), 3000);
-        } catch (err) {
-            const error = err as Error;
-            setStatus("error");
-            setMsg(error.message || "Error al validar llaves");
-        }
+        setStatus("success");
+        setMsg("Configuración guardada. Las claves se validan y guardan en 'Seguridad y Llaves'.");
+        setTimeout(() => setStatus("idle"), 4000);
     };
 
     return (
@@ -174,29 +133,23 @@ export function SettingsView() {
                                 </div>
 
                                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                    {[
-                                        { id: 'gemini', name: 'Google Gemini', desc: 'Rendimiento Extremo (Flash 3)', activeClass: 'border-[var(--bi-blue-border)] bg-[var(--bi-blue-dim)] text-[var(--bi-blue)] ring-1 ring-[var(--bi-blue-border)] shadow-[0_0_15px_rgba(45,212,191,0.1)]' },
-                                        { id: 'openai', name: 'OpenAI', desc: 'GPT (estándar de la industria)', activeClass: 'border-[var(--bi-green-border)] bg-[var(--bi-green-dim)] text-[var(--bi-green)] ring-1 ring-[var(--bi-green-border)]' },
-                                        { id: 'anthropic', name: 'Anthropic Claude', desc: 'Razonamiento largo sobre datos', activeClass: 'border-[var(--bi-purple)] bg-[var(--bi-surface-2)] text-[var(--bi-purple)] ring-1 ring-[var(--bi-purple)]' },
-                                        { id: 'deepseek', name: 'DeepSeek', desc: 'Coste muy bajo, gran volumen', activeClass: 'border-[var(--sim-accent)] bg-[var(--sim-accent-soft)] text-[var(--sim-accent)] ring-1 ring-[var(--sim-accent)]' },
-                                        { id: 'mistral', name: 'Mistral AI', desc: 'Precisión Estratégica (Large)', activeClass: 'border-[var(--bi-teal-border)] bg-[var(--bi-teal-dim)] text-[var(--bi-teal)] ring-1 ring-[var(--bi-teal-border)] shadow-[0_0_15px_rgba(45,212,191,0.1)]' },
-                                        { id: 'groq', name: 'Groq Llama 3.3', desc: 'Velocidad Extrema (70B)', activeClass: 'border-[var(--sim-border)] bg-[var(--sim-accent-soft)] text-[var(--sim-accent)] ring-1 ring-[var(--sim-border)] shadow-[0_0_15px_rgba(244,114,182,0.1)]' },
-                                        { id: 'nvidia', name: 'NVIDIA NIM', desc: 'Llama 3.3 70B · gratis', activeClass: 'border-[var(--bi-green-border)] bg-[var(--bi-green-dim)] text-[var(--bi-green)] ring-1 ring-[var(--bi-green-border)]' },
-                                        { id: 'openrouter', name: 'OpenRouter', desc: 'Una clave, muchos modelos', activeClass: 'border-[var(--bi-border-strong)] bg-[var(--bi-surface-2)] text-[var(--bi-text-1)] ring-1 ring-[var(--bi-border-strong)]' }
-                                    ].map((p) => {
+                                    {aiProviders.map((p) => {
                                         const isActive = aiProvider === p.id;
                                         return (
                                             <button
                                                 key={p.id}
                                                 onClick={() => setAiProvider(p.id)}
                                                 className={`p-5 rounded-xl border text-left transition-all duration-300 ${
-                                                    isActive 
-                                                    ? p.activeClass 
+                                                    isActive
+                                                    ? (COLOR[p.id] ?? "border-[var(--bi-border-strong)] bg-[var(--bi-surface-2)] text-[var(--bi-text-1)] ring-1 ring-[var(--bi-border-strong)]")
                                                     : 'bg-[var(--bi-surface-1)] border-[var(--bi-border)] text-[var(--bi-text-2)] hover:border-[var(--bi-border-strong)] hover:bg-[var(--bi-surface-2)]'
                                                 }`}
                                             >
-                                                <p className="text-xs font-bold text-[var(--bi-text-1)] mb-1 uppercase tracking-tight">{p.name}</p>
-                                                <p className="text-[10px] text-[var(--bi-text-3)] font-medium leading-normal">{p.desc}</p>
+                                                <p className="text-xs font-bold text-[var(--bi-text-1)] mb-1 uppercase tracking-tight flex items-center gap-2">
+                                                    {p.label}
+                                                    {p.free_tier && <span className="text-[8px] px-1 py-0.5 rounded border border-[var(--bi-green-border)] text-[var(--bi-green)]">GRATIS</span>}
+                                                </p>
+                                                <p className="text-[10px] text-[var(--bi-text-3)] font-medium leading-normal">{DESC[p.id] ?? "Modelo de IA"}</p>
                                             </button>
                                         );
                                     })}
@@ -208,61 +161,16 @@ export function SettingsView() {
                                     <Key className="w-5 h-5 text-[var(--bi-green)]" />
                                     <h2 className="text-sm font-semibold text-[var(--bi-text-1)] uppercase tracking-widest">Tus API Keys</h2>
                                 </div>
-                                <p className="text-[11px] text-[var(--bi-text-3)] mb-6 leading-relaxed">
-                                    Pega tu clave propia del proveedor. Se cifra antes de guardarse y nunca se muestra
-                                    completa. Funcionan los proveedores con plan gratuito.
+                                <p className="text-[11px] text-[var(--bi-text-3)] mb-4 leading-relaxed">
+                                    Tus claves se gestionan en la pestaña <strong>Seguridad y Llaves</strong>. Cada
+                                    proveedor con varios modelos (como NVIDIA) permite elegirlo ahí mismo.
                                 </p>
-                                <div className="space-y-5">
-                                    {aiProviders.map((p) => {
-                                        const st = providerState[p.id] ?? { kind: "idle" as const, text: "" };
-                                        const tone = st.kind === "ok" ? "text-[var(--bi-green)]"
-                                            : st.kind === "error" ? "text-[var(--sim-accent)]"
-                                            : st.kind === "warn" ? "text-[var(--bi-purple)]"
-                                            : "text-[var(--bi-text-3)]";
-                                        return (
-                                            <div key={p.id} className="space-y-2">
-                                                <label className="text-xs font-semibold text-[var(--bi-text-3)] uppercase tracking-widest ml-1 flex items-center justify-between gap-3 flex-wrap">
-                                                    <span className="flex items-center gap-2">
-                                                        {p.label}
-                                                        <span className={`text-[9px] px-1.5 py-0.5 rounded border ${p.free_tier ? "border-[var(--bi-green-border)] text-[var(--bi-green)]" : "border-[var(--bi-border)] text-[var(--bi-text-3)]"}`}>
-                                                            {p.free_tier ? "GRATIS" : "DE PAGO"}
-                                                        </span>
-                                                    </span>
-                                                    <a href={p.console} target="_blank" rel="noreferrer"
-                                                        className="text-[10px] text-[var(--bi-blue)] hover:underline font-medium normal-case tracking-normal">
-                                                        Obtener clave →
-                                                    </a>
-                                                </label>
-                                                <div className="flex gap-2">
-                                                    <div className="relative flex-1">
-                                                        <input
-                                                            type={showProviderKey[p.id] ? "text" : "password"}
-                                                            value={providerKeys[p.id] || ""}
-                                                            onChange={(e) => setProviderKeys((k) => ({ ...k, [p.id]: e.target.value }))}
-                                                            placeholder={p.prefixes[0] ? `${p.prefixes[0]}…` : "pega tu clave"}
-                                                            className="w-full bg-[var(--bi-surface-1)] border border-[var(--bi-border)] rounded-xl px-4 py-3 pr-12 text-xs text-[var(--bi-text-1)] focus:outline-none focus:border-[var(--bi-green-border)] focus:ring-1 focus:ring-[var(--bi-green-border)] transition-all font-mono"
-                                                        />
-                                                        <button
-                                                            onClick={() => setShowProviderKey((s) => ({ ...s, [p.id]: !s[p.id] }))}
-                                                            className="absolute right-4 top-1/2 -translate-y-1/2 text-[var(--bi-text-3)] hover:text-[var(--bi-text-1)] transition-colors"
-                                                            aria-label={`Ver clave de ${p.label}`}
-                                                        >
-                                                            {showProviderKey[p.id] ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                                                        </button>
-                                                    </div>
-                                                    <button
-                                                        onClick={() => handleValidateProvider(p)}
-                                                        disabled={st.kind === "checking"}
-                                                        className="shrink-0 px-4 rounded-xl bg-[var(--bi-surface-1)] border border-[var(--bi-green-border)] text-[var(--bi-green)] text-[10px] font-bold uppercase tracking-wider hover:bg-[var(--bi-surface-2)] transition-colors disabled:opacity-50"
-                                                    >
-                                                        {st.kind === "checking" ? "..." : "Validar"}
-                                                    </button>
-                                                </div>
-                                                {st.text && <p className={`text-[10px] pl-1 ${tone}`}>{st.text}</p>}
-                                            </div>
-                                        );
-                                    })}
-                                </div>
+                                <button
+                                    onClick={() => setActiveTab("security")}
+                                    className="px-4 py-2.5 rounded-lg bg-[var(--bi-surface-1)] border border-[var(--bi-green-border)] text-[var(--bi-green)] text-[10px] font-bold uppercase tracking-wider hover:bg-[var(--bi-surface-2)] transition-colors"
+                                >
+                                    Ir a Seguridad y Llaves →
+                                </button>
                             </div>
 
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 lg:gap-8">
@@ -353,75 +261,15 @@ export function SettingsView() {
                                 </div>
 
                                 <div className="space-y-6 lg:space-y-8">
-                                    <div className="space-y-2">
-                                        <label className="text-xs font-semibold text-[var(--bi-text-3)] uppercase tracking-widest ml-1 flex justify-between">
-                                            <span>Gemini API Key (Recomendado)</span>
-                                            {apiKey && apiKey.length > 5 && <span className="text-[var(--bi-green)] flex items-center gap-1"><CheckCircle2 className="w-3 h-3"/> Configurada</span>}
-                                        </label>
-                                        <div className="relative">
-                                            <input
-                                                type={showGeminiKey ? "text" : "password"}
-                                                value={apiKey}
-                                                onChange={(e) => setApiKey(e.target.value)}
-                                                className="w-full bg-[var(--bi-surface-1)] border border-[var(--bi-border)] rounded-xl px-4 py-3 pr-12 text-xs text-[var(--bi-text-1)] focus:outline-none focus:border-[var(--bi-green-border)] focus:ring-1 focus:ring-[var(--bi-green-border)] transition-all font-mono"
-                                                placeholder="AIzaSy..."
-                                            />
-                                            <button 
-                                                onClick={() => setShowGeminiKey(!showGeminiKey)}
-                                                className="absolute right-4 top-1/2 -translate-y-1/2 text-[var(--bi-text-3)] hover:text-[var(--bi-text-1)] transition-colors"
-                                            >
-                                                {showGeminiKey ? <EyeOff className="w-4 h-4"/> : <Eye className="w-4 h-4"/>}
-                                            </button>
-                                        </div>
+                                    <div className="flex items-start gap-3 p-4 rounded-lg bg-[var(--bi-surface-1)] border border-[var(--bi-border)] text-[11px] text-[var(--bi-text-3)]">
+                                        <Shield className="w-4 h-4 text-[var(--bi-green)] shrink-0 mt-0.5" />
+                                        <p>
+                                            Las llaves se cifran (Fernet/AES-256) en el backend y nunca se muestran
+                                            en texto plano al refrescar la página. Solo se guardan en tu cuenta:
+                                            el administrador no puede leerlas.
+                                        </p>
                                     </div>
-
-                                    <div className="space-y-2">
-                                        <label className="text-xs font-semibold text-[var(--bi-text-3)] uppercase tracking-widest ml-1 flex justify-between">
-                                            <span>Mistral API Key</span>
-                                            {mistralKey && mistralKey.length > 5 && <span className="text-[var(--bi-teal)] flex items-center gap-1"><CheckCircle2 className="w-3 h-3"/> Configurada</span>}
-                                        </label>
-                                        <div className="relative">
-                                            <input
-                                                type={showMistralKey ? "text" : "password"}
-                                                value={mistralKey}
-                                                onChange={(e) => setMistralKey(e.target.value)}
-                                                className="w-full bg-[var(--bi-surface-1)] border border-[var(--bi-border)] rounded-xl px-4 py-3 pr-12 text-xs text-[var(--bi-text-1)] focus:outline-none focus:border-[var(--bi-teal-border)] focus:ring-1 focus:ring-[var(--bi-teal-border)] transition-all font-mono"
-                                                placeholder="your-mistral-key..."
-                                            />
-                                            <button 
-                                                onClick={() => setShowMistralKey(!showMistralKey)}
-                                                className="absolute right-4 top-1/2 -translate-y-1/2 text-[var(--bi-text-3)] hover:text-[var(--bi-text-1)] transition-colors"
-                                            >
-                                                {showMistralKey ? <EyeOff className="w-4 h-4"/> : <Eye className="w-4 h-4"/>}
-                                            </button>
-                                        </div>
-                                    </div>
-
-                                    <div className="space-y-2">
-                                        <label className="text-xs font-semibold text-[var(--bi-text-3)] uppercase tracking-widest ml-1 flex justify-between">
-                                            <span>Groq API Key</span>
-                                            {groqKey && groqKey.length > 5 && <span className="text-[var(--sim-accent)] flex items-center gap-1"><CheckCircle2 className="w-3 h-3"/> Configurada</span>}
-                                        </label>
-                                        <div className="relative">
-                                            <input
-                                                type={showGroqKey ? "text" : "password"}
-                                                value={groqKey}
-                                                onChange={(e) => setGroqKey(e.target.value)}
-                                                className="w-full bg-[var(--bi-surface-1)] border border-[var(--bi-border)] rounded-xl px-4 py-3 pr-12 text-xs text-[var(--bi-text-1)] focus:outline-none focus:border-[var(--sim-border)] focus:ring-1 focus:ring-[var(--sim-border)] transition-all font-mono"
-                                                placeholder="gsk_..."
-                                            />
-                                            <button 
-                                                onClick={() => setShowGroqKey(!showGroqKey)}
-                                                className="absolute right-4 top-1/2 -translate-y-1/2 text-[var(--bi-text-3)] hover:text-[var(--bi-text-1)] transition-colors"
-                                            >
-                                                {showGroqKey ? <EyeOff className="w-4 h-4"/> : <Eye className="w-4 h-4"/>}
-                                            </button>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div className="mt-4 p-4 rounded-lg bg-[var(--bi-surface-1)] border border-[var(--bi-border)] text-[11px] text-[var(--bi-text-3)] flex items-start gap-3">
-                                    <Shield className="w-4 h-4 text-[var(--bi-green)] shrink-0 mt-0.5"/>
-                                    <p>Las llaves se encriptan utilizando AES-256 en el backend y nunca se muestran en texto plano al refrescar la página. Tu seguridad está garantizada por Vektra Engine.</p>
+                                    <ProviderKeysPanel />
                                 </div>
                             </div>
                         </div>

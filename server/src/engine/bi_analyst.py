@@ -168,9 +168,9 @@ def generate_ai_content(prompt, api_key, provider="gemini", temperature=0.7, mod
                     result = response.json()
                     return result["choices"][0]["message"]["content"]
                 else:
-                    # OpenAI, Anthropic, DeepSeek, OpenRouter y cualquier proveedor
-                    # registrado: cliente unificado en src/engine/providers.py
-                    from src.engine.providers import chat as provider_chat, PROVIDERS
+                    # OpenAI, Anthropic, DeepSeek, OpenRouter, NVIDIA y cualquier
+                    # proveedor registrado: cliente unificado en src/engine/providers.py
+                    from src.engine.providers import chat as provider_chat, PROVIDERS, get_model_override
                     if provider not in PROVIDERS:
                         return f"⚠️ Proveedor '{provider}' no soportado."
                     return provider_chat(
@@ -179,6 +179,8 @@ def generate_ai_content(prompt, api_key, provider="gemini", temperature=0.7, mod
                         prompt=prompt,
                         temperature=temperature,
                         system_instruction=system_instruction,
+                        # Modelo elegido por el usuario en Ajustes, si lo hay.
+                        model_override=get_model_override(),
                     )
             except Exception as e:
                 err = str(e).lower()

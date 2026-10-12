@@ -46,8 +46,11 @@ async def analyze(
             raise HTTPException(status_code=404, detail="Recurso no encontrado o sin acceso")
     
     # --- AUTO-RECUPERACIÓN DE LLAVES CIFRADAS ---
-    from src.engine.providers import resolve_keys
+    from src.engine.providers import resolve_keys, get_model, set_model_override
     api_key, mistral_key, key_error = resolve_keys(provider, api_key, mistral_key, user_config)
+    # Modelo elegido por el usuario en Ajustes. Viaja por ContextVar para que las diez
+    # funciones del motor lo vean sin añadir un parámetro a cada una.
+    set_model_override(get_model(provider, user_config))
     if key_error and provider != "hybrid":
         raise HTTPException(status_code=400, detail=key_error)
 
@@ -224,8 +227,11 @@ def get_suggestions(
             raise HTTPException(status_code=404, detail="Recurso no encontrado o sin acceso")
     
     # --- AUTO-RECUPERACIÓN DE LLAVES CIFRADAS ---
-    from src.engine.providers import resolve_keys
+    from src.engine.providers import resolve_keys, get_model, set_model_override
     api_key, mistral_key, key_error = resolve_keys(provider, api_key, mistral_key, user_config)
+    # Modelo elegido por el usuario en Ajustes. Viaja por ContextVar para que las diez
+    # funciones del motor lo vean sin añadir un parámetro a cada una.
+    set_model_override(get_model(provider, user_config))
     if key_error and provider != "hybrid":
         raise HTTPException(status_code=400, detail=key_error)
  

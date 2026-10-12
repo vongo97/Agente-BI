@@ -20,14 +20,26 @@ interface ChatHeaderProps {
 }
 
 const PROVIDER_LABELS: Record<string, string> = {
-    gemini: "Gemini 2.5",
+    gemini: "Gemini",
+    openai: "OpenAI GPT",
+    anthropic: "Claude",
+    deepseek: "DeepSeek",
     mistral: "Mistral Large",
+    groq: "Groq · Llama 3.3",
+    nvidia: "NVIDIA NIM",
+    openrouter: "OpenRouter",
     hybrid: "Dual Mode",
 };
 
 const PROVIDER_COLORS: Record<string, string> = {
     gemini: "text-[var(--bi-blue)]",
+    openai: "text-[var(--bi-green)]",
+    anthropic: "text-[var(--bi-purple)]",
+    deepseek: "text-[var(--sim-accent)]",
     mistral: "text-[var(--bi-teal)]",
+    groq: "text-[var(--sim-accent)]",
+    nvidia: "text-[var(--bi-green)]",
+    openrouter: "text-[var(--bi-text-1)]",
     hybrid: "text-[var(--bi-amber)]",
 };
 
