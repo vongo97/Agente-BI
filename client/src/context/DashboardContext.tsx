@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { useSession } from "next-auth/react";
 import { setApiAuthToken, getUserConfig, setUserConfig, BACKEND_BASE_URL } from "@/lib/api";
 import { ChatMessage, DataSource } from '@/types/shared';
@@ -209,48 +209,38 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
     }, [session]);
 
     // Guardar en Backend automáticamente (Hardening: No guardar en LocalStorage)
+    // Debounce: agrupa ráfagas de cambios (la carga inicial dispara 16 efectos)
+    // en UNA sola petición POST /user-config para no agotar el rate limit (429).
+    const pendingSyncRef = useRef<Record<string, string | number | boolean>>({});
+    const syncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    // Orden posicional de los argumentos de setUserConfig en client/src/lib/api.ts
+    const SYNC_FIELD_ORDER = [
+        "gemini_key", "mistral_key", "gamma_key", "preferred_provider", "groq_key",
+        "temperature", "anomaly_sensitivity", "magic_clean_strategy",
+        "currency_format", "date_format", "brand_color", "brand_logo_url",
+        "report_org_name", "report_footer_text", "pdf_orientation",
+        "pdf_include_data_table", "chart_theme",
+    ] as const;
+
     const syncConfig = useCallback(async (value: string | number | boolean, field: string) => {
-        const userEmail = session?.user?.email || "invitado@agente-bi.local";
         // Si el valor es una máscara o está vacío, no lo sincronizamos
         if (typeof value === 'string' && (!value || value.startsWith("xxxx") || value.includes("..."))) return;
-        
-        try {
-            if (field === "gemini_key") {
-                await setUserConfig(userEmail, value as string, undefined, undefined, undefined, undefined);
-            } else if (field === "mistral_key") {
-                await setUserConfig(userEmail, undefined, value as string, undefined, undefined, undefined);
-            } else if (field === "groq_key") {
-                await setUserConfig(userEmail, undefined, undefined, undefined, undefined, value as string);
-            } else if (field === "preferred_provider") {
-                await setUserConfig(userEmail, undefined, undefined, undefined, value as string, undefined);
-            } else if (field === "temperature") {
-                await setUserConfig(userEmail, undefined, undefined, undefined, undefined, undefined, value as number);
-            } else if (field === "anomaly_sensitivity") {
-                await setUserConfig(userEmail, undefined, undefined, undefined, undefined, undefined, undefined, value as number);
-            } else if (field === "magic_clean_strategy") {
-                await setUserConfig(userEmail, undefined, undefined, undefined, undefined, undefined, undefined, undefined, value as string);
-            } else if (field === "currency_format") {
-                await setUserConfig(userEmail, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, value as string);
-            } else if (field === "date_format") {
-                await setUserConfig(userEmail, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, value as string);
-            } else if (field === "brand_color") {
-                await setUserConfig(userEmail, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, value as string);
-            } else if (field === "brand_logo_url") {
-                await setUserConfig(userEmail, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, value as string);
-            } else if (field === "report_org_name") {
-                await setUserConfig(userEmail, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, value as string);
-            } else if (field === "report_footer_text") {
-                await setUserConfig(userEmail, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, value as string);
-            } else if (field === "pdf_orientation") {
-                await setUserConfig(userEmail, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, value as string);
-            } else if (field === "pdf_include_data_table") {
-                await setUserConfig(userEmail, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, value as boolean);
-            } else if (field === "chart_theme") {
-                await setUserConfig(userEmail, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, value as string);
+
+        pendingSyncRef.current[field] = value;
+        if (syncTimerRef.current) clearTimeout(syncTimerRef.current);
+        syncTimerRef.current = setTimeout(async () => {
+            const pending = pendingSyncRef.current;
+            pendingSyncRef.current = {};
+            if (Object.keys(pending).length === 0) return;
+            const userEmail = session?.user?.email || "invitado@agente-bi.local";
+            try {
+                const args = [userEmail, ...SYNC_FIELD_ORDER.map(f => pending[f])] as Parameters<typeof setUserConfig>;
+                await setUserConfig(...args);
+            } catch (err) {
+                console.error("Error sincronizando configuracion:", err);
             }
-        } catch (err) {
-            console.error(`Error sincronizando ${field}:`, err);
-        }
+        }, 1200);
     }, [session]);
 
     useEffect(() => {
