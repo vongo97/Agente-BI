@@ -56,11 +56,9 @@ class TestAuthRouter(unittest.TestCase):
     @patch('src.routers.auth.get_authenticated_user')
     @patch('src.routers.auth.check_authorization')
     @patch('src.routers.auth.validate_api_key')
-    @patch('src.routers.auth.validate_mobile_request_security')
-    def test_validate_key_valid(self, mock_mobile, mock_validate, mock_authz, mock_get_user):
-        """Test que POST /api/v1/validate-key retorna valid=True con una API key correcta."""
+    def test_validate_key_valid(self, mock_validate, mock_authz, mock_get_user):
+        """POST /api/v1/validate-key devuelve valid=True cuando el proveedor acepta."""
         mock_get_user.return_value = "test_user_persistence@example.com"
-        mock_mobile.return_value = {"valid": True, "message": "OK", "security_score": 100}
         mock_validate.return_value = (True, None)
 
         response = self.client.post("/api/v1/validate-key", data={
@@ -71,16 +69,15 @@ class TestAuthRouter(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         body = response.json()
         self.assertTrue(body["valid"])
+        self.assertIsNone(body["error"])
 
     @patch('src.routers.auth.get_authenticated_user')
     @patch('src.routers.auth.check_authorization')
     @patch('src.routers.auth.validate_api_key')
-    @patch('src.routers.auth.validate_mobile_request_security')
-    def test_validate_key_invalid(self, mock_mobile, mock_validate, mock_authz, mock_get_user):
-        """Test que POST /api/v1/validate-key retorna valid=False con key inválida."""
+    def test_validate_key_invalid(self, mock_validate, mock_authz, mock_get_user):
+        """POST /api/v1/validate-key devuelve valid=False y explica el motivo."""
         mock_get_user.return_value = "test_user_persistence@example.com"
-        mock_mobile.return_value = {"valid": True, "message": "OK", "security_score": 100}
-        mock_validate.return_value = (False, "API key inválida")
+        mock_validate.return_value = (False, "API key invalida")
 
         response = self.client.post("/api/v1/validate-key", data={
             "api_key": "key_invalida",
@@ -90,6 +87,12 @@ class TestAuthRouter(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         body = response.json()
         self.assertFalse(body["valid"])
+        self.assertTrue(body["error"])
+
+    def test_validate_key_detecta_otro_proveedor(self):
+        """Una clave de OpenAI pegada en el campo de Gemini debe avisar del mismatch."""
+        from src.engine.providers import detect_provider
+        self.assertEqual(detect_provider("sk-proj-abc123def456ghi789"), "openai")
 
     @patch('src.routers.auth.get_authenticated_user')
     @patch('src.routers.auth.check_authorization')

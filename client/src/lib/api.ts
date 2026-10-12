@@ -1,4 +1,4 @@
-// Normaliza la URL base del backend: quita barras finales y evita duplicar
+﻿// Normaliza la URL base del backend: quita barras finales y evita duplicar
 // "/api/v1" si la variable de entorno ya lo incluye (error frecuente al
 // configurar NEXT_PUBLIC_API_URL en Vercel/Render: puntear "https://host/api/v1").
 const RAW_API_URL = (process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000").replace(/\/+$/, "");
@@ -55,7 +55,7 @@ export async function uploadFile(file: File, userId: string) {
   return handleResponse(response);
 }
 
-export async function analyzeData(query: string, apiKey: string, userId: string, chatId?: number, dataSourceId?: number, provider?: "gemini" | "mistral" | "hybrid" | "groq", mistralKey?: string) {
+export async function analyzeData(query: string, apiKey: string, userId: string, chatId?: number, dataSourceId?: number, provider?: string, mistralKey?: string) {
   const formData = new FormData();
   formData.append("query", query);
   formData.append("api_key", apiKey);
@@ -172,7 +172,7 @@ export async function exportChartAsPng(figJson: unknown) {
   return response.blob();
 }
 
-export async function generateReportSummary(query: string, apiKey: string, userId: string, provider?: "gemini" | "mistral" | "hybrid" | "groq", mistralKey?: string) {
+export async function generateReportSummary(query: string, apiKey: string, userId: string, provider?: string, mistralKey?: string) {
   const formData = new FormData();
   formData.append("query", query);
   formData.append("api_key", apiKey);
@@ -207,7 +207,7 @@ export async function exportProfessionalPptx(reportData: unknown) {
   return response.blob();
 }
 
-export async function generateAutoDashboard(apiKey: string, userId: string, dataSourceId?: number, chatId?: number, provider?: "gemini" | "mistral" | "hybrid" | "groq", mistralKey?: string) {
+export async function generateAutoDashboard(apiKey: string, userId: string, dataSourceId?: number, chatId?: number, provider?: string, mistralKey?: string) {
   const formData = new FormData();
   formData.append("api_key", apiKey);
   formData.append("user_id", userId);
@@ -223,7 +223,7 @@ export async function generateAutoDashboard(apiKey: string, userId: string, data
   return handleResponse(response);
 }
 
-export async function suggestQuestions(userId: string, apiKey: string, dataSourceId?: number, chatId?: number, provider?: "gemini" | "mistral" | "hybrid" | "groq", mistralKey?: string) {
+export async function suggestQuestions(userId: string, apiKey: string, dataSourceId?: number, chatId?: number, provider?: string, mistralKey?: string) {
   const formData = new FormData();
   formData.append("user_id", userId);
   formData.append("api_key", apiKey);
@@ -259,11 +259,11 @@ export async function exportPdf(chatId: number, userId: string): Promise<Blob> {
 
 export async function exportSimulationPdf(simId: number, userId: string): Promise<Blob> {
   const response = await securedFetch(`${API_URL}/export/simulation/${simId}?user_id=${userId}`);
-  if (!response.ok) throw new Error("Error exportando PDF de simulación");
+  if (!response.ok) throw new Error("Error exportando PDF de simulaciÃ³n");
   return response.blob();
 }
 
-export async function cleanData(userId: string, apiKey: string, dataSourceId?: number, chatId?: number, provider?: "gemini" | "mistral" | "hybrid" | "groq", mistralKey?: string) {
+export async function cleanData(userId: string, apiKey: string, dataSourceId?: number, chatId?: number, provider?: string, mistralKey?: string) {
   const formData = new FormData();
   formData.append("user_id", userId);
   formData.append("api_key", apiKey);
@@ -443,6 +443,23 @@ export async function generateVisualSummary(
 
 export async function getUserConfig(userId: string) {
   const response = await securedFetch(`${API_URL}/user-config?user_id=${userId}`);
+  return handleResponse(response);
+}
+
+export async function getAiProviders() {
+  const response = await securedFetch(`${API_URL}/providers`);
+  return handleResponse(response);
+}
+
+// Guarda solo claves de proveedor (campos sueltos), sin depender del orden posicional
+// de setUserConfig: aÃ±adir un proveedor nuevo no obliga a tocar SYNC_FIELD_ORDER.
+export async function saveProviderKeys(keys: Record<string, string>) {
+  const formData = new FormData();
+  Object.entries(keys).forEach(([field, value]) => formData.append(field, value));
+  const response = await securedFetch(`${API_URL}/user-config`, {
+    method: "POST",
+    body: formData,
+  });
   return handleResponse(response);
 }
 

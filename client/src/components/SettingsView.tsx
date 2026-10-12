@@ -1,9 +1,9 @@
 'use client';
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Settings, Key, Cpu, Shield, Save, CheckCircle2, AlertCircle, Sparkles, Menu, Palette, Sliders, Activity, Eye, EyeOff, FileText, Columns } from "lucide-react";
 import { useDashboard } from "@/context/DashboardContext";
-import { validateApiKey } from "@/lib/api";
+import { validateApiKey, getAiProviders, saveProviderKeys } from "@/lib/api";
 
 type TabType = "ai" | "security" | "appearance";
 
@@ -31,6 +31,48 @@ export function SettingsView() {
     const [status, setStatus] = useState<"idle" | "saving" | "success" | "error">("idle");
     const [msg, setMsg] = useState("");
     const [activeTab, setActiveTab] = useState<TabType>("ai");
+
+    // Catálogo de proveedores desde el backend: añadir uno nuevo en el servidor lo
+    // muestra aquí sin tocar este componente.
+    type AiProvider = { id: string; label: string; console: string; free_tier: boolean; min_len: number; prefixes: string[] };
+    const [aiProviders, setAiProviders] = useState<AiProvider[]>([]);
+    const [providerKeys, setProviderKeys] = useState<Record<string, string>>({});
+    const [providerState, setProviderState] = useState<Record<string, { kind: "idle" | "checking" | "ok" | "warn" | "error"; text: string }>>({});
+    const [showProviderKey, setShowProviderKey] = useState<Record<string, boolean>>({});
+
+    useEffect(() => {
+        let cancelled = false;
+        getAiProviders()
+            .then((r) => { if (!cancelled && r?.providers) setAiProviders(r.providers); })
+            .catch(() => { /* el catálogo es informativo: si falla, se muestran los conocidos */ });
+        return () => { cancelled = true; };
+    }, []);
+
+    const handleValidateProvider = async (provider: AiProvider) => {
+        const key = (providerKeys[provider.id] || "").trim();
+        if (!key || key.includes("...")) {
+            setProviderState((s) => ({ ...s, [provider.id]: { kind: "error", text: "Pega tu clave para validarla." } }));
+            return;
+        }
+        setProviderState((s) => ({ ...s, [provider.id]: { kind: "checking", text: "Comprobando con el proveedor…" } }));
+        try {
+            const res = await validateApiKey(key, provider.id);
+            if (res.valid) {
+                let text = res.message || "Clave válida.";
+                if (res.detected_provider && res.detected_provider !== provider.id) {
+                    text = `Clave válida, pero parece ser de ${res.detected_provider}. Guárdala en su campo.`;
+                    setProviderState((s) => ({ ...s, [provider.id]: { kind: "warn", text } }));
+                    return;
+                }
+                await saveProviderKeys({ [`${provider.id}_key`]: key });
+                setProviderState((s) => ({ ...s, [provider.id]: { kind: "ok", text } }));
+            } else {
+                setProviderState((s) => ({ ...s, [provider.id]: { kind: "error", text: res.error || "El proveedor rechazó la clave." } }));
+            }
+        } catch (err) {
+            setProviderState((s) => ({ ...s, [provider.id]: { kind: "error", text: (err as Error).message } }));
+        }
+    };
     
     // States for toggling visibility of API keys
     const [showGeminiKey, setShowGeminiKey] = useState(false);
@@ -134,14 +176,18 @@ export function SettingsView() {
                                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                                     {[
                                         { id: 'gemini', name: 'Google Gemini', desc: 'Rendimiento Extremo (Flash 3)', activeClass: 'border-[var(--bi-blue-border)] bg-[var(--bi-blue-dim)] text-[var(--bi-blue)] ring-1 ring-[var(--bi-blue-border)] shadow-[0_0_15px_rgba(45,212,191,0.1)]' },
+                                        { id: 'openai', name: 'OpenAI', desc: 'GPT (estándar de la industria)', activeClass: 'border-[var(--bi-green-border)] bg-[var(--bi-green-dim)] text-[var(--bi-green)] ring-1 ring-[var(--bi-green-border)]' },
+                                        { id: 'anthropic', name: 'Anthropic Claude', desc: 'Razonamiento largo sobre datos', activeClass: 'border-[var(--bi-purple)] bg-[var(--bi-surface-2)] text-[var(--bi-purple)] ring-1 ring-[var(--bi-purple)]' },
+                                        { id: 'deepseek', name: 'DeepSeek', desc: 'Coste muy bajo, gran volumen', activeClass: 'border-[var(--sim-accent)] bg-[var(--sim-accent-soft)] text-[var(--sim-accent)] ring-1 ring-[var(--sim-accent)]' },
                                         { id: 'mistral', name: 'Mistral AI', desc: 'Precisión Estratégica (Large)', activeClass: 'border-[var(--bi-teal-border)] bg-[var(--bi-teal-dim)] text-[var(--bi-teal)] ring-1 ring-[var(--bi-teal-border)] shadow-[0_0_15px_rgba(45,212,191,0.1)]' },
-                                        { id: 'groq', name: 'Groq Llama 3.3', desc: 'Velocidad Extrema (70B)', activeClass: 'border-[var(--sim-border)] bg-[var(--sim-accent-soft)] text-[var(--sim-accent)] ring-1 ring-[var(--sim-border)] shadow-[0_0_15px_rgba(244,114,182,0.1)]' }
+                                        { id: 'groq', name: 'Groq Llama 3.3', desc: 'Velocidad Extrema (70B)', activeClass: 'border-[var(--sim-border)] bg-[var(--sim-accent-soft)] text-[var(--sim-accent)] ring-1 ring-[var(--sim-border)] shadow-[0_0_15px_rgba(244,114,182,0.1)]' },
+                                        { id: 'openrouter', name: 'OpenRouter', desc: 'Una clave, muchos modelos', activeClass: 'border-[var(--bi-border-strong)] bg-[var(--bi-surface-2)] text-[var(--bi-text-1)] ring-1 ring-[var(--bi-border-strong)]' }
                                     ].map((p) => {
                                         const isActive = aiProvider === p.id;
                                         return (
                                             <button
                                                 key={p.id}
-                                                onClick={() => setAiProvider(p.id as 'gemini' | 'mistral' | 'groq')}
+                                                onClick={() => setAiProvider(p.id)}
                                                 className={`p-5 rounded-xl border text-left transition-all duration-300 ${
                                                     isActive 
                                                     ? p.activeClass 
@@ -151,6 +197,68 @@ export function SettingsView() {
                                                 <p className="text-xs font-bold text-[var(--bi-text-1)] mb-1 uppercase tracking-tight">{p.name}</p>
                                                 <p className="text-[10px] text-[var(--bi-text-3)] font-medium leading-normal">{p.desc}</p>
                                             </button>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+
+                            <div className="bg-[var(--bi-surface-0)] border border-[var(--bi-border)] rounded-xl p-6 lg:p-8 backdrop-blur-md shadow-sm">
+                                <div className="flex items-center gap-3 border-b border-[var(--bi-border)] pb-4 lg:pb-6 mb-6">
+                                    <Key className="w-5 h-5 text-[var(--bi-green)]" />
+                                    <h2 className="text-sm font-semibold text-[var(--bi-text-1)] uppercase tracking-widest">Tus API Keys</h2>
+                                </div>
+                                <p className="text-[11px] text-[var(--bi-text-3)] mb-6 leading-relaxed">
+                                    Pega tu clave propia del proveedor. Se cifra antes de guardarse y nunca se muestra
+                                    completa. Funcionan los proveedores con plan gratuito.
+                                </p>
+                                <div className="space-y-5">
+                                    {aiProviders.map((p) => {
+                                        const st = providerState[p.id] ?? { kind: "idle" as const, text: "" };
+                                        const tone = st.kind === "ok" ? "text-[var(--bi-green)]"
+                                            : st.kind === "error" ? "text-[var(--sim-accent)]"
+                                            : st.kind === "warn" ? "text-[var(--bi-purple)]"
+                                            : "text-[var(--bi-text-3)]";
+                                        return (
+                                            <div key={p.id} className="space-y-2">
+                                                <label className="text-xs font-semibold text-[var(--bi-text-3)] uppercase tracking-widest ml-1 flex items-center justify-between gap-3 flex-wrap">
+                                                    <span className="flex items-center gap-2">
+                                                        {p.label}
+                                                        <span className={`text-[9px] px-1.5 py-0.5 rounded border ${p.free_tier ? "border-[var(--bi-green-border)] text-[var(--bi-green)]" : "border-[var(--bi-border)] text-[var(--bi-text-3)]"}`}>
+                                                            {p.free_tier ? "GRATIS" : "DE PAGO"}
+                                                        </span>
+                                                    </span>
+                                                    <a href={p.console} target="_blank" rel="noreferrer"
+                                                        className="text-[10px] text-[var(--bi-blue)] hover:underline font-medium normal-case tracking-normal">
+                                                        Obtener clave →
+                                                    </a>
+                                                </label>
+                                                <div className="flex gap-2">
+                                                    <div className="relative flex-1">
+                                                        <input
+                                                            type={showProviderKey[p.id] ? "text" : "password"}
+                                                            value={providerKeys[p.id] || ""}
+                                                            onChange={(e) => setProviderKeys((k) => ({ ...k, [p.id]: e.target.value }))}
+                                                            placeholder={p.prefixes[0] ? `${p.prefixes[0]}…` : "pega tu clave"}
+                                                            className="w-full bg-[var(--bi-surface-1)] border border-[var(--bi-border)] rounded-xl px-4 py-3 pr-12 text-xs text-[var(--bi-text-1)] focus:outline-none focus:border-[var(--bi-green-border)] focus:ring-1 focus:ring-[var(--bi-green-border)] transition-all font-mono"
+                                                        />
+                                                        <button
+                                                            onClick={() => setShowProviderKey((s) => ({ ...s, [p.id]: !s[p.id] }))}
+                                                            className="absolute right-4 top-1/2 -translate-y-1/2 text-[var(--bi-text-3)] hover:text-[var(--bi-text-1)] transition-colors"
+                                                            aria-label={`Ver clave de ${p.label}`}
+                                                        >
+                                                            {showProviderKey[p.id] ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                                                        </button>
+                                                    </div>
+                                                    <button
+                                                        onClick={() => handleValidateProvider(p)}
+                                                        disabled={st.kind === "checking"}
+                                                        className="shrink-0 px-4 rounded-xl bg-[var(--bi-surface-1)] border border-[var(--bi-green-border)] text-[var(--bi-green)] text-[10px] font-bold uppercase tracking-wider hover:bg-[var(--bi-surface-2)] transition-colors disabled:opacity-50"
+                                                    >
+                                                        {st.kind === "checking" ? "..." : "Validar"}
+                                                    </button>
+                                                </div>
+                                                {st.text && <p className={`text-[10px] pl-1 ${tone}`}>{st.text}</p>}
+                                            </div>
                                         );
                                     })}
                                 </div>

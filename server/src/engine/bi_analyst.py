@@ -82,54 +82,16 @@ def get_client(api_key):
     return _clients[api_key]
 
 def validate_api_key(api_key, provider="gemini"):
-    if not api_key: return False, "API Key vacía."
-    
-    # Longitud mínima más estricta por proveedor
-    min_lengths = {
-        "gemini": 32,
-        "mistral": 32,
-        "groq": 32,
-        "default": 24
-    }
-    min_len = min_lengths.get(provider, min_lengths["default"])
-    
-    if len(api_key) < min_len: 
-        return False, f"API Key demasiado corta. Mínimo {min_len} caracteres requerido."
-    
-    # Validaciones básicas de formato por proveedor
-    try:
-        if provider == "gemini":
-            # Gemini keys típicas suelen empezar con "AIzaSy" o largo con números/letras
-            if not re.match(r"^[A-Za-z0-9_-]{32,}$", api_key.strip()):
-                return False, "API Key de Gemini con formato inválido."
-        elif provider == "mistral":
-            # Mistral keys suelen ser strings largos alfanuméricos
-            if not re.match(r"^[A-Za-z0-9_-]{24,}$", api_key.strip()):
-                return False, "API Key de Mistral con formato inválido."
-        elif provider == "groq":
-            # Groq keys también suelen ser strings alfanuméricos largos
-            if not re.match(r"^[A-Za-z0-9_-]{32,}$", api_key.strip()):
-                return False, "API Key de Groq con formato inválido."
-        else:
-            # Validación alfanumérica genérica para otros proveedores
-            if not re.match(r"^[A-Za-z0-9_-]{24,}$", api_key.strip()):
-                return False, "API Key con formato inválido."
-        
-        # Verificar que no sean patrones básicos de placeholders
-        invalid_patterns = ["your_api_key_here", "api_key", "test_key", "placeholder", "demo"]
-        normalized_key = api_key.strip().lower()
-        if any(pattern in normalized_key for pattern in invalid_patterns):
-            return False, "API Key parece ser un placeholder o demo."
-        
-        # Validación con red simple si es posible (opcional, puede ser costoso)
-        return True, None
-        
-    except Exception as e:
-        err = str(e).lower()
-        # Errores de cuota/rate limit -> la key sí es válida
-        if "429" in err or "quota" in err or "limit" in err:
-            return True, None
-        return False, f"Formato inválido: {str(e)}"
+    """Validación REAL contra el proveedor.
+
+    Antes solo comprobaba longitud y una regex (sin llamar a la API): una clave
+    incorrecta pasaba el filtro y el fallo aparecía después como un error confuso
+    durante el análisis, y una clave pegada con comillas se rechazaba como
+    'formato inválido'. Ahora delega en src.engine.providers, que limpia el pegado y
+    consulta /models (no consume tokens).
+    """
+    from src.engine.providers import verify_key, normalize_key
+    return verify_key(provider, api_key)
 
 # Flag de seguridad para evitar validaciones muy agresivas en producción
 _SECURITY_MODE_STRICT = os.getenv("SECURITY_MODE_STRICT", "false").lower() == "true"
@@ -205,6 +167,19 @@ def generate_ai_content(prompt, api_key, provider="gemini", temperature=0.7, mod
                     response.raise_for_status()
                     result = response.json()
                     return result["choices"][0]["message"]["content"]
+                else:
+                    # OpenAI, Anthropic, DeepSeek, OpenRouter y cualquier proveedor
+                    # registrado: cliente unificado en src/engine/providers.py
+                    from src.engine.providers import chat as provider_chat, PROVIDERS
+                    if provider not in PROVIDERS:
+                        return f"⚠️ Proveedor '{provider}' no soportado."
+                    return provider_chat(
+                        provider=provider,
+                        key=clean_key,
+                        prompt=prompt,
+                        temperature=temperature,
+                        system_instruction=system_instruction,
+                    )
             except Exception as e:
                 err = str(e).lower()
                 is_rate_limit = ("429" in err or "quota" in err or "exhausted" in err or "rate limit" in err)

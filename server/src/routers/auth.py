@@ -9,14 +9,37 @@ from src.utils.limiter import limiter
 
 router = APIRouter(tags=["Auth & Config"])
 
+# Campos de clave por proveedor. Se recorren en bloque para que anadir un proveedor
+# nuevo sea una linea en src/engine/providers.py mas una aqui, y no otra copia del
+# bloque de if/elif. La clave viaja siempre cifrada; al cliente solo le vuelve
+# enmascarada.
+PROVIDER_KEY_FIELDS = (
+    "gemini_key", "mistral_key", "groq_key",
+    "openai_key", "anthropic_key", "deepseek_key", "openrouter_key",
+)
+
+@router.get("/providers")
+def list_providers():
+    """Catalogo de proveedores soportados para pintar la pantalla de Ajustes."""
+    from src.engine.providers import catalog
+    return {"providers": catalog()}
+
 @router.post("/validate-key")
 @limiter.limit("5/minute")
 @limiter.limit("20/hour")
 def validate_key(request: Request, api_key: str = Form(...), provider: str = Form("gemini")):
     authenticated_user = get_authenticated_user()
     check_authorization(authenticated_user)
-    is_valid, error = validate_api_key(api_key, provider=provider)
-    return {"valid": is_valid, "error": error}
+    from src.engine.providers import detect_provider
+    is_valid, message = validate_api_key(api_key, provider=provider)
+    return {
+        "valid": is_valid,
+        "error": None if is_valid else message,
+        "message": message,
+        # Si la clave pertenece a otro proveedor del que indicaste, se avisa para que
+        # la guarden en su campo correcto en vez de fallar al analizar.
+        "detected_provider": detect_provider(api_key),
+    }
 
 def is_masked(key: str) -> bool:
     if not key: return False
@@ -53,41 +76,35 @@ async def get_user_config(db: Session = Depends(get_db)):
     authenticated_user = get_authenticated_user()
     check_authorization(authenticated_user)
     config = db.query(UserConfig).filter(UserConfig.user_id == authenticated_user).first()
-    if not config:
-        return {
-            "gemini_key": "", "mistral_key": "", "gamma_key": "", "groq_key": "", "preferred_provider": "gemini",
-            "temperature": 0.2,
-            "anomaly_sensitivity": 2.5,
-            "magic_clean_strategy": "remove",
-            "currency_format": "USD",
-            "date_format": "DD/MM/YYYY",
-            "brand_color": "#2dd4bf",
-            "brand_logo_url": "",
-            "report_org_name": "VEKTRA BI",
-            "report_footer_text": "Confidencial - Solo uso interno",
-            "pdf_orientation": "portrait",
-            "pdf_include_data_table": True,
-            "chart_theme": "neon"
-        }
-    return {
-        "gemini_key": mask_key(config.gemini_key),
-        "mistral_key": mask_key(config.mistral_key),
-        "gamma_key": mask_key(config.gamma_key),
-        "groq_key": mask_key(config.groq_key),
-        "preferred_provider": config.preferred_provider or "gemini",
-        "temperature": config.temperature if config.temperature is not None else 0.2,
-        "anomaly_sensitivity": config.anomaly_sensitivity if config.anomaly_sensitivity is not None else 2.5,
-        "magic_clean_strategy": config.magic_clean_strategy or "remove",
-        "currency_format": config.currency_format or "USD",
-        "date_format": config.date_format or "DD/MM/YYYY",
-        "brand_color": config.brand_color or "#2dd4bf",
-        "brand_logo_url": config.brand_logo_url or "",
-        "report_org_name": config.report_org_name or "VEKTRA BI",
-        "report_footer_text": config.report_footer_text or "Confidencial - Solo uso interno",
-        "pdf_orientation": config.pdf_orientation or "portrait",
-        "pdf_include_data_table": config.pdf_include_data_table if config.pdf_include_data_table is not None else True,
-        "chart_theme": config.chart_theme or "neon"
+
+    defaults = {
+        "preferred_provider": "gemini",
+        "temperature": 0.2,
+        "anomaly_sensitivity": 2.5,
+        "magic_clean_strategy": "remove",
+        "currency_format": "USD",
+        "date_format": "DD/MM/YYYY",
+        "brand_color": "#2dd4bf",
+        "brand_logo_url": "",
+        "report_org_name": "VEKTRA BI",
+        "report_footer_text": "Confidencial - Solo uso interno",
+        "pdf_orientation": "portrait",
+        "pdf_include_data_table": True,
+        "chart_theme": "neon",
     }
+
+    if not config:
+        payload = {f: "" for f in PROVIDER_KEY_FIELDS}
+        payload["gamma_key"] = ""
+        payload.update(defaults)
+        return payload
+
+    payload = {f: mask_key(getattr(config, f, None)) for f in PROVIDER_KEY_FIELDS}
+    payload["gamma_key"] = mask_key(config.gamma_key)
+    for field, fallback in defaults.items():
+        value = getattr(config, field, None)
+        payload[field] = fallback if value is None else value
+    return payload
 
 @router.post("/user-config")
 @limiter.limit("10/minute")
@@ -97,6 +114,10 @@ async def set_user_config(
     mistral_key: Optional[str] = Form(None),
     gamma_key: Optional[str] = Form(None),
     groq_key: Optional[str] = Form(None),
+    openai_key: Optional[str] = Form(None),
+    anthropic_key: Optional[str] = Form(None),
+    deepseek_key: Optional[str] = Form(None),
+    openrouter_key: Optional[str] = Form(None),
     preferred_provider: Optional[str] = Form(None),
     temperature: Optional[float] = Form(None),
     anomaly_sensitivity: Optional[float] = Form(None),
@@ -119,25 +140,19 @@ async def set_user_config(
         config = UserConfig(user_id=authenticated_user)
         db.add(config)
     
-    if gemini_key is not None and not is_masked(gemini_key) and gemini_key.strip() != "":
-        config.gemini_key = encrypt_key(gemini_key)
-    elif gemini_key == "":
-        config.gemini_key = None
-        
-    if mistral_key is not None and not is_masked(mistral_key) and mistral_key.strip() != "":
-        config.mistral_key = encrypt_key(mistral_key)
-    elif mistral_key == "":
-        config.mistral_key = None
-        
-    if gamma_key is not None and not is_masked(gamma_key) and gamma_key.strip() != "":
-        config.gamma_key = encrypt_key(gamma_key)
-    elif gamma_key == "":
-        config.gamma_key = None
-
-    if groq_key is not None and not is_masked(groq_key) and groq_key.strip() != "":
-        config.groq_key = encrypt_key(groq_key)
-    elif groq_key == "":
-        config.groq_key = None
+    # Claves de proveedor en bloque. Se leen del formulario para no repetir el mismo
+    # if/elif por cada proveedor anadido: vacio = borrar, enmascarada = no tocar
+    # (el frontend reenvia "abcd...wxyz" y no queremos pisar la clave real con eso),
+    # cualquier otro valor = guardar cifrado.
+    form = await request.form()
+    for field in PROVIDER_KEY_FIELDS + ("gamma_key",):
+        if field not in form:
+            continue
+        value = str(form.get(field) or "")
+        if value == "":
+            setattr(config, field, None)
+        elif not is_masked(value):
+            setattr(config, field, encrypt_key(value))
         
     if preferred_provider is not None: config.preferred_provider = preferred_provider
     if temperature is not None: config.temperature = temperature

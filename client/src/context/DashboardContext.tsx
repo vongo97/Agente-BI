@@ -23,8 +23,8 @@ interface DashboardContextType {
     setMistralKey: (key: string) => void;
     groqKey: string;
     setGroqKey: (key: string) => void;
-    aiProvider: "gemini" | "mistral" | "groq";
-    setAiProvider: (provider: "gemini" | "mistral" | "groq") => void;
+    aiProvider: string;
+    setAiProvider: (provider: string) => void;
     dataSources: DataSource[];
     setDataSources: (sources: DataSource[]) => void;
     addDataSource: (source: DataSource) => void;
@@ -88,7 +88,9 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
     const [apiKey, setApiKey] = useState("");
     const [mistralKey, setMistralKey] = useState("");
     const [groqKey, setGroqKey] = useState("");
-    const [aiProvider, setAiProvider] = useState<"gemini" | "mistral" | "groq">("gemini");
+    // El tipo es string (no una union fija): el catalogo de proveedores vive en el
+// backend, asi que anadir OpenAI/Anthropic/DeepSeek no obliga a tocar el contexto.
+const [aiProvider, setAiProvider] = useState<string>("gemini");
     const [dataSources, setDataSources] = useState<DataSource[]>([]);
     const [isSidebarOpen, setSidebarOpen] = useState(false);
     const [messages, setMessages] = useState<Message[]>([]);

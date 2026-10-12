@@ -107,6 +107,12 @@ class UserConfig(Base):
     mistral_key = Column(String, nullable=True)
     gamma_key = Column(String, nullable=True)
     groq_key = Column(String, nullable=True)
+    # Nuevos proveedores (ver src/engine/providers.py). Se guardan cifrados igual
+    # que los anteriores, nunca en claro ni en el frontend.
+    openai_key = Column(String, nullable=True)
+    anthropic_key = Column(String, nullable=True)
+    deepseek_key = Column(String, nullable=True)
+    openrouter_key = Column(String, nullable=True)
     preferred_provider = Column(String, default="gemini")
     temperature = Column(Float, default=0.2, nullable=True)
     anomaly_sensitivity = Column(Float, default=2.5, nullable=True)
@@ -211,6 +217,10 @@ def init_db():
             # Migración: columnas de user_configs
             for col, col_type in [
                 ("groq_key", "VARCHAR"),
+                ("openai_key", "VARCHAR"),
+                ("anthropic_key", "VARCHAR"),
+                ("deepseek_key", "VARCHAR"),
+                ("openrouter_key", "VARCHAR"),
                 ("temperature", "FLOAT"),
                 ("anomaly_sensitivity", "FLOAT"),
                 ("magic_clean_strategy", "VARCHAR"),

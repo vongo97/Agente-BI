@@ -3,7 +3,7 @@ import { DataSource } from "@/types/shared";
 
 interface SimFormProps {
     aiProvider: string;
-    setAiProvider: (p: 'gemini' | 'mistral' | 'groq') => void;
+    setAiProvider: (p: string) => void;
     title: string;
     setTitle: (t: string) => void;
     hypothesis: string;
@@ -55,7 +55,7 @@ export function SimForm({
                                 <button
                                     key={p.id}
                                     type="button"
-                                    onClick={() => setAiProvider(p.id as 'gemini' | 'mistral' | 'groq')}
+                                    onClick={() => setAiProvider(p.id)}
                                     className={`flex flex-col items-center justify-center gap-1.5 px-3 py-3 rounded-lg border text-center transition-all duration-200 cursor-pointer ${
                                         aiProvider === p.id 
                                         ? 'bg-[var(--module-simulation-accent-soft)] border-[var(--module-simulation-accent)] text-[var(--bi-text-1)] ring-1 ring-[var(--module-simulation-accent)] shadow-lg shadow-[rgba(168,85,247,0.15)]' 
