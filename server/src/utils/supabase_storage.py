@@ -9,6 +9,22 @@ SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
 BUCKET_NAME = "bi_storage"
 
+def storage_configured() -> bool:
+    """True si hay credenciales de Supabase para persistir archivos fuera del
+    contenedor. False significa que todo queda en el disco efímero de Render."""
+    return bool(os.getenv("SUPABASE_URL") and os.getenv("SUPABASE_SERVICE_ROLE_KEY"))
+
+def storage_diagnostic() -> dict:
+    """Información segura del almacenamiento (nunca incluye URLs ni credenciales)."""
+    configured = storage_configured()
+    if not configured:
+        logger.warning(
+            "CONFIG: SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY no configuradas. "
+            "Los archivos y sesiones se guardan solo en el disco local, que en Render "
+            "se pierde en cada reinicio. Define ambas variables en el panel del servicio."
+        )
+    return {"cloud": configured, "bucket": BUCKET_NAME if configured else None}
+
 # Inicializar cliente de forma perezosa (Lazy)
 def get_supabase_client():
     url = os.getenv("SUPABASE_URL")
@@ -22,22 +38,36 @@ def get_supabase_client():
         return None
 
 def upload_file_to_cloud(local_path: str, remote_path: str):
-    """Sube un archivo local al Bucket de Supabase."""
+    """Sube un archivo local al Bucket de Supabase.
+
+    Devuelve False si el cliente no está configurado o si el bucket no existe. En
+    ese caso el archivo SOLO queda en el disco del contenedor (efímero en Render),
+    por lo que el llamador debe avisar al usuario en lugar de fallar en silencio.
+    """
     client = get_supabase_client()
     if not client:
-        logger.warning(f"No se pudo subir {remote_path}: Cliente no inicializado (revisa .env)")
+        logger.critical(
+            "SIN PERSISTENCIA EN NUBE: no se puede subir '%s' a Supabase "
+            "(revisa SUPABASE_URL y SUPABASE_SERVICE_ROLE_KEY). El archivo solo "
+            "vivirá en el disco local y se perderá en el próximo reinicio.", remote_path
+        )
         return False
-    
+
     try:
         with open(local_path, 'rb') as f:
-            response = client.storage.from_(BUCKET_NAME).upload(
+            client.storage.from_(BUCKET_NAME).upload(
                 path=remote_path,
                 file=f,
                 file_options={"x-upsert": "true"}
             )
         return True
     except Exception as e:
-        logger.error(f"Error subiendo archivo a Supabase ({remote_path}): {e}")
+        logger.critical(
+            "FALLO al subir '%s' al bucket '%s' en Supabase: %s. Si el error menciona "
+            "'bucket not found', crea el bucket '%s' (privado) en el panel de Supabase. "
+            "El archivo queda solo en disco local.",
+            remote_path, BUCKET_NAME, type(e).__name__, BUCKET_NAME
+        )
         return False
 
 def download_file_from_cloud(remote_path: str, local_path: str):

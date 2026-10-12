@@ -133,13 +133,16 @@ except Exception as e:
 @app.get("/health")
 async def root():
     from src.database import db_diagnostic
+    from src.utils.supabase_storage import storage_diagnostic
     return {
         "status": "online",
         "message": "Agente BI API is running (Modular Mode)",
         "version": "1.0.0",
-        # Solo el dialecto: permite verificar desde fuera que los datos se guardan
-        # en algo persistente. Nunca se expone host, usuario ni contraseña.
+        # Solo tipo de dato y si hay almacenamiento en nubeConfigured: permite
+        # verificar desde fuera que los datos sobreviven a un reinicio. Nunca se
+        # expone host, usuario, bucket ni credenciales.
         "database": db_diagnostic(),
+        "storage": storage_diagnostic(),
     }
 
 if __name__ == "__main__":

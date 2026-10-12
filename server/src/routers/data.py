@@ -176,11 +176,25 @@ async def upload_file(request: Request, file: UploadFile = File(...), db: Sessio
 
         # 8. Sincronización Nube (el archivo ya está cifrado en permanent_path;
         #    la sesión ya se sube cifrada desde save_user_data)
+        cloud_ok = False
         try:
-            upload_file_to_cloud(permanent_path, f"data_sources/{permanent_name}")
+            cloud_ok = upload_file_to_cloud(permanent_path, f"data_sources/{permanent_name}")
         except Exception:
             logger.warning("Nube: falló upload de %s (archivo guardado localmente).", permanent_name)
 
+        # Si no hay almacenamiento en nube, el archivo vive solo en el disco del
+        # contenedor: en Render se pierde en cada reinicio. Se avisa en vez de
+        # devolver un éxito que luego resulta falso.
+        persistence_note = ""
+        if not cloud_ok:
+            logger.warning(
+                "PERSISTENCIA DEGRADADA: '%s' queda solo en disco local y se perderá "
+                "en el próximo reinicio (Supabase no configurado).", permanent_name
+            )
+            persistence_note = (
+                " ⚠️ Guardado en almacenamiento temporal: configuración el almacenamiento "
+                "en la nube para que sobreviva a reinicios."
+            )
 
         return {
             "id": int(new_source.id),
@@ -189,7 +203,8 @@ async def upload_file(request: Request, file: UploadFile = File(...), db: Sessio
             "columns": [str(c) for c in df.columns.tolist()],
             "rows": int(len(df)),
             "total_tables": int(len(session_data["data"])),
-            "message": f"Archivo '{file.filename}' añadido con éxito."
+            "persisted": bool(cloud_ok),
+            "message": f"Archivo '{file.filename}' añadido con éxito.{persistence_note}"
         }
         
     except HTTPException as he:
