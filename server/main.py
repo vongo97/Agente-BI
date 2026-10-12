@@ -42,6 +42,7 @@ else:
     ALLOWED_ORIGINS = [
         "https://agente-bi.vercel.app",
         "https://agente-bi.onrender.com",
+        "https://agente-bi-client.onrender.com",
         "https://vektra-bi-eight.vercel.app",
         # Agregar dominios corporativos específicos aquí en producción
         # Ej: "https://app.ejemplo.com", "https://admin.ejemplo.com"
