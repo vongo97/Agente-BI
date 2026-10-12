@@ -27,7 +27,7 @@ services:
       # dominio real del frontend desplegado, si no el navegador bloquea con
       # "Failed to fetch" aunque el backend esté vivo.
       - key: ALLOWED_ORIGINS
-        value: https://agente-bi-client.onrender.com,https://agente-bi.onrender.com,https://agente-bi.vercel.app,https://vektra-bi-eight.vercel.app
+        value: https://agente-bi-client-5nx4.onrender.com,https://agente-bi-client.onrender.com,https://agente-bi.onrender.com,https://agente-bi.vercel.app,https://vektra-bi-eight.vercel.app
       # AUTH_SECRET: firma JWT. Configurar en el Dashboard de Render con un secreto
       # aleatorio seguro (mínimo 32 chars). Ej: openssl rand -hex 32
       - key: AUTH_SECRET
@@ -49,11 +49,13 @@ services:
         value: https://agente-bi-server.onrender.com
       - key: NEXTAUTH_SECRET
         sync: false
+      # NEXTAUTH_URL debe ser la URL publica EXACTA del frontend. fromService
+      # (property: host) devuelve solo el nombre del servicio, y ademas Render
+      # anade sufijo aleatorio si el nombre "agente-bi-client" ya esta ocupado
+      # (host real: agente-bi-client-5nx4.onrender.com). Con un valor invalido,
+      # NextAuth responde 500 en /api/auth/error.
       - key: NEXTAUTH_URL
-        fromService:
-          name: agente-bi-client
-          type: web
-          property: host
+        value: https://agente-bi-client-5nx4.onrender.com
       - key: GOOGLE_CLIENT_ID
         sync: false
       - key: GOOGLE_CLIENT_SECRET
