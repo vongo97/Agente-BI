@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { useSession } from "next-auth/react";
-import { setApiAuthToken, getUserConfig, setUserConfig } from "@/lib/api";
+import { setApiAuthToken, getUserConfig, setUserConfig, BACKEND_BASE_URL } from "@/lib/api";
 import { ChatMessage, DataSource } from '@/types/shared';
 import { useToast } from '@/context/ToastContext';
 
@@ -285,10 +285,9 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
     // Verificar salud del servidor (Render Wake-up)
     useEffect(() => {
         const checkHealth = async () => {
-            const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
             try {
                 setIsWakingUp(true);
-                const res = await fetch(`${API_URL}/`, { method: "GET" });
+                const res = await fetch(`${BACKEND_BASE_URL}/`, { method: "GET" });
                 if (res.ok) {
                     setIsServerHealthy(true);
                 } else {

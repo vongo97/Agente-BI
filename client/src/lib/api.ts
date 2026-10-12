@@ -1,4 +1,10 @@
-const API_URL = (process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000") + "/api/v1";
+// Normaliza la URL base del backend: quita barras finales y evita duplicar
+// "/api/v1" si la variable de entorno ya lo incluye (error frecuente al
+// configurar NEXT_PUBLIC_API_URL en Vercel/Render: puntear "https://host/api/v1").
+const RAW_API_URL = (process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000").replace(/\/+$/, "");
+// URL base normalizada del backend (sin /api/v1) para health checks, etc.
+export const BACKEND_BASE_URL = RAW_API_URL.replace(/\/api\/v1$/, "");
+const API_URL = RAW_API_URL.endsWith("/api/v1") ? RAW_API_URL : `${RAW_API_URL}/api/v1`;
 
 let apiAuthToken: string | null = null;
 
