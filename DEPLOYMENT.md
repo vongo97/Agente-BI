@@ -16,6 +16,13 @@ Todo el stack vive en **Render** (el VPS anterior y Vercel quedan fuera de juego
 > **Regla: no renombrar servicios en `render.yaml` sin comprobar antes**, o el
 > Blueprint crea duplicados.
 
+> ⚠️ **`cliente-vektra-bi.onrender.com` es un servicio duplicado** creado por error
+> al renombrar el servicio en `render.yaml` (el Blueprint lo tomó como servicio
+> nuevo). No usarlo: apunta al backend `-ci55` que ya no existe, tiene
+> `NEXTAUTH_URL` apuntando a otro dominio —por eso el login acaba en
+> `error=Configuration`— y su origen no está en `ALLOWED_ORIGINS`. Se borró del
+> panel de Render.
+
 ## Variables de entorno obligatorias
 
 Las marcadas `sync: false` en `render.yaml` hay que definirlas **a mano** en el panel
