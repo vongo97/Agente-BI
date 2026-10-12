@@ -114,7 +114,18 @@ async def upload_file(request: Request, file: UploadFile = File(...), db: Sessio
             shutil.copyfileobj(file.file, buffer)
 
         # 3. Procesar datos desde el temporal (en claro)
-        df = load_file_data(temp_path)
+        from src.connectors.data_connectors import ArchivoInvalido
+        try:
+            df = load_file_data(temp_path)
+        except ArchivoInvalido as inv:
+            # Archivo vacío, solo encabezados o ilegible: es un problema del archivo
+            # del usuario, no del servidor. 400 con el motivo exacto.
+            try:
+                os.remove(temp_path)
+            except Exception:
+                pass
+            logger.info("UPLOAD_REJECTED motivo=archivo_invalido file=%s user=%s", clean_name, authenticated_user)
+            raise HTTPException(status_code=400, detail=str(inv))
         # Protección contra zip-bombs / hojas masivas (mismo límite que Google Sheets)
         _MAX_CELLS = 1_000_000
         if int(df.size) > _MAX_CELLS:

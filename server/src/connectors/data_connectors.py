@@ -165,37 +165,94 @@ def _clean_dataframe(df):
 
     return df
 
+class ArchivoInvalido(Exception):
+    """El archivo se rechaza por su contenido, no por un fallo del servidor.
+    El router lo traduce a 400 con el mensaje, en lugar de un 500 generico."""
+
+
+def _parse_score(df) -> int:
+    """Puntua un parseo para elegir el mejor candidato.
+
+    Un parseo con el separador equivocado produce muchas columnas pero casi todas
+    vacias: p.ej. un CSV cuya cabecera contiene ';' dentro de un texto se parte en 7
+    columnas mientras que cada fila real aporta 1 campo. El criterio antiguo
+    ('si tiene mas de una columna, vale') aceptaba ese resultado corrupto y perdia
+    todas las columnas. Aqui se puntua cuantas columnas traen datos de verdad.
+    """
+    if df is None or df.shape[1] == 0:
+        return 0
+    if df.shape[0] == 0:
+        return 1  # solo encabezados: vale algo, pero no hay datos
+    return sum(1 for col in df.columns if not df[col].isna().all())
+
+
 def load_file_data(file_path):
-    """Carga archivos CSV o Excel con detección de encoding robusta priorizando UTF-8."""
+    """Carga archivos CSV o Excel con deteccion de encoding robusta priorizando UTF-8."""
     import os
     ext = file_path.lower()
     basename = os.path.basename(file_path)
+
+    # Archivo de 0 bytes: se rechaza con un mensaje claro en vez de dejar que pandas
+    # reviente con EmptyDataError y acabe en un 500 "revisa el formato".
+    try:
+        if os.path.getsize(file_path) == 0:
+            raise ArchivoInvalido(
+                "El archivo esta vacio (0 bytes). Sube un CSV o Excel con al menos una fila de datos."
+            )
+    except OSError:
+        pass
+
     try:
         if ext.endswith('.csv'):
             # UTF-8 y UTF-8-sig se priorizan estrictamente antes de latin-1
             encodings = ['utf-8', 'utf-8-sig', 'cp1252', 'iso-8859-1', 'latin-1']
-            separators = [';', ',', '\t']
-            
+            # Coma primero: la coma nunca aparece dentro de un valor de texto,
+            # el punto y coma si (p.ej. cabeceras con SQL injection).
+            separators = [',', ';', '\t']
+
+            best_df, best_score = None, 0
             for encoding in encodings:
                 for sep in separators:
                     try:
                         decimal = ',' if sep == ';' else '.'
                         df = pd.read_csv(file_path, encoding=encoding, sep=sep, decimal=decimal)
-                        
-                        if len(df.columns) > 1:
-                            logger.debug("CSV cargado con éxito (file=%s, sep=%r, enc=%s)", basename, sep, encoding)
-                            return _clean_dataframe(df)
-                    except:
+                    except Exception:
                         continue
-            
-            # Último recurso: motor python
+                    score = _parse_score(df)
+                    if score > best_score:
+                        best_df, best_score = df, score
+                if best_score > 1:
+                    break  # ya hay un parseo con datos de verdad
+
+            if best_df is not None and best_score > 1:
+                logger.debug("CSV cargado file=%s cols_con_datos=%d", basename, best_score)
+                return _clean_dataframe(best_df)
+
+            # Ultimo recurso: motor python con deteccion automatica y saltando lineas
+            # rotas. Necesario para CSV sucios (comillas sin cerrar, filas partidas):
+            # se prueba ANTES de concluir que el archivo solo tiene encabezados.
             for encoding in encodings:
                 try:
                     df = pd.read_csv(file_path, encoding=encoding, sep=None, engine='python', on_bad_lines='skip')
-                    return _clean_dataframe(df)
-                except: continue
-                
-            raise Exception("No se pudo determinar el formato del CSV.")
+                    if _parse_score(df) > 1:
+                        logger.info("CSV leido con motor python (lineas dañadas omitidas) file=%s", basename)
+                        return _clean_dataframe(df)
+                except Exception:
+                    continue
+
+            # Solo encabezados o archivo ilegible: se distingue para no culpar al usuario de
+            # un problema que no es el suyo (un CSV corrupto no es "solo encabezados").
+            if best_df is not None and best_df.shape[1] >= 2 and best_df.shape[0] == 0:
+                raise ArchivoInvalido(
+                    "El archivo no contiene datos, solo la fila de encabezados. "
+                    "Anade al menos una fila con datos."
+                )
+
+            raise ArchivoInvalido(
+                "No se pudo interpretar el archivo. Comprueba que sea un CSV valido "
+                "(separador coma o punto y coma, codificacion UTF-8) y que las "
+                "comillas o comas esten bien cerradas."
+            )
         elif ext.endswith(('.xls', '.xlsx', '.xlsm')):
             logger.debug("Cargando archivo Excel (Context-safe): file=%s", basename)
             engine = 'openpyxl' if ext.endswith('.xlsx') else None
@@ -240,6 +297,9 @@ def load_file_data(file_path):
                 return _clean_dataframe(best_df)
             else:
                 return _clean_dataframe(pd.read_csv(file_path))
+    except ArchivoInvalido:
+        # Ya es un mensaje pensado para el usuario final: no lo reenvolvemos.
+        raise
     except Exception as e:
         logger.error("Error crítico cargando archivo file=%s: %s", basename, type(e).__name__)
         raise Exception(f"Error al leer el archivo: {type(e).__name__}")
