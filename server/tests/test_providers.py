@@ -122,7 +122,8 @@ class TestResolveKeys:
 
 class TestNvidia:
     """NVIDIA tiene el catalogo de modelos PUBLICO (GET /models responde 200 sin
-    clave), asi que validar por listado daria 'valida' para cualquier basura."""
+    clave), asi que validar por listado daria 'valida' para cualquier basura.
+    Ademas retiran modelos sin avisar: eso responde 410 Gone."""
 
     def test_detecta_prefijo_nvapi(self):
         assert providers.detect_provider("nvapi-" + "a" * 60) == "nvidia"
@@ -169,6 +170,49 @@ class TestNvidia:
         monkeypatch.setattr(providers.requests, "post", boom)
         ok, _ = providers.verify_key("nvidia", "nvapi-" + "a" * 60)
         assert ok is True
+
+    def test_tiene_modelos_de_reserva(self):
+        """Regresión: 'meta/llama-3.3-70b-instruct' dio 410 Gone (retirado del
+        catalogo). El proveedor debe traer alternativas para no quedarse muerto."""
+        meta = providers.get_meta("nvidia")
+        assert meta["model_fallbacks"], "NVIDIA necesita modelos de reserva"
+        assert meta["model"] not in meta["model_fallbacks"]
+
+
+class TestModeloRetirado:
+    def test_410_cambia_al_siguiente_modelo(self, monkeypatch):
+        """Si el modelo principal devuelve 410, se prueba el siguiente."""
+        vistos = []
+
+        class Resp410:
+            status_code = 410
+
+        class Resp200:
+            status_code = 200
+
+            def raise_for_status(self):
+                return None
+
+            def json(self):
+                return {"choices": [{"message": {"content": "hola"}}]}
+
+        def fake_post(url, headers=None, json=None, timeout=None):
+            vistos.append(json["model"])
+            return Resp410() if len(vistos) == 1 else Resp200()
+
+        monkeypatch.setattr(providers.requests, "post", fake_post)
+        texto = providers.chat("nvidia", "nvapi-" + "a" * 60, "hola")
+        assert texto == "hola"
+        assert len(vistos) >= 2, "debe haber intentado un segundo modelo"
+
+    def test_si_todos_estan_retirados_da_error_claro(self, monkeypatch):
+        class Resp410:
+            status_code = 410
+
+        monkeypatch.setattr(providers.requests, "post", lambda *a, **k: Resp410())
+        ok, msg = providers.verify_key("nvidia", "nvapi-" + "a" * 60)
+        assert ok is False
+        assert "retir" in msg.lower() or "disponible" in msg.lower()
 
 
 class TestCatalog:

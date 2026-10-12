@@ -97,7 +97,15 @@ PROVIDERS = {
         "label": "NVIDIA NIM",
         "style": "openai",
         "base_url": "https://integrate.api.nvidia.com/v1",
-        "model": "meta/llama-3.3-70b-instruct",
+        "model": "nvidia/nemotron-3-super-120b-a12b",
+        # El catalogo de NVIDIA cambia sin avisar: cuando retiran un modelo el
+        # endpoint responde 410 Gone. En vez de romper, se prueban alternativas.
+        "model_fallbacks": [
+            "nvidia/nemotron-4-340b-instruct",
+            "moonshotai/kimi-k3",
+            "deepseek-ai/deepseek-v4.1-flash",
+            "openai/gpt-oss-20b",
+        ],
         "prefixes": ("nvapi-",),
         "min_len": 40,
         "console": "https://build.nvidia.com/settings/api-keys",
@@ -189,25 +197,60 @@ def _verify_openai_style(provider: str, key: str) -> Tuple[bool, Optional[str]]:
     return False, f"El proveedor respondió {resp.status_code} al validar la clave."
 
 
+def _openai_call(provider: str, key: str, payload_extra: dict, timeout: int):
+    """POST a /chat/completions probando el modelo principal y, si el proveedor lo
+    ha retirado (410/404), los de reserva. Devuelve (respuesta, modelo_usado)."""
+    meta = PROVIDERS[provider]
+    modelos = [meta["model"], *meta.get("model_fallbacks", [])]
+    ultimo = None
+    for model in modelos:
+        headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
+        if provider == "openrouter":
+            headers["HTTP-Referer"] = "https://agente-bi.onrender.com"
+            headers["X-Title"] = "Vektra BI"
+        try:
+            resp = requests.post(
+                f"{meta['base_url']}/chat/completions",
+                headers=headers,
+                json={"model": model, **payload_extra},
+                timeout=timeout,
+            )
+        except requests.RequestException:
+            raise
+        if resp.status_code in (410, 404) and model != modelos[-1]:
+            logger.info("%s: el modelo '%s' ya no esta disponible, probando alternativa", provider, model)
+            ultimo = resp
+            continue
+        return resp, model
+    raise ultimo if ultimo is not None else None
+
+
 def _verify_openai_chat(provider: str, key: str) -> Tuple[bool, Optional[str]]:
     """Valida con una complet mínima (1 token). Necesario cuando /models es público
     y responde 200 sin clave (NVIDIA), donde el listado no dice nada."""
     meta = PROVIDERS[provider]
     try:
-        resp = requests.post(
-            f"{meta['base_url']}/chat/completions",
-            headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
-            json={"model": meta["model"], "messages": [{"role": "user", "content": "hi"}], "max_tokens": 1},
+        resp, model = _openai_call(
+            provider, key,
+            {"messages": [{"role": "user", "content": "hi"}], "max_tokens": 1},
             timeout=25,
         )
     except requests.RequestException:
         return True, None  # sin red: no se puede afirmar que la clave sea inválida
+    if resp is None:
+        return False, "Ningún modelo de NVIDIA está disponible ahora mismo. Inténtalo más tarde."
     if resp.status_code == 200:
         return True, None
     if resp.status_code in (401, 403):
         return False, "NVIDIA rechazó la clave (401/403). Revísala o genera una nueva en build.nvidia.com."
     if resp.status_code == 429:
         return True, "La clave es válida (límite de peticiones alcanzado en la validación)."
+    if resp.status_code in (404, 410):
+        # Agotadas todas las alternativas: NVIDIA retiró los modelos configurados.
+        return False, (
+            "NVIDIA retiró los modelos que usamos para validar (410 Gone). "
+            "Es un problema del catálogo de NVIDIA, no de tu clave."
+        )
     return False, f"NVIDIA respondió {resp.status_code} al validar la clave."
 
 
@@ -364,12 +407,9 @@ def chat(provider: str, key: str, prompt: str, temperature: float = 0.7,
         return "".join(b.get("text", "") for b in blocks if b.get("type") == "text")
 
     # OpenAI y compatibles
-    payload = {"model": meta["model"], "messages": messages, "temperature": temperature}
-    headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
-    if provider == "openrouter":
-        headers["HTTP-Referer"] = "https://agente-bi.onrender.com"
-        headers["X-Title"] = "Vektra BI"
-    resp = requests.post(f"{meta['base_url']}/chat/completions",
-                         headers=headers, json=payload, timeout=timeout)
+    payload = {"messages": messages, "temperature": temperature}
+    resp, _model = _openai_call(provider, key, payload, timeout=timeout)
+    if resp is None:
+        raise RuntimeError("Ningún modelo disponible en este proveedor ahora mismo.")
     resp.raise_for_status()
     return resp.json()["choices"][0]["message"]["content"]
