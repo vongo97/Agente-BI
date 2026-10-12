@@ -6,8 +6,17 @@ Todo el stack vive en **Render** (el VPS anterior y Vercel quedan fuera de juego
 
 | Servicio | URL pública | Plan | Carpeta |
 |---|---|---|---|
-| Backend (FastAPI) | `https://agente-bi-server.onrender.com` | free | `server/` |
+| Backend (FastAPI) | `https://agente-bi-server-7nav.onrender.com` | free | `server/` |
 | Frontend (Next.js) | `https://agente-bi-client-5nx4.onrender.com` | free | `client/` |
+
+> **El nombre real de los servicios incluye el sufijo que Render añadió al
+> crearlos.** El `render.yaml` usa esos nombres exactos (`agente-bi-server-7nav` y
+> `agente-bi-client-5nx4`) para que el Blueprint **actualice** los servicios en vez de
+> crear duplicados. Si alguna vez se borran y Render crea uno nuevo con otro sufijo,
+> hay que actualizar las cuatro cosas de golpe: los dos `name:` del yaml,
+> `NEXT_PUBLIC_API_URL` y `NEXTAUTH_URL`. La CSP del frontend se deriva
+> automáticamente de `NEXT_PUBLIC_API_URL` (`client/next.config.ts`), por lo que ya no
+> hay que tocarla a mano.
 
 > Los nombres con sufijo (`-5nx4`, `-ci55`) los generó Render automáticamente al
 > crear el servicio porque el nombre del `render.yaml` ya estaba ocupado. Si esos

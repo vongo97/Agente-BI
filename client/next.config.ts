@@ -1,12 +1,28 @@
 import type { NextConfig } from "next";
 
+// El backend se conecta desde el navegador, asi que su URL debe estar permitida por
+// la CSP. Se deriva de NEXT_PUBLIC_API_URL (la misma variable que usa el cliente) en
+// lugar de escribirla a mano: Render anade sufijos aleatorios al nombre del servicio
+// y un host fijo en la CSP se queda obsoleto en silencio, bloqueando TODAS las
+// llamadas con "Refused to connect because it violates the document's Content
+// Security Policy".
+const apiBaseUrl = (process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000").replace(/\/+$/, "");
+const connectSources = [
+  "'self'",
+  "ws:",
+  "wss:",
+  "http://127.0.0.1:8000",
+  "http://localhost:8000",
+  apiBaseUrl,
+];
+
 const cspHeader = `
   default-src 'self';
   script-src 'self' 'unsafe-eval' 'unsafe-inline';
   style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
   img-src 'self' blob: data: https://lh3.googleusercontent.com;
   font-src 'self' https://fonts.gstatic.com;
-  connect-src 'self' ws: wss: http://127.0.0.1:8000 http://localhost:8000 https://agente-bi.onrender.com https://agente-bi-server.onrender.com;
+  connect-src ${[...new Set(connectSources)].join(" ")};
   frame-src 'none';
   object-src 'none';
 `.replace(/\s{2,}/g, ' ').trim();
