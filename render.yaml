@@ -34,8 +34,10 @@ services:
         sync: false  # NO poner el valor aquí; configurarlo en el Dashboard de Render
 
   # 3. Frontend (Next.js)
+  # NOTA: si Render ya creo este servicio con sufijo (agente-bi-client-5nx4),
+  # el nombre del yaml NO debe cambiar o Render creara otro servicio distinto.
   - type: web
-    name: cliente-vektra-bi      # nombre libre: evita sufijos aleatorios de Render
+    name: agente-bi-client
     env: node
     buildCommand: npm install && npm run build
     startCommand: npm run start
