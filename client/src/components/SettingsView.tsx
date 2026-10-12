@@ -181,6 +181,7 @@ export function SettingsView() {
                                         { id: 'deepseek', name: 'DeepSeek', desc: 'Coste muy bajo, gran volumen', activeClass: 'border-[var(--sim-accent)] bg-[var(--sim-accent-soft)] text-[var(--sim-accent)] ring-1 ring-[var(--sim-accent)]' },
                                         { id: 'mistral', name: 'Mistral AI', desc: 'Precisión Estratégica (Large)', activeClass: 'border-[var(--bi-teal-border)] bg-[var(--bi-teal-dim)] text-[var(--bi-teal)] ring-1 ring-[var(--bi-teal-border)] shadow-[0_0_15px_rgba(45,212,191,0.1)]' },
                                         { id: 'groq', name: 'Groq Llama 3.3', desc: 'Velocidad Extrema (70B)', activeClass: 'border-[var(--sim-border)] bg-[var(--sim-accent-soft)] text-[var(--sim-accent)] ring-1 ring-[var(--sim-border)] shadow-[0_0_15px_rgba(244,114,182,0.1)]' },
+                                        { id: 'nvidia', name: 'NVIDIA NIM', desc: 'Llama 3.3 70B · gratis', activeClass: 'border-[var(--bi-green-border)] bg-[var(--bi-green-dim)] text-[var(--bi-green)] ring-1 ring-[var(--bi-green-border)]' },
                                         { id: 'openrouter', name: 'OpenRouter', desc: 'Una clave, muchos modelos', activeClass: 'border-[var(--bi-border-strong)] bg-[var(--bi-surface-2)] text-[var(--bi-text-1)] ring-1 ring-[var(--bi-border-strong)]' }
                                     ].map((p) => {
                                         const isActive = aiProvider === p.id;

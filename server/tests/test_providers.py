@@ -120,6 +120,57 @@ class TestResolveKeys:
         assert err is None
 
 
+class TestNvidia:
+    """NVIDIA tiene el catalogo de modelos PUBLICO (GET /models responde 200 sin
+    clave), asi que validar por listado daria 'valida' para cualquier basura."""
+
+    def test_detecta_prefijo_nvapi(self):
+        assert providers.detect_provider("nvapi-" + "a" * 60) == "nvidia"
+
+    def test_se_valida_con_chat_no_con_modelos(self):
+        meta = providers.get_meta("nvidia")
+        assert meta["verify"] == "chat"
+
+    def test_es_gratuito(self):
+        assert providers.get_meta("nvidia")["free_tier"] is True
+
+    def test_chat_de_validacion_no_gasta_tokens(self, monkeypatch):
+        capturado = {}
+
+        class Resp:
+            status_code = 200
+
+            def json(self):
+                return {"choices": [{"message": {"content": "h"}}]}
+
+        def fake_post(url, headers=None, json=None, timeout=None):
+            capturado["url"] = url
+            capturado["json"] = json
+            return Resp()
+
+        monkeypatch.setattr(providers.requests, "post", fake_post)
+        ok, _ = providers.verify_key("nvidia", "nvapi-" + "a" * 60)
+        assert ok is True
+        assert capturado["json"]["max_tokens"] == 1, "la validacion debe costar 0 tokens"
+
+    def test_chat_rechaza_clave_invalida(self, monkeypatch):
+        class Resp:
+            status_code = 401
+            text = "invalid api key"
+
+        monkeypatch.setattr(providers.requests, "post", lambda *a, **k: Resp())
+        ok, msg = providers.verify_key("nvidia", "nvapi-" + "a" * 60)
+        assert ok is False and msg
+
+    def test_sin_red_no_bloquea_al_usuario(self, monkeypatch):
+        def boom(*a, **k):
+            raise providers.requests.RequestException("sin red")
+
+        monkeypatch.setattr(providers.requests, "post", boom)
+        ok, _ = providers.verify_key("nvidia", "nvapi-" + "a" * 60)
+        assert ok is True
+
+
 class TestCatalog:
     def test_no_expone_secretos(self):
         items = providers.catalog()
@@ -129,7 +180,7 @@ class TestCatalog:
 
     def test_incluye_los_proveedores_del_mercado(self):
         ids = {p["id"] for p in providers.catalog()}
-        assert {"gemini", "openai", "anthropic", "deepseek", "groq", "mistral", "openrouter"} <= ids
+        assert {"gemini", "openai", "anthropic", "deepseek", "groq", "mistral", "openrouter", "nvidia"} <= ids
 
     def test_todos_tienen_url_de_consola(self):
         for p in providers.catalog():

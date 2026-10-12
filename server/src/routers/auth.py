@@ -15,7 +15,7 @@ router = APIRouter(tags=["Auth & Config"])
 # enmascarada.
 PROVIDER_KEY_FIELDS = (
     "gemini_key", "mistral_key", "groq_key",
-    "openai_key", "anthropic_key", "deepseek_key", "openrouter_key",
+    "openai_key", "anthropic_key", "deepseek_key", "openrouter_key", "nvidia_key",
 )
 
 @router.get("/providers")
@@ -118,6 +118,7 @@ async def set_user_config(
     anthropic_key: Optional[str] = Form(None),
     deepseek_key: Optional[str] = Form(None),
     openrouter_key: Optional[str] = Form(None),
+    nvidia_key: Optional[str] = Form(None),
     preferred_provider: Optional[str] = Form(None),
     temperature: Optional[float] = Form(None),
     anomaly_sensitivity: Optional[float] = Form(None),

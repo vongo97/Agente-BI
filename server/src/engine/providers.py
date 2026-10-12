@@ -93,6 +93,20 @@ PROVIDERS = {
         "console": "https://openrouter.ai/keys",
         "free_tier": False,
     },
+    "nvidia": {
+        "label": "NVIDIA NIM",
+        "style": "openai",
+        "base_url": "https://integrate.api.nvidia.com/v1",
+        "model": "meta/llama-3.3-70b-instruct",
+        "prefixes": ("nvapi-",),
+        "min_len": 40,
+        "console": "https://build.nvidia.com/keys",
+        "free_tier": True,
+        # El catalogo de modelos de NVIDIA es publico: GET /models responde 200 sin
+        # clave, asi que no sirve para validarla. Se comprueba con una complet minima
+        # de 1 token (coste cero) contra el modelo por defecto.
+        "verify": "chat",
+    },
 }
 
 DEFAULT_PROVIDER = "gemini"
@@ -175,6 +189,28 @@ def _verify_openai_style(provider: str, key: str) -> Tuple[bool, Optional[str]]:
     return False, f"El proveedor respondió {resp.status_code} al validar la clave."
 
 
+def _verify_openai_chat(provider: str, key: str) -> Tuple[bool, Optional[str]]:
+    """Valida con una complet mínima (1 token). Necesario cuando /models es público
+    y responde 200 sin clave (NVIDIA), donde el listado no dice nada."""
+    meta = PROVIDERS[provider]
+    try:
+        resp = requests.post(
+            f"{meta['base_url']}/chat/completions",
+            headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+            json={"model": meta["model"], "messages": [{"role": "user", "content": "hi"}], "max_tokens": 1},
+            timeout=25,
+        )
+    except requests.RequestException:
+        return True, None  # sin red: no se puede afirmar que la clave sea inválida
+    if resp.status_code == 200:
+        return True, None
+    if resp.status_code in (401, 403):
+        return False, "NVIDIA rechazó la clave (401/403). Revísala o genera una nueva en build.nvidia.com."
+    if resp.status_code == 429:
+        return True, "La clave es válida (límite de peticiones alcanzado en la validación)."
+    return False, f"NVIDIA respondió {resp.status_code} al validar la clave."
+
+
 def _verify_anthropic(key: str) -> Tuple[bool, Optional[str]]:
     try:
         resp = requests.get(
@@ -228,6 +264,8 @@ def verify_key(provider: str, key: str, timeout_note: bool = True) -> Tuple[bool
         )
 
     style = meta["style"]
+    if meta.get("verify") == "chat":
+        return _verify_openai_chat(provider, key)
     if style == "gemini":
         return _verify_gemini(key)
     if style == "anthropic":
