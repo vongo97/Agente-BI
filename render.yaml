@@ -42,11 +42,11 @@ services:
     rootDir: client
     plan: free
     envVars:
+      # URL completa del backend. NOTA: fromService (property: host) inyecta solo
+      # el nombre del servicio ("agente-bi-server") sin esquema ni dominio, lo que
+      # rompe las llamadas API (ruta relativa -> 404). Se usa la URL literal.
       - key: NEXT_PUBLIC_API_URL
-        fromService:
-          name: agente-bi-server
-          type: web
-          property: host
+        value: https://agente-bi-server.onrender.com
       - key: NEXTAUTH_SECRET
         sync: false
       - key: NEXTAUTH_URL
