@@ -28,7 +28,7 @@ público.
 |---|---|---|
 | `AUTH_SECRET` | Verifica el JWT que firma el frontend (≥32 chars, `openssl rand -hex 32`) | 500 "falta definir AUTH_SECRET" |
 | `AUTHORIZED_EMAILS` | Lista blanca de correos (separados por coma) | **403 a todo el mundo** |
-| `ENCRYPTION_KEY` | Cifra las API keys que guarda cada usuario | Se regenera en cada reinicio: se pierden las keys guardadas |
+| `ENCRYPTION_KEY` | Cifra las API keys que guarda cada usuario | Ver nota ⚠️ abajo |
 | `DATABASE_URL` | Postgres/Supabase (opcional) | Cae a SQLite local (`server/src/database.py`) |
 | `GEMINI_API_KEY` | Solo para pruebas internas | Los usuarios usan su propia key, cifrada en su perfil |
 | `ALLOWED_ORIGINS` | Ya viene en `render.yaml` | El navegador bloquea con "Failed to fetch" |
@@ -59,6 +59,19 @@ Redirect URI en Google Cloud Console:
 | `403 Usuario no autorizado` / `Acceso denegado: AUTHORIZED_EMAILS…` | Correo fuera de la lista blanca, o lista vacía | Logs: `AUTH_REJECTED motivo=...` |
 | `429` | Rate limit (`/upload`: 5/min y 30/h) | Rate limiters en `server/src/routers/` |
 | `404` en `NEXT_PUBLIC_API_URL` | Apunta a un host inexistente (servicio borrado o renombrado) | `curl -o NUL -w "%{http_code}" https://<host>/` |
+
+⚠️ **`ENCRYPTION_KEY` formato exacto**: debe ser una clave Fernet, es decir **44
+caracteres base64url terminados en `=`**:
+
+```bash
+python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+```
+
+No vale un hash hex (`openssl rand -hex 32`): son 64 caracteres y el backend no
+arranca. Desde el commit `fix(security)` una clave mal formada ya no tumba el
+servicio (se deriva una clave estable y se avisa en los logs), pero conviene
+corregir la variable en el panel: el valor derivado no es reversible ni
+auditable.
 
 Render free duerme el servicio tras ~15 min sin uso: el primer request tarda 30-60 s y
 puede fallar con un error feo aunque funcione al reintentar.

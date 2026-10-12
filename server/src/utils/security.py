@@ -1,4 +1,6 @@
 import os
+import base64
+import hashlib
 import logging
 from cryptography.fernet import Fernet
 from dotenv import load_dotenv
@@ -31,7 +33,25 @@ if not ENCRYPTION_KEY:
     logger.warning(msg)
     ENCRYPTION_KEY = Fernet.generate_key().decode()
 
-cipher_suite = Fernet(ENCRYPTION_KEY.encode())
+# Si la variable existe pero NO es una clave Fernet válida, el import de este
+# módulo reventaba y tumbaba TODO el backend (no solo el cifrado). En su lugar se
+# deriva una clave válida y estable a partir del valor proporcionado: el servicio
+# arranca y la llave no cambia entre reinicios, así que las API keys ya cifradas
+# siguen siendo descifrables. Sigue siendo necesario corregir la variable: el valor
+# derivado no es reversible ni auditable desde el panel.
+try:
+    cipher_suite = Fernet(ENCRYPTION_KEY.encode())
+except Exception as e:
+    _raw = ENCRYPTION_KEY
+    logger.critical(
+        "ENCRYPTION_KEY mal formada (%s). Se esperaba una clave Fernet: 44 caracteres "
+        "base64url terminados en '='. Genera una con: "
+        "python -c \"from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())\". "
+        "Mientras tanto se deriva una clave estable (SHA-256) del valor actual.",
+        type(e).__name__
+    )
+    ENCRYPTION_KEY = base64.urlsafe_b64encode(hashlib.sha256(_raw.encode()).digest()).decode()
+    cipher_suite = Fernet(ENCRYPTION_KEY.encode())
 
 def encrypt_key(api_key: str) -> str:
     """Cifra una API Key para guardarla en la base de datos."""
