@@ -100,7 +100,7 @@ PROVIDERS = {
         "model": "meta/llama-3.3-70b-instruct",
         "prefixes": ("nvapi-",),
         "min_len": 40,
-        "console": "https://build.nvidia.com/keys",
+        "console": "https://build.nvidia.com/settings/api-keys",
         "free_tier": True,
         # El catalogo de modelos de NVIDIA es publico: GET /models responde 200 sin
         # clave, asi que no sirve para validarla. Se comprueba con una complet minima
