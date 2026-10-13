@@ -69,7 +69,7 @@ if not _db_info["persistent"]:
         DB_URL.split("///")[-1] if "///" in DB_URL else DB_URL
     )
 else:
-    logger.info("CONFIG: base de datos %s (persistente)", dialect)
+    logger.info("CONFIG: base de datos %s (persistente)", _db_info["dialect"])
 
 class Base(DeclarativeBase):
     """Base de SQLAlchemy 2.0"""
