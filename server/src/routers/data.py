@@ -115,6 +115,42 @@ async def upload_file(request: Request, file: UploadFile = File(...), db: Sessio
 
         # 3. Procesar datos desde el temporal (en claro)
         from src.connectors.data_connectors import ArchivoInvalido
+        _MAX_CELLS = 1_000_000
+
+        # --- Rechazo temprano para Excel gigantes ---
+        # El limite de celdas se aplicaba DESPUES de parsear el libro entero con
+        # openpyxl: un xlsx de 11 MB / 2M celdas mataba al worker por OOM en el plan
+        # free antes de llegar al 400. Aqui se leen solo las dimensiones de las
+        # hojas (read_only, sin cargar datos) y se rechaza de entrada cuando sobra.
+        if ext in (".xlsx", ".xlsm", ".xls"):
+            try:
+                from openpyxl import load_workbook
+                wb = load_workbook(temp_path, read_only=True, data_only=True)
+                try:
+                    for ws in wb.worksheets:
+                        try:
+                            dims = ws.calculate_dimension()
+                            max_row = ws.max_row or 0
+                            max_col = ws.max_column or 0
+                            if dims and max_row and max_col and (max_row * max_col) > _MAX_CELLS:
+                                raise HTTPException(
+                                    status_code=400,
+                                    detail=(
+                                        f"La hoja '{ws.title}' tiene {max_row * max_col:,} celdas "
+                                        f"(máximo {_MAX_CELLS:,}). Reduce su tamaño e inténtalo de nuevo."
+                                    ),
+                                )
+                        except TypeError:
+                            pass  # hoja con dimensiones no calculables: se valida tras el parseo
+                finally:
+                    wb.close()
+            except HTTPException:
+                raise
+            except Exception:
+                # Si el libro ni siquiera se puede inspeccionar, load_file_data lanzará
+                # el ArchivoInvalido correspondiente: no duplicar el diagnóstico aquí.
+                pass
+
         try:
             df = load_file_data(temp_path)
         except ArchivoInvalido as inv:
@@ -126,8 +162,21 @@ async def upload_file(request: Request, file: UploadFile = File(...), db: Sessio
                 pass
             logger.info("UPLOAD_REJECTED motivo=archivo_invalido file=%s user=%s", clean_name, authenticated_user)
             raise HTTPException(status_code=400, detail=str(inv))
+        except HTTPException:
+            raise
+        except Exception:
+            # Cualquier sorpresa del parser O TENER .db renombrado a .csv: nunca un 500
+            # genérico. El usuario recibe un motivo accionable.
+            try:
+                os.remove(temp_path)
+            except Exception:
+                pass
+            logger.exception("Fallo no controlado parseando %s", clean_name)
+            raise HTTPException(
+                status_code=400,
+                detail="No pudimos leer el archivo. Verifica que sea un CSV o Excel válido (no está corrupto ni es otro formato con la extensión cambiada).",
+            )
         # Protección contra zip-bombs / hojas masivas (mismo límite que Google Sheets)
-        _MAX_CELLS = 1_000_000
         if int(df.size) > _MAX_CELLS:
             try: os.remove(temp_path)
             except Exception: pass
