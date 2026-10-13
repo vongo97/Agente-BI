@@ -216,6 +216,9 @@ def get_suggestions(
     authenticated_user = get_authenticated_user()
     check_authorization(authenticated_user)
 
+    # Configuración del usuario (aqui se definen las claves y el modo luego)
+    user_config = db.query(UserConfig).filter(UserConfig.user_id == authenticated_user).first()
+
     if chat_id:
         chat = db.query(Chat).filter(Chat.id == chat_id, Chat.user_id == authenticated_user).first()
         if not chat:
