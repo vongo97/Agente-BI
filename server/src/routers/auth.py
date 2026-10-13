@@ -40,18 +40,28 @@ def list_provider_models(provider_id: str):
 @router.post("/validate-key")
 @limiter.limit("10/minute")
 @limiter.limit("40/hour")
-def validate_key(request: Request, api_key: str = Form(...), provider: str = Form("gemini")):
+def validate_key(request: Request, api_key: str = Form(...), provider: str = Form("gemini"), db: Session = Depends(get_db)):
     authenticated_user = get_authenticated_user()
     check_authorization(authenticated_user)
     from src.engine.providers import detect_provider
     is_valid, message = validate_api_key(api_key, provider=provider)
+    detected = detect_provider(api_key)
+    # Validacion real + guardado automatico: si la clave es valida y corresponde al
+    # proveedor pedido, se cifra y se guarda en la cuenta en la misma llamada.
+    if is_valid and (detected is None or detected == provider):
+        field = f"{provider}_key"
+        if field in PROVIDER_KEY_FIELDS:
+            config = db.query(UserConfig).filter(UserConfig.user_id == authenticated_user).first()
+            if not config:
+                config = UserConfig(user_id=authenticated_user)
+                db.add(config)
+            setattr(config, field, encrypt_key(api_key))
+            db.commit()
     return {
         "valid": is_valid,
         "error": None if is_valid else message,
-        "message": message,
-        # Si la clave pertenece a otro proveedor del que indicaste, se avisa para que
-        # la guarden en su campo correcto en vez de fallar al analizar.
-        "detected_provider": detect_provider(api_key),
+        "message": message if is_valid else message,
+        "detected_provider": detected,
     }
 
 def is_masked(key: str) -> bool:

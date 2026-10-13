@@ -262,8 +262,12 @@ async def analyze_data(data_context, query, api_key, chat_history=[], mode="file
             eng_provider, eng_key = "groq", api_key
             str_provider, str_key = "groq", api_key
         else:
-            eng_provider, eng_key = "gemini", api_key
-            str_provider, str_key = "gemini", api_key
+            # Cualquier proveedor del catalogo (openai, anthropic, deepseek, nvidia,
+            # openrouter, gemini...): el analisis usa el proveedor elegido. Fuerar
+            # gemini aqui hacia que elegir NVIDIA mostrara errores de autenticacion
+            # de Gemini.
+            eng_provider, eng_key = provider, api_key
+            str_provider, str_key = provider, api_key
 
         # 2. Preparar el Contexto de Datos
         focus_instruction = ""
