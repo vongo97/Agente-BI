@@ -32,7 +32,19 @@ from src.database import get_db
 from src.utils.common import data_store, DATA_SOURCES_DIR
 from src.routers import data as data_router
 from src.utils.limiter import limiter
+import hashlib
 import pandas as pd
+
+# Pickle de sesión que este router persiste en disco para el usuario de prueba.
+# Sin limpieza, contamina a test_analysis en la misma máquina (el archivo vive
+# entre invocaciones de pytest y get_user_data lo recoge).
+_TEST_USER_SAFE = hashlib.md5(b"test_user_persistence@example.com").hexdigest()
+
+def _clean_test_user_pickle():
+    import src.utils.common as _common
+    pkl = os.path.join(_common.SESSIONS_DIR, f"{_TEST_USER_SAFE}.pkl")
+    if os.path.exists(pkl):
+        os.remove(pkl)
 
 
 class TestDataRouter(unittest.TestCase):
@@ -48,6 +60,7 @@ class TestDataRouter(unittest.TestCase):
 
         self.client = TestClient(app)
         data_store.clear()
+        _clean_test_user_pickle()
 
         # Mock base de consultas a DB
         self.mock_db.query.return_value.filter.return_value.first.return_value = None
@@ -56,6 +69,7 @@ class TestDataRouter(unittest.TestCase):
 
     def tearDown(self):
         data_store.clear()
+        _clean_test_user_pickle()
 
     @patch('src.routers.data.get_authenticated_user')
     @patch('src.routers.data.check_authorization')
@@ -77,12 +91,14 @@ class TestDataRouter(unittest.TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertIn("extensión", response.json()["detail"].lower())
 
+    @patch('src.routers.data.upload_bytes')
     @patch('src.routers.data.get_authenticated_user')
     @patch('src.routers.data.check_authorization')
     @patch('src.routers.data.load_file_data')
-    def test_upload_valid_csv(self, mock_load, mock_authz, mock_get_user):
-        """Test que POST /api/v1/upload acepta un CSV válido y retorna metadata."""
+    def test_upload_valid_csv(self, mock_load, mock_authz, mock_get_user, mock_upload):
+        """Test que POST /api/v1/upload acepta un CSV válido y lo persiste en la nube."""
         mock_get_user.return_value = "test_user_persistence@example.com"
+        mock_upload.return_value = True  # nube disponible: fuente de verdad OK
 
         df = pd.DataFrame({"producto": ["A", "B"], "ventas": [100, 200]})
         mock_load.return_value = df
@@ -113,6 +129,32 @@ class TestDataRouter(unittest.TestCase):
         self.assertIn("filename", body)
         self.assertIn("columns", body)
         self.assertEqual(body["rows"], 2)
+        self.assertTrue(body["persisted"])
+        # El objeto se subió a la nube (fuente de verdad) antes de guardar la fila
+        mock_upload.assert_called_once()
+
+    @patch('src.routers.data.upload_bytes')
+    @patch('src.routers.data.get_authenticated_user')
+    @patch('src.routers.data.check_authorization')
+    @patch('src.routers.data.load_file_data')
+    def test_upload_aborts_without_cloud(self, mock_load, mock_authz, mock_get_user, mock_upload):
+        """Sin nube disponible la subida debe abortar con 503: nunca guardar una
+        fuente que se perdería en el próximo reinicio (éxito falso prohibido)."""
+        mock_get_user.return_value = "test_user_persistence@example.com"
+        mock_upload.return_value = False  # bucket no configurado / caído
+
+        df = pd.DataFrame({"producto": ["A"], "ventas": [100]})
+        mock_load.return_value = df
+
+        response = self.client.post(
+            "/api/v1/upload",
+            files={"file": ("test.csv", io.BytesIO(b"producto,ventas\nA,100\n"), "text/csv")}
+        )
+
+        self.assertEqual(response.status_code, 503)
+        self.assertIn("no fue guardado", response.json()["detail"].lower())
+        # No debe crearse ninguna fila DataSource (fuente fantasma prohibida)
+        self.mock_db.add.assert_not_called()
 
     @patch('src.routers.data.get_authenticated_user')
     @patch('src.routers.data.check_authorization')

@@ -147,15 +147,9 @@ async def auto_dashboard(
 ):
     authenticated_user = get_authenticated_user()
     check_authorization(authenticated_user)
-    session_data = get_user_data(authenticated_user)
+    from src.utils.common import ensure_user_session
+    session_data = ensure_user_session(authenticated_user, db)
     
-    if not session_data and data_source_id:
-        from src.database import DataSource
-        from src.utils.common import load_source_to_session
-        source = db.query(DataSource).filter(DataSource.id == data_source_id, DataSource.user_id == authenticated_user).first()
-        if source and load_source_to_session(authenticated_user, source):
-            session_data = get_user_data(authenticated_user)
-
     if not session_data:
          raise HTTPException(status_code=400, detail="Se requieren datos activos (SQL o Archivo) para generar un Auto-Dashboard.")
          

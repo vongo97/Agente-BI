@@ -68,15 +68,12 @@ async def process_simulation(sim_id: int, api_key: str, provider: str, mistral_k
             src = db.query(DataSource).filter(DataSource.id == src_id, DataSource.user_id == sim.user_id).first()
             if not src:
                 continue
-            file_path = getattr(src, 'path', getattr(src, 'url', None))
-            if not file_path:
-                continue
+            # La nube es la fuente de verdad: resuelve ruta local o descarga
+            # el objeto desde Supabase a la caché local.
+            from src.utils.common import resolve_source_path
+            file_path = resolve_source_path(src)
             
-            # Intentar recuperar de la nube si no existe localmente
-            from src.utils.supabase_storage import sync_cloud_to_local
-            sync_cloud_to_local(file_path)
-            
-            if os.path.exists(file_path):
+            if file_path:
                 df = None
                 try:
                     from src.connectors.data_connectors import load_source_df
@@ -86,7 +83,7 @@ async def process_simulation(sim_id: int, api_key: str, provider: str, mistral_k
                 if df is not None:
                     session_data[src.name] = df
             else:
-                logger.warning(f"[Sim-{sim_id}] Archivo no encontrado en disco ni en nube: {file_path}")
+                logger.warning(f"[Sim-{sim_id}] Archivo no encontrado en disco ni en nube: {src.name}")
         
         # Cargar agentes guardados de la base de datos si existen
         db_agents = db.query(SimulationAgent).filter(SimulationAgent.simulation_id == sim_id).all()
@@ -288,40 +285,11 @@ async def get_simulation_suggestions(request: Request, req: SuggestionRequest, d
         head_sample = ""
         from pathlib import Path
         for src in sources:
-            file_path = getattr(src, 'path', getattr(src, 'url', None))
-            if not file_path: continue
-            
-            p = Path(file_path)
-            final_path = None
-            
-            # 0. Intentar recuperar de la nube si no existe localmente
-            from src.utils.supabase_storage import sync_cloud_to_local
-            sync_cloud_to_local(str(p))
-            
-            # 1. Intentar ruta absoluta/original
-            if p.exists():
-                final_path = p
-            else:
-                # 2. Intentar buscar en el directorio de trabajo (base del proyecto)
-                local_p = Path(os.getcwd()) / p.name
-                if local_p.exists():
-                    final_path = local_p
-                else:
-                    # 3. Intentar buscar en las carpetas comunes incluyendo data_sources configurado
-                    from src.utils.common import DATA_SOURCES_DIR
-                    search_dirs = [
-                        Path(DATA_SOURCES_DIR),
-                        Path(os.getcwd()) / "uploads",
-                        Path(os.getcwd()) / "server" / "uploads",
-                        Path(os.getcwd()) / "data_sources",
-                        Path(os.getcwd()) / "server" / "data_sources"
-                    ]
-                    
-                    for s_dir in search_dirs:
-                        candidate = s_dir / p.name
-                        if candidate.exists():
-                            final_path = candidate
-                            break
+            # La nube es la fuente de verdad: resuelve ruta local o descarga
+            # el objeto desde Supabase a la caché local.
+            from src.utils.common import resolve_source_path
+            resolved = resolve_source_path(src)
+            final_path = Path(resolved) if resolved else None
 
             if final_path:
                 try:
@@ -515,36 +483,11 @@ async def get_simulation_ontology(request: Request, req: OntologyRequest, db: Se
         head_sample = ""
         from pathlib import Path
         for src in sources:
-            file_path = getattr(src, 'path', getattr(src, 'url', None))
-            if not file_path: continue
-            
-            p = Path(file_path)
-            final_path = None
-            
-            # Recuperar de la nube si no existe localmente
-            from src.utils.supabase_storage import sync_cloud_to_local
-            sync_cloud_to_local(str(p))
-            
-            if p.exists():
-                final_path = p
-            else:
-                local_p = Path(os.getcwd()) / p.name
-                if local_p.exists():
-                    final_path = local_p
-                else:
-                    from src.utils.common import DATA_SOURCES_DIR
-                    search_dirs = [
-                        Path(DATA_SOURCES_DIR),
-                        Path(os.getcwd()) / "uploads",
-                        Path(os.getcwd()) / "server" / "uploads",
-                        Path(os.getcwd()) / "data_sources",
-                        Path(os.getcwd()) / "server" / "data_sources"
-                    ]
-                    for s_dir in search_dirs:
-                        candidate = s_dir / p.name
-                        if candidate.exists():
-                            final_path = candidate
-                            break
+            # La nube es la fuente de verdad: resuelve ruta local o descarga
+            # el objeto desde Supabase a la caché local.
+            from src.utils.common import resolve_source_path
+            resolved = resolve_source_path(src)
+            final_path = Path(resolved) if resolved else None
 
             if final_path:
                 try:
@@ -720,35 +663,11 @@ async def generate_agents_endpoint(request: Request, req: GenerateAgentsRequest,
         full_context_str = ""
         from pathlib import Path
         for src in sources:
-            file_path = getattr(src, 'path', getattr(src, 'url', None))
-            if not file_path: continue
-            
-            p = Path(file_path)
-            final_path = None
-            
-            from src.utils.supabase_storage import sync_cloud_to_local
-            sync_cloud_to_local(str(p))
-            
-            if p.exists():
-                final_path = p
-            else:
-                local_p = Path(os.getcwd()) / p.name
-                if local_p.exists():
-                    final_path = local_p
-                else:
-                    from src.utils.common import DATA_SOURCES_DIR
-                    search_dirs = [
-                        Path(DATA_SOURCES_DIR),
-                        Path(os.getcwd()) / "uploads",
-                        Path(os.getcwd()) / "server" / "uploads",
-                        Path(os.getcwd()) / "data_sources",
-                        Path(os.getcwd()) / "server" / "data_sources"
-                    ]
-                    for s_dir in search_dirs:
-                        candidate = s_dir / p.name
-                        if candidate.exists():
-                            final_path = candidate
-                            break
+            # La nube es la fuente de verdad: resuelve ruta local o descarga
+            # el objeto desde Supabase a la caché local.
+            from src.utils.common import resolve_source_path
+            resolved = resolve_source_path(src)
+            final_path = Path(resolved) if resolved else None
 
             if final_path:
                 try:

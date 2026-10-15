@@ -5,6 +5,7 @@ import logging
 from typing import Optional
 from fastapi import HTTPException, Request
 from src.utils.supabase_storage import sync_cloud_to_local, upload_file_to_cloud
+from src.services.storage_service import download_bytes, is_cloud_key
 from contextvars import ContextVar
 import hmac
 import base64
@@ -289,37 +290,81 @@ def promote_active_session(user_id: str, chat_id: int):
         return True
     return False
 
+def resolve_source_path(source) -> Optional[str]:
+    """Devuelve una ruta local legible para el archivo de una DataSource.
+
+    Orden de resolución:
+    1. Ruta local existente (filas de legado pre-refactor).
+    2. Clave de nube (``data_sources/...``): descarga a la caché local desde
+       Supabase. La nube es la fuente de verdad; el disco es desechable.
+    3. Legado sin clave: intento de derivación por basename (sync_cloud_to_local).
+
+    None si no hay forma de obtener el archivo (nube caída, objeto borrado,
+    claves de cifrado cambiadas, etc.).
+    """
+    url = getattr(source, 'url', None)
+    if not url:
+        return None
+
+    # 1. Legado: ruta local válida en este contenedor
+    if os.path.exists(url):
+        return url
+
+    # 2. Clave de nube explícita (formato nuevo)
+    if is_cloud_key(url):
+        data = download_bytes(url)
+        if data:
+            try:
+                os.makedirs(DATA_SOURCES_DIR, exist_ok=True)
+                local_path = os.path.join(DATA_SOURCES_DIR, os.path.basename(url.replace("\\", "/")))
+                with open(local_path, 'wb') as f:
+                    f.write(data)
+                return local_path
+            except Exception as e:
+                logger.error("No se pudo cachear '%s' en disco: %s", mask_email(str(source.name)), e)
+        else:
+            logger.warning(
+                "Archivo no recuperable desde la nube (key=%s). Posibles causas: "
+                "bucket no configurado, objeto borrado o ENCRYPTION_KEY cambiada.",
+                url.replace("\\", "/").split("/")[-1],
+            )
+        return None
+
+    # 3. Legado: derivar clave desde basename y sincronizar
+    if sync_cloud_to_local(url) and os.path.exists(url):
+        return url
+    return None
+
+
 def load_source_to_session(user_id: str, source, chat_id: Optional[int] = None) -> bool:
     """Carga una fuente de datos específica al contexto de memoria (Chat o Activo) de forma aditiva."""
     session_key = get_session_key(user_id, chat_id)
     try:
-        # Asegurar sincronización con la nube
-        if hasattr(source, 'url') and source.url:
-            sync_cloud_to_local(source.url)
-
         # 1. Obtener sesión actual para no perder lo que ya estaba
         session_data = get_user_data(user_id, chat_id)
         if session_data is None or session_data.get("type") != source.type:
             session_data = {"type": source.type, "data": {}, "sources": []}
         
         if source.type == 'file':
-            actual_url = source.url
-            if os.path.exists(actual_url):
+            # La nube es la fuente de verdad: resuelve la clave de bucket y
+            # descarga a la caché local si el archivo no está en el contenedor.
+            local_path = resolve_source_path(source)
+            if local_path:
                 is_encrypted = getattr(source, 'is_encrypted', False)
                 if is_encrypted:
                     # Descifrar en memoria, nunca en disco
                     from src.utils.security import decrypt_file_to_bytes
                     from src.connectors.data_connectors import load_file_data_from_bytes
                     try:
-                        raw_bytes = decrypt_file_to_bytes(actual_url)
+                        raw_bytes = decrypt_file_to_bytes(local_path)
                         df = load_file_data_from_bytes(raw_bytes, source.name)
                     except Exception as dec_err:
-                        logger.error("Error descifrando archivo %s: %s", actual_url, dec_err)
+                        logger.error("Error descifrando archivo %s: %s", local_path, dec_err)
                         return False
                 else:
                     # Fallback: archivos anteriores sin cifrar
                     from src.connectors.data_connectors import load_file_data
-                    df = load_file_data(actual_url)
+                    df = load_file_data(local_path)
                 
                 # Nombre seguro para la tabla
                 safe_name = "".join([c if c.isalnum() else "_" for c in source.name.split('.')[0]])
@@ -354,3 +399,36 @@ def load_source_to_session(user_id: str, source, chat_id: Optional[int] = None) 
     except Exception as e:
         logger.error(f"Error en load_source_to_session ({session_key}): {e}")
     return False
+
+
+def ensure_user_session(user_id: str, db, chat_id: Optional[int] = None):
+    """Garantiza una sesión con datos, reconstruyéndola tras un reinicio.
+
+    Si la caché en memoria y el pickle local están vacíos (contenedor recién
+    levantado), reconstruye el pool desde la base de datos descargando cada
+    fuente de tipo archivo desde la nube. Es el mecanismo que hace que el
+    usuario NO tenga que volver a subir sus documentos tras un deploy.
+
+    Devuelve session_data o None si no hay fuentes recuperables.
+    """
+    session_data = get_user_data(user_id, chat_id)
+    if session_data and session_data.get("data"):
+        return session_data
+
+    from src.database import DataSource  # import local: evita ciclo de imports
+    sources = db.query(DataSource).filter(DataSource.user_id == user_id).all()
+    if not sources:
+        return session_data  # None o vacío: no hay nada registrado para este usuario
+
+    logger.info(
+        "Reconstruyendo sesión desde DB+nube para %s (%d fuente(s)).",
+        mask_email(user_id), len(sources),
+    )
+    for source in sources:
+        if source.type in ("file", "gsheets"):
+            load_source_to_session(user_id, source, chat_id)
+        # type == "sql" no se reconstruye automáticamente: crear engines para
+        # todas las conexiones en cada arranque sería costoso y puede fallar
+        # si la URL cifrada ya no es válida. El usuario puede reconectar.
+
+    return get_user_data(user_id, chat_id)

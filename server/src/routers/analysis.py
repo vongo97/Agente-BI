@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from typing import Optional
 from src.database import get_db, Chat, Message, UserConfig, DataSource
 from src.engine.bi_analyst import analyze_data, execute_analysis, suggest_questions, validate_data_quality
-from src.utils.common import check_authorization, get_user_data, get_authenticated_user
+from src.utils.common import check_authorization, get_user_data, get_authenticated_user, ensure_user_session
 from src.utils.security import decrypt_key
 
 from src.utils.limiter import limiter
@@ -104,16 +104,10 @@ async def analyze(
         # pueda acceder a los archivos que ya estaban en el pool.
 
     if session_data is None:
-        # Intentar auto-cargar desde DataSource si tenemos el ID
-        if data_source_id:
-            logger.debug("Attempting auto-load for source %s", data_source_id)
-            from src.utils.common import load_source_to_session
-            source = db.query(DataSource).filter(DataSource.id == data_source_id, DataSource.user_id == authenticated_user).first()
-            if source:
-                success = load_source_to_session(authenticated_user, source, chat_id)
-                logger.debug("Auto-load success: %s", success)
-                if success:
-                    session_data = get_user_data(authenticated_user, chat_id)
+        # Reconstruir el pool desde DB+nube (post-reinicio del contenedor);
+        # incluye la autocarga de la fuente solicitada si está registrada.
+        from src.utils.common import ensure_user_session
+        session_data = ensure_user_session(authenticated_user, db, chat_id)
         
         if not session_data:
             logger.warning("No session data found or loaded for user (source=%s).", data_source_id)
@@ -250,12 +244,9 @@ def get_suggestions(
         session_data = None
  
     if not session_data:
-        # Intentar auto-cargar desde DataSource si tenemos el ID
-        if data_source_id:
-            from src.utils.common import load_source_to_session
-            source = db.query(DataSource).filter(DataSource.id == data_source_id, DataSource.user_id == authenticated_user).first()
-            if source and load_source_to_session(authenticated_user, source, chat_id):
-                session_data = get_user_data(authenticated_user, chat_id)
+        # Reconstruir el pool desde DB+nube (post-reinicio del contenedor)
+        from src.utils.common import ensure_user_session
+        session_data = ensure_user_session(authenticated_user, db, chat_id)
 
     if not session_data:
         raise HTTPException(status_code=404, detail="No hay datos cargados para generar sugerencias.")
@@ -298,7 +289,7 @@ async def detect_anomalies(request: Request, db: Session = Depends(get_db)):
     user_config = db.query(UserConfig).filter(UserConfig.user_id == authenticated_user).first()
     anomaly_threshold = user_config.anomaly_sensitivity if user_config and user_config.anomaly_sensitivity is not None else 2.5
     
-    session_data = get_user_data(authenticated_user)
+    session_data = ensure_user_session(authenticated_user, db)
     if not session_data or "data" not in session_data or not session_data["data"]:
         raise HTTPException(
             status_code=400, 
@@ -430,7 +421,7 @@ def get_report_summary(
     if key_error and provider != "hybrid":
         raise HTTPException(status_code=400, detail=key_error)
             
-    session_data = get_user_data(authenticated_user)
+    session_data = ensure_user_session(authenticated_user, db)
     
     # Generar el resumen usando el motor de IA
     from src.engine.bi_analyst import generate_report_summary

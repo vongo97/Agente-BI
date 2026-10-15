@@ -11,7 +11,8 @@ from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Depends, R
 from sqlalchemy.orm import Session
 from src.database import get_db, DataSource, UserConfig
 from src.connectors.data_connectors import load_file_data, load_gsheets_data, get_sql_engine, get_db_schema
-from src.utils.common import check_authorization, get_user_data, get_session_file, get_session_key, data_store, DATA_SOURCES_DIR, upload_file_to_cloud, get_authenticated_user, save_user_data
+from src.utils.common import check_authorization, get_user_data, get_session_file, get_session_key, data_store, DATA_SOURCES_DIR, get_authenticated_user, save_user_data, ensure_user_session
+from src.services.storage_service import upload_bytes, delete_object, is_cloud_key
 from src.engine.bi_analyst import ai_data_cleaner
 from src.utils.limiter import limiter
 
@@ -93,9 +94,9 @@ async def upload_file(request: Request, file: UploadFile = File(...), db: Sessio
         ).all()
         total_used_bytes = 0
         for src in user_sources:
-            src_path = getattr(src, 'url', None)
-            if src_path and os.path.exists(src_path):
-                total_used_bytes += os.path.getsize(src_path)
+            # Cuota por tamaño registrado en DB: independiente del disco efímero
+            # (con claves de nube en url ya no hay archivo local que medir).
+            total_used_bytes += getattr(src, 'size_bytes', None) or 0
         if total_used_bytes + file_size > _QUOTA_MAX_TOTAL_MB * 1024 * 1024:
             used_mb = total_used_bytes / (1024 * 1024)
             raise HTTPException(
@@ -208,21 +209,54 @@ async def upload_file(request: Request, file: UploadFile = File(...), db: Sessio
                 detail="Error interno de seguridad al procesar el archivo. Inténtalo de nuevo más tarde."
             )
 
-        # 5. Actualizar sesión en memoria
+        # 5. PERSISTIR EN LA NUBE PRIMERO (fuente de verdad). El disco del
+        #    contenedor es efímero en Render: si la nube no está disponible se
+        #    aborta la subida en lugar de fabricar una fuente que se pierde
+        #    en el próximo reinicio.
+        cloud_key = f"data_sources/{safe_user}/{permanent_name}"
+        cloud_ok = False
+        try:
+            with open(permanent_path, 'rb') as f:
+                cloud_ok = upload_bytes(cloud_key, f.read())
+        except Exception:
+            logger.warning("Lectura del archivo cifrado falló para %s", permanent_name)
+
+        if not cloud_ok:
+            try:
+                if os.path.exists(permanent_path): os.remove(permanent_path)
+            except Exception:
+                pass
+            logger.error(
+                "UPLOAD_ABORTED motivo=nube_no_disponible file=%s user=%s "
+                "(revisar SUPABASE_URL/SUPABASE_SERVICE_ROLE_KEY y bucket 'bi_storage').",
+                clean_name, authenticated_user
+            )
+            raise HTTPException(
+                status_code=503,
+                detail=(
+                    "No pudimos persistir tu archivo en el almacenamiento en la nube, "
+                    "así que NO fue guardado (se perdería en el próximo reinicio). "
+                    "Revisa la configuración de Supabase del backend e inténtalo de nuevo."
+                )
+            )
+
+        # 6. Actualizar sesión en memoria
         session_data = get_user_data(authenticated_user)
         if session_data is None or session_data.get("type") != "file":
             session_data = {"type": "file", "data": {}, "sources": []}
 
         session_data["data"][safe_filename] = df
 
-        # 6. Guardar en Base de Datos (marcando si está cifrado)
+        # 7. Guardar en Base de Datos: url = clave de nube (NO ruta local);
+        #    size_bytes habilita cuotas sin depender del disco efímero.
         new_source = DataSource(
             user_id=authenticated_user,
             name=file.filename,
             type="file",
-            url=permanent_path,
+            url=cloud_key,
             columns=json.dumps(df.columns.tolist()),
-            is_encrypted=encrypt_ok
+            is_encrypted=encrypt_ok,
+            size_bytes=file_size
         )
         db.add(new_source)
         db.commit()
@@ -231,30 +265,11 @@ async def upload_file(request: Request, file: UploadFile = File(...), db: Sessio
         session_data["sources"].append(new_source.id)
         data_store[f"{authenticated_user}_active"] = session_data
 
-        # 7. Persistencia cifrada del estado de sesión
+        # 8. Persistencia cifrada del estado de sesión
         save_user_data(authenticated_user, session_data)
 
-        # 8. Sincronización Nube (el archivo ya está cifrado en permanent_path;
-        #    la sesión ya se sube cifrada desde save_user_data)
-        cloud_ok = False
-        try:
-            cloud_ok = upload_file_to_cloud(permanent_path, f"data_sources/{permanent_name}")
-        except Exception:
-            logger.warning("Nube: falló upload de %s (archivo guardado localmente).", permanent_name)
-
-        # Si no hay almacenamiento en nube, el archivo vive solo en el disco del
-        # contenedor: en Render se pierde en cada reinicio. Se avisa en vez de
-        # devolver un éxito que luego resulta falso.
-        persistence_note = ""
-        if not cloud_ok:
-            logger.warning(
-                "PERSISTENCIA DEGRADADA: '%s' queda solo en disco local y se perderá "
-                "en el próximo reinicio (Supabase no configurado).", permanent_name
-            )
-            persistence_note = (
-                " ⚠️ Guardado en almacenamiento temporal: configuración el almacenamiento "
-                "en la nube para que sobreviva a reinicios."
-            )
+        # El archivo queda además como caché local (permanent_path) para
+        # accesos inmediatos; la verdad fuente es el objeto en la nube.
 
         return {
             "id": int(new_source.id),
@@ -263,8 +278,8 @@ async def upload_file(request: Request, file: UploadFile = File(...), db: Sessio
             "columns": [str(c) for c in df.columns.tolist()],
             "rows": int(len(df)),
             "total_tables": int(len(session_data["data"])),
-            "persisted": bool(cloud_ok),
-            "message": f"Archivo '{file.filename}' añadido con éxito.{persistence_note}"
+            "persisted": True,
+            "message": f"Archivo '{file.filename}' añadido con éxito y persistido en la nube."
         }
         
     except HTTPException as he:
@@ -398,6 +413,8 @@ async def clear_session(request: Request, db: Session = Depends(get_db)):
         sources = db.query(DataSource).filter(DataSource.user_id == authenticated_user).all()
         for source in sources:
             if source.type == "file" and source.url:
+                if is_cloud_key(source.url):
+                    delete_object(source.url)
                 try:
                     if os.path.exists(source.url):
                         os.remove(source.url)
@@ -418,7 +435,7 @@ async def remove_session_source(request: Request, source_id: int = Form(...), db
     authenticated_user = get_authenticated_user()
     check_authorization(authenticated_user)
     try:
-        session_data = get_user_data(authenticated_user)
+        session_data = ensure_user_session(authenticated_user, db)
         if not session_data:
             return {"message": "No hay sesión activa."}
 
@@ -480,7 +497,7 @@ async def clean_data(
     elif provider == "groq" and not api_key:
         raise HTTPException(status_code=400, detail="Clave API de Groq no válida o corrupta. Por favor, re-ingresa tu clave API en Ajustes.")
 
-    session_data = get_user_data(authenticated_user)
+    session_data = ensure_user_session(authenticated_user, db)
     if not session_data:
         raise HTTPException(status_code=400, detail="No hay datos cargados para limpiar.")
     
@@ -573,8 +590,10 @@ async def delete_data_source(request: Request, source_id: int, db: Session = Dep
         if not source:
             raise HTTPException(status_code=404, detail="Recurso no encontrado o sin acceso")
         
-        # Eliminar archivo físico si era de tipo 'file'
+        # Eliminar de la nube (fuente de verdad) y del disco si era de tipo 'file'
         if source.type == "file" and source.url:
+            if is_cloud_key(source.url):
+                delete_object(source.url)
             try:
                 if os.path.exists(source.url):
                     os.remove(source.url)

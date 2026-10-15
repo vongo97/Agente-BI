@@ -154,6 +154,7 @@ class DataSource(Base):
     url = Column(Text)
     columns = Column(Text, nullable=True)
     is_encrypted = Column(Boolean, default=False, nullable=True)
+    size_bytes = Column(Integer, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
     chats = relationship("Chat", back_populates="data_source")
@@ -214,6 +215,14 @@ def init_db():
                 conn.execute(text("ALTER TABLE data_sources ADD COLUMN is_encrypted BOOLEAN DEFAULT FALSE;"))
                 conn.commit()
                 logger.info("Migrada DB: columna is_encrypted añadida a data_sources.")
+            except Exception:
+                pass
+
+            # Migración: columna size_bytes en data_sources (cuotas sin depender del disco local)
+            try:
+                conn.execute(text("ALTER TABLE data_sources ADD COLUMN size_bytes INTEGER;"))
+                conn.commit()
+                logger.info("Migrada DB: columna size_bytes añadida a data_sources.")
             except Exception:
                 pass
 

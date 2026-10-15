@@ -29,7 +29,8 @@ async def kpi_summary(
     if not source:
         raise HTTPException(status_code=404, detail="Recurso no encontrado o sin acceso")
 
-    session_data = get_user_data(authenticated_user)
+    from src.utils.common import ensure_user_session
+    session_data = ensure_user_session(authenticated_user, db)
     if not session_data or "data" not in session_data or not session_data["data"]:
         raise HTTPException(status_code=400, detail="No hay datos cargados en la sesión")
 
