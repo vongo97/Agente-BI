@@ -1,0 +1,25 @@
+[Unit]
+Description=Vektra BI API (FastAPI)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=vektra
+Group=vektra
+WorkingDirectory=/opt/vektra/repo/server
+EnvironmentFile=/opt/vektra/repo/server/.env
+# Sin RENDER=true en el entorno, main.py arrancaría en modo dev con --reload.
+# uvicorn directo + ENVIRONMENT=production en .env = modo producción limpio.
+ExecStart=/opt/vektra/repo/server/.venv/bin/uvicorn main:app --host 127.0.0.1 --port 8000
+Restart=always
+RestartSec=3
+# Endurecimiento básico
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+ReadWritePaths=/opt/vektra
+
+[Install]
+WantedBy=multi-user.target

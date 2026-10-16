@@ -1,0 +1,26 @@
+# Vektra BI — Reverse proxy con HTTPS automático (Let's Encrypt)
+# Copiar a /etc/caddy/Caddyfile y sustituir TU_DOMINIO por el dominio real
+# (ej.: api.tudominio.com o vektra-api.duckdns.org).
+# Caddy emite y renueva el certificado TLS solo. No toques nada más.
+
+TU_DOMINIO {
+	# Comprimir respuestas (CSVs, JSON grandes)
+	encode gzip
+
+	# API backend (FastAPI en local)
+	reverse_proxy 127.0.0.1:8000
+
+	# Timeouts generosos: análisis con IA pueden tardar >30s
+	reverse_proxy 127.0.0.1:8000 {
+		transport http {
+			response_header_timeout 300s
+			dial_timeout 15s
+		}
+	}
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		-Server
+	}
+}
