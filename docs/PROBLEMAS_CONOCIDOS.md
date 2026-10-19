@@ -51,7 +51,7 @@ registrado aquí incluye:
 
 ## 2. Resumen (ordenado de mayor a menor)
 
-**Totales:** 3 críticos · 13 altos · 20 medios · 6 bajos · **42 problemas**
+**Totales:** 3 críticos · 14 altos · 25 medios · 7 bajos · **49 problemas**
 
 ### 🔴 CRÍTICOS
 
@@ -78,6 +78,7 @@ registrado aquí incluye:
 | **P-14** | UI/BI | El modelo mostrado en el selector no es el que usa el backend | ABIERTO | `ProviderKeysPanel.tsx:43-54,130` · `DashboardContext.tsx:146-167` |
 | **P-15** | Auth | Sin allowlist ni middleware en el cliente: cualquier cuenta Google entra y la app queda inservible (403) | ABIERTO | `client/src/auth.ts:7-30` · `app/page.tsx:20-24` |
 | **P-16** | Sandbox | Lista negra incompleta: `pd.read_table`, `DataFrame.to_csv`, `np.save`, `plt.savefig`, `pd.io.common.os`… | ABIERTO | `server/src/engine/executor.py:158-175,538-543,745-750` |
+| **P-43** | API | `except Exception` de los endpoints de simulación se traga los `HTTPException` accionables → todo error se ve como 500 "Error interno" | ABIERTO | `simulation.py:158-168,672-692` · runtime `/simulation/generate-agents` |
 
 ### 🟡 MEDIOS
 
@@ -102,6 +103,11 @@ registrado aquí incluye:
 | **P-33** | Seguridad | `/connect-sql`: validación SSRF débil (DNS rebinding) y allowlist opcional | `security.py:108`, `data.py:313-326` |
 | **P-34** | Datos | La sesión se guarda por usuario (sin `chat_id`) → conversaciones se pisan | `server/src/utils/common.py:188-197` |
 | **P-35** | Memoria | `data_store` global en memoria sin límite ni TTL | `server/src/utils/common.py` |
+| **P-44** | Frontend | Sin `GOOGLE_CLIENT_ID` la UI redirige a Google con `client_id=undefined` ("OAuth client was not found") en vez de avisar; sin fail-fast | `client/src/auth.ts`, `client/.env.local` · runtime navegador |
+| **P-45** | Frontend | Error de hidratación en la landing (atributos SSR ≠ cliente) al cargar | `client/src/app/page.tsx` · consola del navegador |
+| **P-47** | Dev/BD | `migrate_db.py` no cubre el drift real y revienta en Windows (`UnicodeEncodeError`); `create_all` no altera tablas → la app local da 500 por columnas faltantes | `server/src/utils/migrate_db.py:20-36` · runtime `/user-config` |
+| **P-48** | API/BI | `/dashboard/filter` responde `200 success` con columnas inexistentes y no filtra en modo SQL (TODO) | `server/src/routers/dashboard.py:217-250` · runtime |
+| **P-49** | Dev | No hay modo local sin nube: subir archivos exige Supabase válido (503 si no) y el arranque no lo avisa | `server/src/routers/data.py:212-241` · runtime `/upload` |
 
 ### 🟢 BAJOS
 
@@ -113,6 +119,7 @@ registrado aquí incluye:
 | **P-39** | UI | Estado `pending` se etiqueta como "Fallo" | `SimHistory.tsx:42` |
 | **P-40** | UI | Texto de 8-10 px y sidebar fija (`w-80`) en móvil | `SimHistory.tsx:12` y varios |
 | **P-41** | Tests | 4 tests backend fallando (deuda de test, no regresión de producción) | `test_dashboard.py:97`, `test_exports.py:82`, `test_simulation.py:129` |
+| **P-46** | API | `/data-sources` y `/sources` devuelven al cliente la `url` interna (clave de nube con el md5 del email o ruta del contenedor) | `server/src/routers/data.py:86-91` · runtime |
 
 ---
 
@@ -388,6 +395,10 @@ test con zip-bomb y con archivo que excede cuota.
 **Archivo:** `server/src/routers/simulation.py:139`, `:458`, `:461`.
 `f"Error: {type(e).__name__} - {str(e)}"` se persiste y se devuelve en el JSON.
 
+**Verificado en runtime (2026-10-19):** `GET /api/v1/user-config` → `500`
+`{"detail":"Internal Server Error: OperationalError"}`, exponiendo la clase de excepción y el
+motor de base de datos al cliente.
+
 **Cierre:** mensaje genérico al cliente + `X-Request-Id`; detalle solo en logs internos.
 
 **Regla:** el cliente recibe código y request-id, nunca el texto de la excepción.
@@ -438,11 +449,48 @@ tests para cada bypass conocido.
 
 ---
 
+### P-43 · Los endpoints de simulación se tragan los errores accionables
+
+| Campo | Valor |
+|---|---|
+| **Severidad** | ALTO |
+| **Estado** | ABIERTO (hallado en la prueba local del 2026-10-19) |
+| **Verificado** | ✅ Runtime: `POST /simulation/generate-agents` → 500 |
+| **Archivos** | `server/src/routers/simulation.py` (`create_simulation` y `generate_agents_endpoint`) |
+
+**Qué pasa.** El cuerpo entero del endpoint va dentro de `try: ... except Exception as e:` y ese
+`except` convierte **cualquier** excepción en `HTTPException(500, "Error interno…")`. Como
+`HTTPException` hereda de `Exception`, las negativas deliberadas (400 "no hay clave de OpenAI
+guardada", 401, 404) **también se convierten en 500** y pierden su mensaje. El log solo guarda
+`type(e).__name__`, así que el motivo tampoco queda registrado.
+
+**Evidencia de runtime (local).**
+```
+POST /api/v1/simulation/generate-agents  {"provider":"openai","apiKey":"","selectedIds":[17]}
+  -> 500 {"detail":"Error interno al generar agentes del debate."}
+POST /api/v1/analyze  (mismo caso)      -> 400 {"detail":"No hay ninguna clave de OpenAI guardada…"}
+log: [Sim-agents] Error al generar agentes: OperationalError   (nunca el motivo real)
+```
+Durante la prueba, un problema de esquema de la BD local (`no such column`) también apareció como
+"Error interno", imposible de diagnosticar desde la UI.
+
+**Impacto.** El usuario no sabe qué corregir (clave, archivo, cuota) y soporte no tiene traza.
+Los endpoints afectados son justo los que dependen de claves del usuario.
+
+**Cierre.** Re-lanzar `HTTPException` antes del `except` genérico (`except HTTPException: raise`) en
+todos los endpoints afectados; loguear el mensaje saneado, no solo el tipo. Test: provider sin clave
+→ 400 con el texto del proveedor; fallo inesperado → 500.
+
+**Regla anti-repetición.** Un `except Exception` nunca debe envolver las validaciones ni las
+respuestas HTTP deliberadas. Primero `except HTTPException: raise`.
+
+---
+
 ## 5. Fichas resumidas — MEDIOS y BAJOS
 
 **P-17** · Repo inflado. Sacar el `.mp4` (24 MB) y `debug_server.log` del índice; `.gitignore`. *Cierre:* `git ls-files` sin binarios ni logs.
 **P-18** · `pkce_service.py:90` SyntaxError. *Cierre:* `python -c "ast.parse(...)"` OK o archivo eliminado por código muerto.
-**P-19** · Fallback silencioso a SQLite + baseline Alembic inválida. *Cierre:* `DATABASE_URL` inválida aborta el arranque; `alembic upgrade head` funciona en limpio.
+**P-19** · Fallback silencioso a SQLite + baseline Alembic inválida. *Verificado en runtime (2026-10-19):* la SQLite local quedó desfasada respecto a los modelos (`no such column: user_configs.code_verifier`) → `GET /user-config` 500 y `resolve_keys()` reventando en los endpoints de simulación; `create_all()` no altera tablas y `migrate_db.py` no cubre ese drift (ver P-47). *Cierre:* `DATABASE_URL` inválida aborta el arranque; `alembic upgrade head` funciona en limpio.
 **P-20** · Páginas legales leen fuera de `client/`. *Cierre:* los `.md` viven dentro de `client/` o se empaquetan; build standalone las sirve.
 **P-21** · Tests sin JWT/CORS/uploads/cifrado reales. *Cierre:* tests que fallen si se desactiva cada control.
 **P-22** · `/health` público y bloqueante. *Cierre:* sonda con timeout y sin datos sensibles; opcional proteger detalle.
@@ -465,7 +513,7 @@ tests para cada bypass conocido.
 **P-39** · `pending` = "Fallo". *Cierre:* mapear estados correctamente.
 **P-40** · Tipografía 8-10 px y sidebar fija. *Cierre:* mínimo 12 px y responsive.
 **P-41** · 4 tests backend fallando. *Cierre:* suite 100% verde (o `xfail` justificado).
-**P-42** · Proveedor ignorado en simulación: `/simulation/suggestions` y `/simulation/ontology` usan siempre Gemini (`simulation.py:339,402` y `:563`) aunque el usuario elija otro proveedor → resultados de otro modelo, sin aviso. **No hay fuga de claves** (la clave de Gemini va contra la API de Gemini). *Cierre:* ambos endpoints resuelven el proveedor con `resolve_keys()` y despachan al vendor elegido (o rechazan explícitamente los no soportados); test que falle si vuelven a caer en Gemini. **Regla:** lo que el selector promete es lo que se ejecuta.
+**P-42** · Proveedor ignorado en simulación: `/simulation/suggestions` y `/simulation/ontology` usan siempre Gemini (`simulation.py:339,402` y `:563`) aunque el usuario elija otro proveedor → resultados de otro modelo, sin aviso. **No hay fuga de claves** (la clave de Gemini va contra la API de Gemini). *Verificado en runtime (2026-10-19):* `POST /simulation/suggestions` con `provider=openai` responde `"API key must be set when using the Google AI API"` (demostró que ejecutó Gemini) y `/simulation/ontology` devuelve `{"nodes":[],"edges":[]}` con HTTP 200 (fallo silencioso). *Cierre:* ambos endpoints resuelven el proveedor con `resolve_keys()` y despachan al vendor elegido (o rechazan explícitamente los no soportados); test que falle si vuelven a caer en Gemini. **Regla:** lo que el selector promete es lo que se ejecuta.
 
 ---
 
@@ -485,3 +533,58 @@ tests para cada bypass conocido.
 | 2026-10-19 | **P-02 CERRADO**. Los dos `pd.to_pickle` de `data.py` pasan a `save_user_data()` (Fernet + nube). 5 tests nuevos, incluida guardia estática contra reintroducir escritura en claro. |
 | 2026-10-19 | **P-03 reclasificado CRÍTICO → ALTO** tras verificación profunda: el `engine` nunca entra al subproceso (el sandbox solo serializa DataFrames), por lo que no hay RCE; el problema real es que el **modo SQL está roto** y la validación read-only está desconectada. |
 | 2026-10-19 | **P-04 CERRADO**. `dashboard.py`, `visual_summary.py`, `data.py` y `simulation.py` (crear simulación y generar agentes) resuelven la clave con `resolve_keys()`; la clave ya no cruza de proveedor. 14 tests nuevos. Registrado **P-42** (endpoints de simulación que ignoran el proveedor elegido; sin fuga de claves). |
+| 2026-10-19 | **Prueba local (modo simulación) con backend + frontend reales.** Confirmados: bypass de desarrollo (P-01), cifrado Fernet de archivos y sesiones (P-02), rechazo SSRF de `/connect-sql` (P-33), validaciones de subida (extensión y path traversal), `resolve_keys` devolviendo el mensaje del **proveedor correcto** en `/analyze` y `/visual-summary` (P-04). Nuevos hallazgos registrados: **P-43** (ALTO), **P-44**, **P-45**, **P-47**, **P-48**, **P-49** (MEDIOS) y **P-46** (BAJO); P-42 confirmado en runtime. Detalle en la sección 8. |
+
+---
+
+## 8. Pruebas locales (modo simulación)
+
+Cómo se levanta el entorno y **qué se comprobó de verdad** (2026-10-19). Sirve para repetir la
+verificación sin tener que redescubrirla.
+
+### Arranque
+```powershell
+# backend (usa el venv del proyecto y el .env local con ENVIRONMENT=development)
+cd server; .\.venv-codex\Scripts\python.exe -m uvicorn main:app --host 127.0.0.1 --port 8000
+# frontend (npm falla en PowerShell; usar cmd)
+cd client; cmd /c "npm run dev"      # http://localhost:3000
+```
+Sin `SUPABASE_*` válidas no se puede subir por `/upload` (fail-closed, ver P-49). Para probar el
+resto de flujos con datos, la alternativa usada fue **sembrar la fuente de forma cifrada** (script
+de simulación: copia el CSV → `encrypt_file` → fila `DataSource` → `save_user_data`). Limpieza:
+borrar la fila y los archivos generados.
+
+### Qué funciona (verificado en runtime)
+| Prueba | Resultado |
+|---|---|
+| `GET /health` | 200 · sqlite · nube `connected:false` |
+| Petición sin token desde localhost (dev) | 200 como `test_user` (P-01 ✅) |
+| Petición sin token con `RENDER=true` | 401 (verificado en el arreglo de P-01) |
+| `GET /api/v1/providers` | 200 · catálogo sin secretos |
+| `POST /upload` con `.txt` | 400 "Extensión no permitida" |
+| `POST /upload` con nombre `../evil.csv` | 400 "Nombre de archivo inválido" |
+| `POST /connect-sql` a `localhost` | 400 "No se permiten conexiones a hosts locales" (P-33 ✅) |
+| `POST /analyze` `provider=openai` sin clave | 400 con el texto de **OpenAI** (P-04 ✅) |
+| `POST /visual-summary` `provider=openai` sin clave | 400 con el texto de **OpenAI** (P-04 ✅) |
+| Archivo y sesión en disco | empiezan por `gAAA` (Fernet) y no hay datos en claro (P-02 ✅) |
+| Frontend dev server | compila y sirve la landing + `/login` |
+
+### Qué está mal (hallazgos registrados)
+| Prueba | Resultado | Problema |
+|---|---|---|
+| `GET /api/v1/user-config` | 500 `Internal Server Error: OperationalError` (drift de SQLite) | P-19, P-47, P-12 |
+| `POST /simulation/generate-agents` sin clave | 500 "Error interno" (el 400 accionable se pierde) | P-43 |
+| `POST /simulation/suggestions` `provider=openai` | responde con error de **Google AI API** (usó Gemini) | P-42 |
+| `POST /simulation/ontology` `provider=openai` | `{"nodes":[],"edges":[]}` 200 (fallo silencioso) | P-42 |
+| `POST /dashboard/filter` `{"NoExiste":123}` | 200 `success` sin filtrar | P-48 |
+| `GET /api/v1/data-sources` | devuelve `url` interna al cliente | P-46 |
+| `POST /upload` con CSV válido | 503 (nube no disponible) | P-49 |
+| Landing en el navegador | error de hidratación en consola | P-45 |
+| "Continuar con Google" sin `GOOGLE_CLIENT_ID` | Google: `client_id=undefined` → "OAuth client was not found" | P-44 |
+
+### Acciones de entorno pendientes (no son código)
+1. **`SUPABASE_URL` / `SUPABASE_SERVICE_ROLE_KEY` del `.env` local no funcionan** (`SupabaseException`
+   al crear el cliente). Mientras no se renueven, no hay subidas ni persistencia en nube en local.
+2. **`GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET`** no están en `client/.env.local` → la UI local no
+   se puede usar más allá del login.
+3. `ENCRYPTION_KEY`, `AUTH_SECRET` y `DATABASE_URL`: presentes y operativos en el `.env` local.
