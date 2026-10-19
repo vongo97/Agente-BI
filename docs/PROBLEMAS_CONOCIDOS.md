@@ -58,7 +58,7 @@ registrado aquí incluye:
 | ID | Área | Problema | Estado | Evidencia |
 |---|---|---|---|---|
 | **P-01** | Auth | Bypass de autenticación *fail-open*: sin `ENVIRONMENT`/`RENDER` cualquier request entra como `test_user` y salta `AUTHORIZED_EMAILS` | ✅ CERRADO | `server/src/utils/common.py:98-163` · `tests/test_auth_bypass.py` |
-| **P-02** | Datos | Sesiones guardadas con `pd.to_pickle` **en claro**, saltando el cifrado Fernet | ABIERTO | `server/src/routers/data.py:379`, `:517` |
+| **P-02** | Datos | Sesiones guardadas con `pd.to_pickle` **en claro**, saltando el cifrado Fernet | ✅ CERRADO | `server/src/routers/data.py:378,517` · `tests/test_session_encryption.py` |
 | **P-03** | Sandbox | `validate_sql_safety`/`execute_sql_safe` son código muerto; se inyecta el `engine` SQL vivo al código del LLM | ABIERTO | `server/src/engine/executor.py:874,913` · `server/src/routers/analysis.py:119` |
 | **P-04** | Claves IA | Fallback a `gemini_key` aunque el proveedor activo sea otro → clave de Google enviada a terceros | ABIERTO | `dashboard.py:164`, `exports.py:158`, `visual_summary.py:46`, `data.py:483` |
 
@@ -167,18 +167,32 @@ configuración. Todo default desconocido = denegar.
 | Campo | Valor |
 |---|---|
 | **Severidad** | CRÍTICO |
-| **Estado** | ABIERTO |
-| **Verificado** | ✅ `data.py:379` (mismo patrón en `:517`) |
-| **Archivos** | `server/src/routers/data.py:379`, `:517` |
+| **Estado** | ✅ **CERRADO** (2026-10-19) |
+| **Verificado** | ✅ Leyendo el código + 5 tests de regresión |
+| **Archivos** | `server/src/routers/data.py:378,517` · `server/tests/test_session_encryption.py` |
 
-**Qué pasa.** `pd.to_pickle(session_data, get_session_file(user))` escribe el pickle sin pasar por
-`save_user_data()`/`encrypt_file()`. El resto del sistema cifra con Fernet; estas rutas no.
+**Qué pasaba.** `pd.to_pickle(session_data, get_session_file(user))` escribía el pickle sin pasar por
+`save_user_data()`/`encrypt_file()`. El resto del sistema cifra con Fernet; estas dos rutas no.
 
 **Impacto.** Datos del usuario (posible PII) en claro en disco/backups. Además `pickle` es RCE si
 el archivo es manipulable.
 
-**Criterio de cierre.** Las dos rutas usan la función cifrada; test que verifica que el archivo
-empieza por el prefijo Fernet (`gAAAA`) y que `get_user_data` lo descifra.
+**Corrección aplicada.**
+- Los dos flujos (`Google Sheets` y `limpieza con IA`) usan ahora `save_user_data()`, que serializa,
+  **cifra con Fernet** y sincroniza a la nube.
+- Se mantiene el cache en memoria (`data_store`) actualizado en ambos puntos, igual que antes.
+
+**Evidencia de cierre.**
+```
+tests/test_session_encryption.py ..... 5 passed
+  - archivo empieza por token Fernet (gAAA...)
+  - no hay nombres de columnas ni metadata en claro
+  - roundtrip: save -> clear cache -> get_user_data recupera el DataFrame
+  - guardia estática: data.py no contiene pd.to_pickle
+  - guardia estática: 2 usos de save_user_data
+
+suite completa ...................... 163 passed, 4 failed (P-41 preexistentes)
+```
 
 **Regla anti-repetición.** Toda persistencia pasa por **una sola** función (`save_user_data`).
 Prohibido `to_pickle`, `to_csv`, `open(...,"w")` directo en routers.
@@ -428,3 +442,4 @@ tests para cada bypass conocido.
 |---|---|
 | 2026-10-19 | Creación del registro con 41 problemas del escaneo completo (`bee43447`). |
 | 2026-10-19 | **P-01 CERRADO**. Contrato cambiado: `ENVIRONMENT` ahora es `production` por defecto y el bypass de token exige desarrollo + localhost + no-Render. Ajustados en el mismo cambio: `common.py`, `main.py`, `.env.example`, `.env` local y 13 tests nuevos. |
+| 2026-10-19 | **P-02 CERRADO**. Los dos `pd.to_pickle` de `data.py` pasan a `save_user_data()` (Fernet + nube). 5 tests nuevos, incluida guardia estática contra reintroducir escritura en claro. |

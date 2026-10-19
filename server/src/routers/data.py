@@ -376,7 +376,7 @@ async def connect_gsheets(request: Request, url: str = Form(...), db: Session = 
         
         session_data["sources"].append(new_source.id)
         data_store[get_session_key(authenticated_user)] = session_data
-        pd.to_pickle(session_data, get_session_file(authenticated_user))
+        save_user_data(authenticated_user, session_data)
         
         return {
             "id": new_source.id,
@@ -514,7 +514,8 @@ async def clean_data(
         
         # Actualizar cache y persistencia
         session_data["data"][next(iter(session_data["data"].keys()))] = cleaned_df
-        pd.to_pickle(session_data, get_session_file(authenticated_user))
+        data_store[get_session_key(authenticated_user)] = session_data
+        save_user_data(authenticated_user, session_data)
         
         from src.utils.common import json_serializable
         return json_serializable({
