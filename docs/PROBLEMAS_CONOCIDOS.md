@@ -51,7 +51,7 @@ registrado aquí incluye:
 
 ## 2. Resumen (ordenado de mayor a menor)
 
-**Totales:** 3 críticos · 14 altos · 25 medios · 7 bajos · **49 problemas**
+**Totales:** 3 críticos · 13 altos · 24 medios · 7 bajos · **47 problemas**
 
 ### 🔴 CRÍTICOS
 
@@ -78,7 +78,7 @@ registrado aquí incluye:
 | **P-14** | UI/BI | El modelo mostrado en el selector no es el que usa el backend | ABIERTO | `ProviderKeysPanel.tsx:43-54,130` · `DashboardContext.tsx:146-167` |
 | **P-15** | Auth | Sin allowlist ni middleware en el cliente: cualquier cuenta Google entra y la app queda inservible (403) | ABIERTO | `client/src/auth.ts:7-30` · `app/page.tsx:20-24` |
 | **P-16** | Sandbox | Lista negra incompleta: `pd.read_table`, `DataFrame.to_csv`, `np.save`, `plt.savefig`, `pd.io.common.os`… | ABIERTO | `server/src/engine/executor.py:158-175,538-543,745-750` |
-| **P-43** | API | `except Exception` de los endpoints de simulación se traga los `HTTPException` accionables → todo error se ve como 500 "Error interno" | ABIERTO | `simulation.py:158-168,672-692` · runtime `/simulation/generate-agents` |
+| **P-43** | API | `except Exception` de los endpoints de simulación se traga los `HTTPException` accionables → todo error se ve como 500 "Error interno" | ✅ CERRADO | `simulation.py` (4 endpoints) · `dashboard.py` (auto_dashboard) · `exports.py` (chart, pptx) · `tests/test_http_exception_passthrough*.py` |
 
 ### 🟡 MEDIOS
 
@@ -103,7 +103,7 @@ registrado aquí incluye:
 | **P-33** | Seguridad | `/connect-sql`: validación SSRF débil (DNS rebinding) y allowlist opcional | `security.py:108`, `data.py:313-326` |
 | **P-34** | Datos | La sesión se guarda por usuario (sin `chat_id`) → conversaciones se pisan | `server/src/utils/common.py:188-197` |
 | **P-35** | Memoria | `data_store` global en memoria sin límite ni TTL | `server/src/utils/common.py` |
-| **P-44** | Frontend | Sin `GOOGLE_CLIENT_ID` la UI redirige a Google con `client_id=undefined` ("OAuth client was not found") en vez de avisar; sin fail-fast | `client/src/auth.ts`, `client/.env.local` · runtime navegador |
+| **P-44** | Frontend | ✅ CERRADO — Sin cliente OAuth la UI redirigía a Google con `client_id=undefined` ("OAuth client was not found") en vez de avisar | `client/src/app/login/page.tsx` + `LoginForm.tsx` |
 | **P-45** | Frontend | Error de hidratación en la landing (atributos SSR ≠ cliente) al cargar | `client/src/app/page.tsx` · consola del navegador |
 | **P-47** | Dev/BD | `migrate_db.py` no cubre el drift real y revienta en Windows (`UnicodeEncodeError`); `create_all` no altera tablas → la app local da 500 por columnas faltantes | `server/src/utils/migrate_db.py:20-36` · runtime `/user-config` |
 | **P-48** | API/BI | `/dashboard/filter` responde `200 success` con columnas inexistentes y no filtra en modo SQL (TODO) | `server/src/routers/dashboard.py:217-250` · runtime |
@@ -454,9 +454,9 @@ tests para cada bypass conocido.
 | Campo | Valor |
 |---|---|
 | **Severidad** | ALTO |
-| **Estado** | ABIERTO (hallado en la prueba local del 2026-10-19) |
-| **Verificado** | ✅ Runtime: `POST /simulation/generate-agents` → 500 |
-| **Archivos** | `server/src/routers/simulation.py` (`create_simulation` y `generate_agents_endpoint`) |
+| **Estado** | ✅ CERRADO (2026-10-19) |
+| **Verificado** | ✅ Runtime: antes 500 "Error interno" → ahora **400** con el mensaje del proveedor |
+| **Archivos** | `server/src/routers/simulation.py` (4 endpoints) · `dashboard.py` (`auto_dashboard`) · `exports.py` (`export_chart`, `export_pptx`) |
 
 **Qué pasa.** El cuerpo entero del endpoint va dentro de `try: ... except Exception as e:` y ese
 `except` convierte **cualquier** excepción en `HTTPException(500, "Error interno…")`. Como
@@ -477,9 +477,18 @@ Durante la prueba, un problema de esquema de la BD local (`no such column`) tamb
 **Impacto.** El usuario no sabe qué corregir (clave, archivo, cuota) y soporte no tiene traza.
 Los endpoints afectados son justo los que dependen de claves del usuario.
 
-**Cierre.** Re-lanzar `HTTPException` antes del `except` genérico (`except HTTPException: raise`) en
-todos los endpoints afectados; loguear el mensaje saneado, no solo el tipo. Test: provider sin clave
-→ 400 con el texto del proveedor; fallo inesperado → 500.
+**Cierre (implementado).** `except HTTPException: raise` antes del `except Exception` en:
+`simulation.py` (`create_simulation`, `get_simulation_suggestions`, `get_simulation_ontology`,
+`generate_agents_endpoint`), `dashboard.py` (`auto_dashboard`, se tragaba un 404) y `exports.py`
+(`export_chart`, `export_pptx`). Los logs pasan de `type(e).__name__` a `safe_error_message(e)`.
+Pruebas: `tests/test_http_exception_passthrough.py` (400 con el texto del proveedor) y
+`tests/test_http_exception_passthrough_static.py`, que **audita el AST de todos los routers** y falla
+si el patrón reaparece. Sin el arreglo el test falla con `AssertionError: 500 != 400`.
+Runtime, antes → ahora:
+```
+POST /api/v1/simulation               {"provider":"openai","apiKey":""}  ->  400 "No hay ninguna clave de OpenAI guardada…"
+POST /api/v1/simulation/generate-agents {"provider":"openai","apiKey":""} ->  400 "No hay ninguna clave de OpenAI guardada…"
+```
 
 **Regla anti-repetición.** Un `except Exception` nunca debe envolver las validaciones ni las
 respuestas HTTP deliberadas. Primero `except HTTPException: raise`.
@@ -514,6 +523,7 @@ respuestas HTTP deliberadas. Primero `except HTTPException: raise`.
 **P-40** · Tipografía 8-10 px y sidebar fija. *Cierre:* mínimo 12 px y responsive.
 **P-41** · 4 tests backend fallando. *Cierre:* suite 100% verde (o `xfail` justificado).
 **P-42** · Proveedor ignorado en simulación: `/simulation/suggestions` y `/simulation/ontology` usan siempre Gemini (`simulation.py:339,402` y `:563`) aunque el usuario elija otro proveedor → resultados de otro modelo, sin aviso. **No hay fuga de claves** (la clave de Gemini va contra la API de Gemini). *Verificado en runtime (2026-10-19):* `POST /simulation/suggestions` con `provider=openai` responde `"API key must be set when using the Google AI API"` (demostró que ejecutó Gemini) y `/simulation/ontology` devuelve `{"nodes":[],"edges":[]}` con HTTP 200 (fallo silencioso). *Cierre:* ambos endpoints resuelven el proveedor con `resolve_keys()` y despachan al vendor elegido (o rechazan explícitamente los no soportados); test que falle si vuelven a caer en Gemini. **Regla:** lo que el selector promete es lo que se ejecuta.
+**P-44 · CERRADO** · Login sin credenciales OAuth. Antes, con las variables ausentes, `signIn("google")` enviaba al usuario a Google con `client_id=undefined` → `401 invalid_client`. Ahora `/login` es un *server component* (`force-dynamic`) que exige **id y secreto**; si faltan, **no renderiza** el botón de Google y muestra un aviso ámbar con los nombres exactos de las variables, más el modo Invitado cuando está disponible. Si no hay ningún método, lo dice explícitamente (fail-closed). *Evidencia:* `npx tsc --noEmit` = 0 y el HTML SSR de `/login` contiene `googleEnabled:false`, el aviso y el botón de invitado, y **no** el botón de Google. *Causa raíz del caso reportado:* las líneas de `client/.env.local` seguían comentadas con los placeholders (`# AUTH_GOOGLE_ID=tu_client_id…`).
 
 ---
 
@@ -534,6 +544,8 @@ respuestas HTTP deliberadas. Primero `except HTTPException: raise`.
 | 2026-10-19 | **P-03 reclasificado CRÍTICO → ALTO** tras verificación profunda: el `engine` nunca entra al subproceso (el sandbox solo serializa DataFrames), por lo que no hay RCE; el problema real es que el **modo SQL está roto** y la validación read-only está desconectada. |
 | 2026-10-19 | **P-04 CERRADO**. `dashboard.py`, `visual_summary.py`, `data.py` y `simulation.py` (crear simulación y generar agentes) resuelven la clave con `resolve_keys()`; la clave ya no cruza de proveedor. 14 tests nuevos. Registrado **P-42** (endpoints de simulación que ignoran el proveedor elegido; sin fuga de claves). |
 | 2026-10-19 | **Prueba local (modo simulación) con backend + frontend reales.** Confirmados: bypass de desarrollo (P-01), cifrado Fernet de archivos y sesiones (P-02), rechazo SSRF de `/connect-sql` (P-33), validaciones de subida (extensión y path traversal), `resolve_keys` devolviendo el mensaje del **proveedor correcto** en `/analyze` y `/visual-summary` (P-04). Nuevos hallazgos registrados: **P-43** (ALTO), **P-44**, **P-45**, **P-47**, **P-48**, **P-49** (MEDIOS) y **P-46** (BAJO); P-42 confirmado en runtime. Detalle en la sección 8. |
+| 2026-10-19 | **P-43 CERRADO**. `except HTTPException: raise` en los 4 endpoints de `simulation.py`, en `dashboard.auto_dashboard` (se tragaba un 404) y en `exports.py` (`export_chart`, `export_pptx`); logs con `safe_error_message`. 4 tests nuevos, incluido un **guardián AST de todos los routers**. Verificado en runtime: 500 "Error interno" → 400 con el mensaje del proveedor. Verificado además que `client/.env.local` ya estaba ignorado por `*.local`; se añadieron reglas explícitas `.env.local` / `.env.*.local` como defensa en profundidad. |
+| 2026-10-19 | **P-44 CERRADO**. `/login` pasa a *server component* que exige id y secreto de Google; sin ellos no se renderiza el botón (nada de `client_id=undefined`) y se muestra un aviso accionable + modo Invitado. Causa raíz del reporte: las variables seguían **comentadas** en `client/.env.local`. |
 
 ---
 
@@ -568,6 +580,10 @@ borrar la fila y los archivos generados.
 | `POST /visual-summary` `provider=openai` sin clave | 400 con el texto de **OpenAI** (P-04 ✅) |
 | Archivo y sesión en disco | empiezan por `gAAA` (Fernet) y no hay datos en claro (P-02 ✅) |
 | Frontend dev server | compila y sirve la landing + `/login` |
+
+> Nota posterior a la prueba: **P-43 y P-44 quedaron CERRADOS** el mismo día. Con el arreglo, los dos
+> casos de la tabla siguiente ("generate-agents sin clave" y "Continuar con Google") ya no ocurren:
+> el primero devuelve 400 con el motivo y el segundo ni se ofrece (aviso + modo Invitado).
 
 ### Qué está mal (hallazgos registrados)
 | Prueba | Resultado | Problema |

@@ -16,6 +16,8 @@ data_sources/
 
 # Environment variables
 .env
+.env.local
+.env.*.local
 
 # Node / Frontend
 node_modules/

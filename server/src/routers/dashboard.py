@@ -207,6 +207,9 @@ async def auto_dashboard(
         results = generate_auto_dashboard(data_source_obj, api_key, provider, mistral_key)
         from src.utils.common import json_serializable
         return json_serializable({"status": "success", "dashboard": results})
+    except HTTPException:
+        # P-43: un 404/400 deliberado no es un fallo interno.
+        raise
     except Exception as e:
         from src.utils.logging_config import safe_error_message
         logger.error("Error en auto_dashboard: %s", safe_error_message(e))

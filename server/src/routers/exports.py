@@ -30,6 +30,9 @@ async def export_chart(request: Request, fig_json: dict):
             media_type="image/png",
             headers={"Content-Disposition": f"attachment; filename={filename}"}
         )
+    except HTTPException:
+        # P-43: conserva el mensaje deliberado (no lo degrada a un 500 genérico).
+        raise
     except Exception as e:
         from src.utils.logging_config import safe_error_message
         logger.error("Error al exportar gráfico: %s", safe_error_message(e))
@@ -189,6 +192,9 @@ async def export_pptx(request: Request, data: dict, db: Session = Depends(get_db
             media_type="application/vnd.openxmlformats-officedocument.presentationml.presentation",
             headers={"Content-Disposition": f"attachment; filename={filename}"}
         )
+    except HTTPException:
+        # P-43: conserva el mensaje deliberado en vez de reemplazarlo.
+        raise
     except Exception as e:
         if os.path.exists(temp_path): os.remove(temp_path)
         from src.utils.logging_config import safe_error_message

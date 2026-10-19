@@ -206,6 +206,9 @@ async def create_simulation(request: Request, req: SimulationRequest, background
             req.num_rounds or 3
         )
         return {"status": "started", "simulation_id": new_sim.id}
+    except HTTPException:
+        # P-43: una negativa deliberada (400/401/404) no es un fallo interno.
+        raise
     except Exception as e:
         from src.utils.logging_config import safe_error_message
         logger.error("Error al crear simulación: %s", safe_error_message(e))
@@ -442,6 +445,9 @@ async def get_simulation_suggestions(request: Request, req: SuggestionRequest, d
         except Exception as e:
             logger.exception("[Sim-sugg] Error en generación IA")
             return [{"title": "Error en Motor IA", "hypothesis": f"La IA no pudo procesar los datos. Detalles: {str(e)}"}]
+    except HTTPException:
+        # P-43: la validación de claves (400) debe llegar al cliente tal cual.
+        raise
     except Exception as e:
         logger.exception("[Sim-sugg] Error crítico")
         return [{"title": "Error Crítico", "hypothesis": f"Error interno al procesar los archivos para el simulador. Detalles: {str(e)}"}]
@@ -620,8 +626,12 @@ async def get_simulation_ontology(request: Request, req: OntologyRequest, db: Se
         except Exception as e:
             logger.error("[Sim-ontology] Error en generación IA: %s", type(e).__name__)
             return {"nodes": [], "edges": []}
+    except HTTPException:
+        # P-43: la validación de claves (400) debe llegar al cliente tal cual.
+        raise
     except Exception as e:
-        logger.error("[Sim-ontology] Error crítico: %s", type(e).__name__)
+        from src.utils.logging_config import safe_error_message
+        logger.error("[Sim-ontology] Error crítico: %s", safe_error_message(e))
         return {"nodes": [], "edges": []}
 
 
@@ -693,7 +703,11 @@ async def generate_agents_endpoint(request: Request, req: GenerateAgentsRequest,
         engine = SwarmEngine(api_key=key, provider=prov, mistral_key=mistral_key, gemini_key=gemini_key)
         agents = await engine.generate_agents(req.hypothesis, data_context)
         return agents
+    except HTTPException:
+        # P-43: la negativa accionable (400 por clave/validación) debe llegar al cliente.
+        raise
     except Exception as e:
-        logger.error("[Sim-agents] Error al generar agentes: %s", type(e).__name__)
+        from src.utils.logging_config import safe_error_message
+        logger.error("[Sim-agents] Error al generar agentes: %s", safe_error_message(e))
         raise HTTPException(status_code=500, detail="Error interno al generar agentes del debate.")
 
