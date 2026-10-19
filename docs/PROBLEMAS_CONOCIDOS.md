@@ -51,7 +51,7 @@ registrado aquí incluye:
 
 ## 2. Resumen (ordenado de mayor a menor)
 
-**Totales:** 4 críticos · 12 altos · 19 medios · 6 bajos · **41 problemas**
+**Totales:** 3 críticos · 13 altos · 19 medios · 6 bajos · **41 problemas**
 
 ### 🔴 CRÍTICOS
 
@@ -59,13 +59,13 @@ registrado aquí incluye:
 |---|---|---|---|---|
 | **P-01** | Auth | Bypass de autenticación *fail-open*: sin `ENVIRONMENT`/`RENDER` cualquier request entra como `test_user` y salta `AUTHORIZED_EMAILS` | ✅ CERRADO | `server/src/utils/common.py:98-163` · `tests/test_auth_bypass.py` |
 | **P-02** | Datos | Sesiones guardadas con `pd.to_pickle` **en claro**, saltando el cifrado Fernet | ✅ CERRADO | `server/src/routers/data.py:378,517` · `tests/test_session_encryption.py` |
-| **P-03** | Sandbox | `validate_sql_safety`/`execute_sql_safe` son código muerto; se inyecta el `engine` SQL vivo al código del LLM | ABIERTO | `server/src/engine/executor.py:874,913` · `server/src/routers/analysis.py:119` |
 | **P-04** | Claves IA | Fallback a `gemini_key` aunque el proveedor activo sea otro → clave de Google enviada a terceros | ABIERTO | `dashboard.py:164`, `exports.py:158`, `visual_summary.py:46`, `data.py:483` |
 
 ### 🟠 ALTOS
 
 | ID | Área | Problema | Estado | Evidencia |
 |---|---|---|---|---|
+| **P-03** | SQL | Modo SQL roto + controles `validate_sql_safety`/`execute_sql_safe` desconectados (código muerto) | ABIERTO | `analysis.py:119,137` · `bi_analyst.py:277-306` · `executor.py:377-383,874,913` |
 | **P-05** | Frontend | Bucle infinito de `POST /dashboard/filter` (dependencia circular `items` → `setItems` → efecto) | ABIERTO | `client/src/components/DashboardView.tsx:177-194,242-248` |
 | **P-06** | Dependencias | 11 vulnerabilidades npm (5 críticas): `next 16.1.1` (RCE/DoS), `next-auth beta.30` (fail-open), `plotly.js`→`maplibre-gl` | ABIERTO | `client/package.json` · `npm audit` |
 | **P-07** | Frontend | CSP permisiva: `unsafe-inline`, `unsafe-eval`, `connect-src ws: wss:`, sin `frame-ancestors` | ABIERTO | `client/next.config.ts:19-28` |
@@ -116,7 +116,7 @@ registrado aquí incluye:
 
 ---
 
-## 3. Fichas detalladas — CRÍTICOS
+## 3. Fichas detalladas — CRÍTICOS (P-03 reclasificado a ALTO)
 
 ### P-01 · Bypass de autenticación *fail-open*
 
@@ -199,27 +199,40 @@ Prohibido `to_pickle`, `to_csv`, `open(...,"w")` directo en routers.
 
 ---
 
-### P-03 · El sandbox SQL no usa su propia barrera
+### P-03 · Modo SQL roto y controles SQL desconectados *(reclasificado de CRÍTICO a ALTO)*
 
 | Campo | Valor |
 |---|---|
-| **Severidad** | CRÍTICO |
+| **Severidad** | ALTO (reclasificado tras verificación profunda) |
 | **Estado** | ABIERTO |
-| **Verificado** | ✅ `grep` (solo se autorreferencian) |
-| **Archivos** | `executor.py:874`, `:913-918` · `analysis.py:119` |
+| **Verificado** | ✅ Lectura completa del flujo (no solo `grep`) |
+| **Archivos** | `server/src/routers/analysis.py:119,137` · `server/src/engine/bi_analyst.py:277-306` · `server/src/engine/executor.py:377-383,874,913` |
 
-**Qué pasa.** `validate_sql_safety()` (whitelist de solo lectura, 25 palabras prohibidas) y
-`execute_sql_safe()` **no se llaman desde ningún flujo**. En su lugar:
-```python
-data_var = "dfs" if data_type == "file" else "engine"   # engine SQLAlchemy real
-```
-El objeto `engine` (con credenciales y permisos de escritura) entra al código generado por el LLM.
+**Qué pasa realmente (corrección del hallazgo inicial).**
+La primera auditoría afirmó que el `engine` SQLAlchemy se inyectaba en el sandbox. **No es así**:
+`analysis.py:119` calcula `data_var = ... else "engine"`, pero **esa variable nunca se usa**. El flujo real es:
 
-**Impacto.** `DROP/DELETE/UPDATE/INSERT` y exfiltración de toda la base vía prompt injection.
+1. `/connect-sql` guarda `{"type": "sql", "data": engine}` (`data.py:331`).
+2. `/analyze` pasa ese `engine` a `analyze_data()` (`analysis.py:137`).
+3. `analyze_data()` solo entiende `dict` de DataFrames o un `DataFrame`; con un `engine` cae en
+   `data_context.columns` (`bi_analyst.py:300`) → excepción.
+4. Aunque llegara al sandbox, `execute_analysis()` solo serializa `DataFrame`/`dict` (`executor.py:377-383`),
+   así que el `engine` **no es alcanzable** desde el código del LLM.
 
-**Criterio de cierre.** El flujo SQL usa una conexión de **solo lectura** y pasa por
-`validate_sql_safety` antes de ejecutar; test con `DELETE`, `DROP`, `UPDATE`, `;` múltiple y
-`pg_sleep` → rechazado.
+Conclusión: **el modo SQL no funciona** y `validate_sql_safety()`/`execute_sql_safe()` (whitelist de
+solo lectura) **no se llaman desde ningún flujo**: son código muerto.
+
+**Impacto.**
+- Funcional: un usuario que conecta una base SQL y pregunta en el chat obtiene error (la feature está rota).
+- Seguridad: existe una barrera SQL escrita y probada… pero desconectada. El día que alguien "active"
+  el modo SQL sin cablearla, se ejecutaría SQL sin validar.
+- No hay RCE ni escritura en la BD por esta vía en el estado actual (el `engine` no entra al subproceso).
+
+**Criterio de cierre.**
+- El modo SQL materializa datos con `execute_sql_safe()` (que valida con `validate_sql_safety`) y el
+  análisis trabaja sobre DataFrames normales.
+- Tests: `SELECT` permitido; `DROP`, `DELETE`, `UPDATE`, `INSERT`, `;` múltiple, `pg_read_file` → rechazados.
+- Guardia estática: `validate_sql_safety` debe estar referenciada desde el flujo de análisis.
 
 **Regla anti-repetición.** Una función de seguridad que no está cableada al flujo **no existe**.
 Todo control debe tener un test que falle si se desconecta.
@@ -443,3 +456,4 @@ tests para cada bypass conocido.
 | 2026-10-19 | Creación del registro con 41 problemas del escaneo completo (`bee43447`). |
 | 2026-10-19 | **P-01 CERRADO**. Contrato cambiado: `ENVIRONMENT` ahora es `production` por defecto y el bypass de token exige desarrollo + localhost + no-Render. Ajustados en el mismo cambio: `common.py`, `main.py`, `.env.example`, `.env` local y 13 tests nuevos. |
 | 2026-10-19 | **P-02 CERRADO**. Los dos `pd.to_pickle` de `data.py` pasan a `save_user_data()` (Fernet + nube). 5 tests nuevos, incluida guardia estática contra reintroducir escritura en claro. |
+| 2026-10-19 | **P-03 reclasificado CRÍTICO → ALTO** tras verificación profunda: el `engine` nunca entra al subproceso (el sandbox solo serializa DataFrames), por lo que no hay RCE; el problema real es que el **modo SQL está roto** y la validación read-only está desconectada. |
