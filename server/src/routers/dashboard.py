@@ -153,24 +153,14 @@ async def auto_dashboard(
     if not session_data:
          raise HTTPException(status_code=400, detail="Se requieren datos activos (SQL o Archivo) para generar un Auto-Dashboard.")
          
-    # --- AUTO-RECUPERACIÓN DE LLAVES CIFRADAS ---
-    if len(api_key) < 10 or "..." in api_key or provider == "groq" or (provider == "mistral" and (not mistral_key or len(mistral_key) < 10 or "..." in mistral_key)):
-        from src.database import UserConfig
-        from src.utils.security import decrypt_key
-        user_config = db.query(UserConfig).filter(UserConfig.user_id == authenticated_user).first()
-        if user_config:
-            if provider == "groq" and user_config.groq_key:
-                api_key = decrypt_key(user_config.groq_key)
-            elif (len(api_key) < 10 or "..." in api_key) and user_config.gemini_key:
-                api_key = decrypt_key(user_config.gemini_key)
-            if provider == "mistral" and (not mistral_key or len(mistral_key) < 10 or "..." in mistral_key) and user_config.mistral_key:
-                mistral_key = decrypt_key(user_config.mistral_key)
-    else:
-        from src.utils.security import decrypt_key
-        api_key = decrypt_key(api_key)
-        if mistral_key:
-            mistral_key = decrypt_key(mistral_key)
-         
+    # --- AUTO-RECUPERACIÓN DE LLAVES CIFRADAS (P-04: solo la clave del proveedor activo) ---
+    from src.database import UserConfig
+    from src.engine.providers import resolve_keys
+    user_config = db.query(UserConfig).filter(UserConfig.user_id == authenticated_user).first()
+    api_key, mistral_key, key_error = resolve_keys(provider, api_key, mistral_key, user_config)
+    if key_error and provider != "hybrid":
+        raise HTTPException(status_code=400, detail=key_error)
+
     # Validar que las llaves descifradas no sean vacías o None si el proveedor las requiere
     if provider == "gemini" and not api_key:
         raise HTTPException(

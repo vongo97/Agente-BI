@@ -5,7 +5,6 @@ from sqlalchemy.orm import Session
 from typing import Optional
 from src.database import get_db, UserConfig
 from src.utils.common import check_authorization, get_authenticated_user
-from src.utils.security import decrypt_key
 from src.engine.visual_summary_engine import generate_visual_summary
 from src.utils.limiter import limiter
 
@@ -37,20 +36,12 @@ def get_visual_summary(
     # 2. Validar autorización
     check_authorization(authenticated_user)
     
-    # 3. Auto-recuperación y descifrado de claves API
-    if len(api_key) < 10 or "..." in api_key or provider == "groq" or (provider == "mistral" and (not mistral_key or len(mistral_key) < 10 or "..." in mistral_key)):
-        user_config = db.query(UserConfig).filter(UserConfig.user_id == authenticated_user).first()
-        if user_config:
-            if provider == "groq" and user_config.groq_key:
-                api_key = decrypt_key(user_config.groq_key)
-            elif (len(api_key) < 10 or "..." in api_key) and user_config.gemini_key:
-                api_key = decrypt_key(user_config.gemini_key)
-            if provider == "mistral" and (not mistral_key or len(mistral_key) < 10 or "..." in mistral_key) and user_config.mistral_key:
-                mistral_key = decrypt_key(user_config.mistral_key)
-    else:
-        api_key = decrypt_key(api_key)
-        if mistral_key:
-            mistral_key = decrypt_key(mistral_key)
+    # 3. Auto-recuperación y descifrado de claves API (P-04: solo la del proveedor activo)
+    from src.engine.providers import resolve_keys
+    user_config = db.query(UserConfig).filter(UserConfig.user_id == authenticated_user).first()
+    api_key, mistral_key, key_error = resolve_keys(provider, api_key, mistral_key, user_config)
+    if key_error and provider != "hybrid":
+        raise HTTPException(status_code=400, detail=key_error)
 
     # Validar que las llaves descifradas no sean vacías o None si el proveedor las requiere
     if provider == "gemini" and not api_key:

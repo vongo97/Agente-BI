@@ -51,7 +51,7 @@ registrado aquí incluye:
 
 ## 2. Resumen (ordenado de mayor a menor)
 
-**Totales:** 3 críticos · 13 altos · 19 medios · 6 bajos · **41 problemas**
+**Totales:** 3 críticos · 13 altos · 20 medios · 6 bajos · **42 problemas**
 
 ### 🔴 CRÍTICOS
 
@@ -59,7 +59,7 @@ registrado aquí incluye:
 |---|---|---|---|---|
 | **P-01** | Auth | Bypass de autenticación *fail-open*: sin `ENVIRONMENT`/`RENDER` cualquier request entra como `test_user` y salta `AUTHORIZED_EMAILS` | ✅ CERRADO | `server/src/utils/common.py:98-163` · `tests/test_auth_bypass.py` |
 | **P-02** | Datos | Sesiones guardadas con `pd.to_pickle` **en claro**, saltando el cifrado Fernet | ✅ CERRADO | `server/src/routers/data.py:378,517` · `tests/test_session_encryption.py` |
-| **P-04** | Claves IA | Fallback a `gemini_key` aunque el proveedor activo sea otro → clave de Google enviada a terceros | ABIERTO | `dashboard.py:164`, `exports.py:158`, `visual_summary.py:46`, `data.py:483` |
+| **P-04** | Claves IA | Fallback a `gemini_key` aunque el proveedor activo sea otro → clave de Google enviada a terceros | ✅ CERRADO | `providers.py:394` · `dashboard.py`, `visual_summary.py`, `data.py`, `simulation.py` · `tests/test_key_resolution.py` |
 
 ### 🟠 ALTOS
 
@@ -244,26 +244,52 @@ Todo control debe tener un test que falle si se desconecta.
 | Campo | Valor |
 |---|---|
 | **Severidad** | CRÍTICO |
-| **Estado** | ABIERTO |
-| **Verificado** | ✅ 4 coincidencias |
-| **Archivos** | `dashboard.py:164-165`, `exports.py:158-159`, `visual_summary.py:46-47`, `data.py:483-484` |
+| **Estado** | ✅ **CERRADO** (2026-10-19) |
+| **Verificado** | ✅ Lectura del flujo real + 14 tests de regresión |
+| **Archivos** | `dashboard.py` · `visual_summary.py` · `data.py` · `simulation.py` · `providers.py` · `tests/test_key_resolution.py` |
 
-**Qué pasa.** Patrón repetido:
+**Qué pasaba.** Patrón repetido en 6 sitios:
 ```python
 elif (len(api_key) < 10 or "..." in api_key) and user_config.gemini_key:
     api_key = decrypt_key(user_config.gemini_key)
 ```
-No mira qué proveedor está activo: si el usuario eligió Mistral/Groq/OpenRouter y su clave está
-enmascarada, se usa la de Google.
+No miraba qué proveedor estaba activo: con OpenAI/Anthropic/DeepSeek/OpenRouter/NVIDIA
+seleccionado y la clave enmascarada o vacía, se enviaba **la clave de Google** a ese otro vendor.
 
-**Impacto.** La credencial de un vendor viaja a otro (fuga + cargos cruzados). `resolve_keys()`
-en `providers.py:394` ya lo hace bien, pero estos flujos lo puentean.
+**Impacto.** Fuga de credencial a un tercero + cargos cruzados + fallo de autenticación.
+`resolve_keys()` en `providers.py` ya lo hacía bien, pero estos flujos lo puenteaban.
 
-**Criterio de cierre.** Los 4 flujos usan `resolve_keys()`; test: proveedor=mistral + clave
-enmascarada + `gemini_key` presente → **no** se usa `gemini_key`.
+**Corrección aplicada.**
+- `resolve_keys()` ahora resuelve `hybrid` como Gemini + Mistral (antes `hybrid` no leía la
+  clave de Gemini de la BD) y resuelve Mistral también en `hybrid`.
+- `dashboard.py`, `visual_summary.py`, `data.py`, `simulation.py` (`create_simulation` y
+  `generate-agents`) usan `resolve_keys(<proveedor activo>, ...)` y propagan el error.
+- En `simulation.py`, la clave de Gemini se usa **solo** para el cliente de Gemini del
+  enjambre (`gemini_key = key if prov == "gemini" else ...`), nunca como clave de otro proveedor.
 
-**Regla anti-repetición.** Una sola función resuelve credenciales. Prohibido `user_config.<proveedor>_key`
-fuera de `providers.py`.
+**Revisado y descartado (no hay cruce de claves).**
+- `exports.py:158` → `create_presentation()` llama a Gemini con `provider="gemini"` fijo
+  (`pptx_generator.py:86,128`): la clave de Gemini sí corresponde.
+- `simulation.py` suggestions/ontology → usan la clave de Gemini **contra la API de Gemini**
+  (incluido el fallback documentado tras un fallo de Groq). No hay fuga; el defecto real
+  (ignorar el proveedor elegido) queda registrado como **P-42**.
+
+**Evidencia de cierre.**
+```
+tests/test_key_resolution.py .............. 14 passed (9 subtests)
+  - openai/anthropic/deepseek/openrouter/nvidia nunca reciben gemini_key
+  - mistral viaja en su propio campo; hybrid usa Gemini + Mistral
+  - clave enviada por el cliente manda si es utilizable
+  - sin clave propia -> error explícito, nunca la de Gemini
+  - guardias estáticas: sin `user_config.gemini_key` y con `resolve_keys(provider, ...)`
+  - guardias estáticas en simulation.py (create_simulation y generate-agents)
+
+suite completa ............................ 177 passed, 4 failed (P-41 preexistentes)
+```
+
+**Regla anti-repetición.** Una sola función resuelve credenciales (`resolve_keys`).
+Prohibido `user_config.<proveedor>_key` o `config.gemini_key` fuera de `providers.py`
+salvo para construir un cliente de **ese mismo** proveedor.
 
 ---
 
@@ -439,6 +465,7 @@ tests para cada bypass conocido.
 **P-39** · `pending` = "Fallo". *Cierre:* mapear estados correctamente.
 **P-40** · Tipografía 8-10 px y sidebar fija. *Cierre:* mínimo 12 px y responsive.
 **P-41** · 4 tests backend fallando. *Cierre:* suite 100% verde (o `xfail` justificado).
+**P-42** · Proveedor ignorado en simulación: `/simulation/suggestions` y `/simulation/ontology` usan siempre Gemini (`simulation.py:339,402` y `:563`) aunque el usuario elija otro proveedor → resultados de otro modelo, sin aviso. **No hay fuga de claves** (la clave de Gemini va contra la API de Gemini). *Cierre:* ambos endpoints resuelven el proveedor con `resolve_keys()` y despachan al vendor elegido (o rechazan explícitamente los no soportados); test que falle si vuelven a caer en Gemini. **Regla:** lo que el selector promete es lo que se ejecuta.
 
 ---
 
@@ -457,3 +484,4 @@ tests para cada bypass conocido.
 | 2026-10-19 | **P-01 CERRADO**. Contrato cambiado: `ENVIRONMENT` ahora es `production` por defecto y el bypass de token exige desarrollo + localhost + no-Render. Ajustados en el mismo cambio: `common.py`, `main.py`, `.env.example`, `.env` local y 13 tests nuevos. |
 | 2026-10-19 | **P-02 CERRADO**. Los dos `pd.to_pickle` de `data.py` pasan a `save_user_data()` (Fernet + nube). 5 tests nuevos, incluida guardia estática contra reintroducir escritura en claro. |
 | 2026-10-19 | **P-03 reclasificado CRÍTICO → ALTO** tras verificación profunda: el `engine` nunca entra al subproceso (el sandbox solo serializa DataFrames), por lo que no hay RCE; el problema real es que el **modo SQL está roto** y la validación read-only está desconectada. |
+| 2026-10-19 | **P-04 CERRADO**. `dashboard.py`, `visual_summary.py`, `data.py` y `simulation.py` (crear simulación y generar agentes) resuelven la clave con `resolve_keys()`; la clave ya no cruza de proveedor. 14 tests nuevos. Registrado **P-42** (endpoints de simulación que ignoran el proveedor elegido; sin fuga de claves). |

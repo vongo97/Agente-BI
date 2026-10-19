@@ -151,35 +151,21 @@ async def create_simulation(request: Request, req: SimulationRequest, background
     check_authorization(authenticated_user)
     
     try:
-        # [PILAR 2] Recuperar y Descifrar Key si es necesario
-        api_key = req.api_key
-        mistral_key = req.mistral_key
-        
-        if not api_key or len(api_key) < 10 or "..." in api_key:
-            config = db.query(UserConfig).filter(UserConfig.user_id == authenticated_user).first()
-            if config and config.gemini_key:
-                api_key = decrypt_key(config.gemini_key)
-        else:
-            api_key = decrypt_key(api_key)
-            
-        if not mistral_key or len(mistral_key) < 10 or "..." in mistral_key:
-            config = db.query(UserConfig).filter(UserConfig.user_id == authenticated_user).first()
-            if config and config.mistral_key:
-                mistral_key = decrypt_key(config.mistral_key)
-        else:
-            mistral_key = decrypt_key(mistral_key)
+        # [P-04] La clave efectiva es SIEMPRE la del proveedor activo; la de Gemini
+        # nunca se reutiliza para otro proveedor (hybrid = Gemini + Mistral).
+        from src.engine.providers import resolve_keys
+        config = db.query(UserConfig).filter(UserConfig.user_id == authenticated_user).first()
+        api_key, mistral_key, key_error = resolve_keys(req.provider, req.api_key, req.mistral_key, config)
+        if key_error and req.provider != "hybrid":
+            raise HTTPException(status_code=400, detail=key_error)
             
         # Validación de claves antes de proceder
         if req.provider == "gemini" and not api_key:
             raise HTTPException(status_code=400, detail="Clave API de Gemini no válida o corrupta. Por favor, re-ingresa tu clave API en Ajustes.")
         elif req.provider == "mistral" and not mistral_key:
             raise HTTPException(status_code=400, detail="Clave API de Mistral no válida o corrupta. Por favor, re-ingresa tu clave API en Ajustes.")
-        elif req.provider == "groq":
-            config = db.query(UserConfig).filter(UserConfig.user_id == authenticated_user).first()
-            if config and config.groq_key:
-                api_key = decrypt_key(config.groq_key)
-            if not api_key:
-                raise HTTPException(status_code=400, detail="Clave API de Groq no válida o corrupta. Por favor, re-ingresa tu clave API en Ajustes.")
+        elif req.provider == "groq" and not api_key:
+            raise HTTPException(status_code=400, detail="Clave API de Groq no válida o corrupta. Por favor, re-ingresa tu clave API en Ajustes.")
         elif req.provider == "hybrid":
             if not api_key:
                 raise HTTPException(status_code=400, detail="Clave API de Gemini no válida o corrupta. Por favor, re-ingresa tu clave API en Ajustes.")
@@ -682,46 +668,27 @@ async def generate_agents_endpoint(request: Request, req: GenerateAgentsRequest,
         # Si no hay contexto, usar una descripción básica
         data_context = full_context_str if full_context_str else "No hay archivos de datos específicos disponibles."
 
-        # Recuperar y Descifrar Keys de forma independiente
-        gemini_key = req.api_key
-        mistral_key = req.mistral_key
-        groq_key = None
-        
+        # Recuperar y Descifrar Keys (P-04: cada proveedor usa SU propia clave).
+        from src.engine.providers import resolve_keys
         config = db.query(UserConfig).filter(UserConfig.user_id == authenticated_user).first()
-        
-        if not gemini_key or len(gemini_key) < 10 or "..." in gemini_key:
-            if config and config.gemini_key:
-                gemini_key = decrypt_key(config.gemini_key)
-        else:
-            gemini_key = decrypt_key(gemini_key)
-            
-        if not mistral_key or len(mistral_key) < 10 or "..." in mistral_key:
-            if config and config.mistral_key:
-                mistral_key = decrypt_key(config.mistral_key)
-        else:
-            if mistral_key:
-                mistral_key = decrypt_key(mistral_key)
-                
-        if config and config.groq_key:
-            groq_key = decrypt_key(config.groq_key)
 
         prov = req.provider.lower() if req.provider else "groq"
-        
-        # Validar claves correspondientes
-        if prov == "gemini" and not gemini_key:
-            raise HTTPException(status_code=400, detail="Clave API de Gemini no válida o corrupta. Por favor, re-ingresa tu clave API en Ajustes.")
-        elif prov == "mistral" and not mistral_key:
-            raise HTTPException(status_code=400, detail="Clave API de Mistral no válida o corrupta. Por favor, re-ingresa tu clave API en Ajustes.")
-        elif prov == "groq" and not groq_key:
-            raise HTTPException(status_code=400, detail="Clave API de Groq no válida o corrupta. Por favor, re-ingresa tu clave API en Ajustes.")
-        elif prov == "hybrid":
-            if not gemini_key:
+
+        key, mistral_key, key_error = resolve_keys(prov, req.api_key, req.mistral_key, config)
+        if key_error and prov != "hybrid":
+            raise HTTPException(status_code=400, detail=key_error)
+        if prov == "hybrid":
+            if not key:
                 raise HTTPException(status_code=400, detail="Clave API de Gemini no válida o corrupta. Por favor, re-ingresa tu clave API en Ajustes.")
             if not mistral_key:
                 raise HTTPException(status_code=400, detail="Clave API de Mistral no válida o corrupta. Por favor, re-ingresa tu clave API en Ajustes.")
+        if prov == "mistral":
+            key = mistral_key
+        elif prov == "hybrid":
+            prov = "gemini"
 
-        key = mistral_key if prov == "mistral" else (groq_key if prov == "groq" else gemini_key)
-        if prov == "hybrid": prov = "gemini"
+        # Clave de Gemini SOLO para el cliente de Gemini del enjambre (nunca para otro endpoint).
+        gemini_key = key if prov == "gemini" else (resolve_keys("gemini", None, None, config)[0] or "")
 
         engine = SwarmEngine(api_key=key, provider=prov, mistral_key=mistral_key, gemini_key=gemini_key)
         agents = await engine.generate_agents(req.hypothesis, data_context)

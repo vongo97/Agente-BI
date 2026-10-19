@@ -423,15 +423,21 @@ def resolve_keys(provider: str, api_key: Optional[str], mistral_key: Optional[st
     def usable(value: str) -> bool:
         return bool(value) and len(value) >= 10 and "..." not in value
 
+    # P-04: cada proveedor usa SOLO su propia clave. Nunca se sustituye por la de
+    # otro proveedor (antes, un usuario con OpenAI activo recibía su clave de Gemini).
+    # "hybrid" es la excepción documentada: Gemini como principal + Mistral de refuerzo.
+    key_provider = "gemini" if provider == "hybrid" else provider
+
     # Mistral viaja en su propio campo por compatibilidad con el flujo "hybrid".
-    if provider == "mistral":
+    if provider in ("mistral", "hybrid"):
         if not usable(mistral_key):
             mistral_key = from_db("mistral_key")
         elif mistral_key.startswith("gAAAA"):
             mistral_key = normalize_key(decrypt_key(mistral_key))
-    else:
+
+    if provider != "mistral":
         if not usable(api_key):
-            api_key = from_db(f"{provider}_key")
+            api_key = from_db(f"{key_provider}_key")
         elif api_key.startswith("gAAAA"):
             api_key = normalize_key(decrypt_key(api_key))
 
