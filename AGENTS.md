@@ -27,11 +27,13 @@ Before modifying the project, read and apply the relevant skill files for the ta
 - Use `.codex/skills/deployment-and-ci-cd-pipelines/SKILL.md` for configuring GitHub Actions, Docker containers, and Gradle release signing / Fastlane beta uploads.
 
 ### Alignment & Agent Control
+- Use `.codex/skills/known-issues-registry/SKILL.md` **FIRST, for every task**: mandatory "known issues first" rule (`docs/PROBLEMAS_CONOCIDOS.md`), no repeated mistakes, close issues only with evidence.
 - Use `.codex/skills/agent-stability-and-guidance-control/SKILL.md` for AI agent behavior, preventing scope creep, strictly following instructions, and respecting dependency security rules.
 - Use `.codex/skills/user-interaction-protocol/SKILL.md` for standardizing user requests, ensuring quality standards (9-10/10) and executing task flows without regressions.
 
 ## General Rules
 
+- **REGLA 0 — Problemas conocidos primero (BLOQUEANTE):** Antes de leer cualquier otra skill, planificar o modificar un archivo, el agente DEBE leer `docs/PROBLEMAS_CONOCIDOS.md` y `.codex/skills/known-issues-registry/SKILL.md`. Debe citar los `P-XX` abiertos que toquen la tarea, no empeorarlos, y registrar cualquier hallazgo nuevo **antes** de corregirlo. Ningún problema se marca `CERRADO` sin evidencia (test o comando reproducible). **Excepción de evolución:** si el ajuste nuevo justificado choca con un comportamiento o test viejo, manda el ajuste nuevo y el viejo se actualiza en el mismo cambio (documentado en el registro); nunca se revierte un arreglo de seguridad ni se debilita un test de regresión.
 - **Lectura Inicial Obligatoria:** Al iniciar cualquier interacción o tarea en el proyecto, el agente DEBE leer en primer lugar la skill del protocolo de interacción `.codex/skills/user-interaction-protocol/SKILL.md` para coordinar el trabajo de forma óptima.
 - **Lectura de Skills Relacionadas:** Todos los prompts o tareas complejas deben iniciarse leyendo las skills relacionadas bajo `.codex/skills/` para evitar alucinaciones y asegurar consistencia con el diseño del proyecto.
 - **Creación de Skills Proactiva:** Si detectas que se están realizando tareas manuales o lógicas repetitivas, debes proponer y preguntar explícitamente al usuario si se puede consolidar un nuevo archivo de skill en `.codex/skills/` para automatizarlo.

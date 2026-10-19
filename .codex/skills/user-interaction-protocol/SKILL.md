@@ -42,7 +42,8 @@ Al recibir una tarea, yo (el agente) debo seguir este algoritmo mental estrictam
 
 ```mermaid
 graph TD
-    Request[Recibir Tarea del Usuario] --> ReadSkill[1. Leer user-interaction-protocol]
+    Request[Recibir Tarea del Usuario] --> ReadIssues[0. Leer docs/PROBLEMAS_CONOCIDOS.md]
+    ReadIssues --> ReadSkill[1. Leer user-interaction-protocol]
     ReadSkill --> AnalyzePlan[2. Analizar Código y Crear implementation_plan]
     AnalyzePlan --> UserApproval[3. Obtener Aprobación del Usuario]
     UserApproval --> CodeWrite[4. Programación Segura e Incremental]
@@ -50,6 +51,13 @@ graph TD
     Hardening --> Verify[6. Ejecutar Verificación y Compilación]
     Verify --> Walkthrough[7. Crear walkthrough e Informe Final]
 ```
+
+### Paso 0: Registro de Problemas Conocidos (BLOQUEANTE)
+- Antes de cualquier otra lectura o acción, cargar `docs/PROBLEMAS_CONOCIDOS.md` y la skill
+  `.codex/skills/known-issues-registry/SKILL.md`.
+- Identificar los `P-XX` abiertos que toquen los archivos de la tarea y citarlos en el plan.
+- Si se descubre un problema nuevo, registrarlo **antes** de corregirlo.
+- No se puede marcar un problema como cerrado sin evidencia (test o comando reproducible).
 
 ### Paso 1: Lectura Obligatoria y Contextualización
 - Antes de responder, debo cargar esta skill y los archivos del proyecto relacionados.
