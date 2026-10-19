@@ -150,6 +150,11 @@ variables opcionales.
 ```
 tests/test_auth_bypass.py ............ 13 passed
 suite completa ....................... 158 passed, 4 failed (P-41 preexistentes)
+
+# Prueba end-to-end con la app real (TestClient):
+ENVIRONMENT=production, sin token ......... 401  ✅
+ENVIRONMENT=development + RENDER=true ..... 401  ✅
+ENVIRONMENT=development + localhost ....... permitido (cubierto por test unitario)
 ```
 
 **Regla anti-repetición.** Ningún control de seguridad puede activarse por *ausencia* de
