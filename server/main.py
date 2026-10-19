@@ -24,7 +24,7 @@ app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 from src.routers import auth, data, analysis, dashboard, exports, simulation, visual_summary
-from src.utils.common import request_var
+from src.utils.common import request_var, is_development_mode
 
 # Configuración de Logs Estructurados
 from src.utils.logging_config import setup_logging
@@ -113,6 +113,16 @@ if not _authorized_list:
     )
 else:
     logger.info("CONFIG: %d correo(s) en la lista blanca AUTHORIZED_EMAILS", len(_authorized_list))
+
+# ── Auditoría del modo de autenticación ──────────────────────────────────────
+# El bypass de token (usuario de pruebas) solo existe en desarrollo local real.
+# Si el entorno no declara ENVIRONMENT, el modo por defecto es produccion.
+if is_development_mode() and os.getenv("RENDER", "false").strip().lower() != "true":
+    logger.warning(
+        "CONFIG: MODO DESARROLLO (ENVIRONMENT=%s) -> usuario de pruebas sin token "
+        "permitido SOLO desde localhost. En produccion define ENVIRONMENT=production.",
+        os.getenv("ENVIRONMENT", "production"),
+    )
 
 # Registrar Routers
 app.include_router(auth.router, prefix="/api/v1")

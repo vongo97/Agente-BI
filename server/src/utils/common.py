@@ -95,20 +95,52 @@ def _resolve_auth_secret(request: Optional[Request], allow_bypass: bool) -> str:
     logger.warning("USANDO SECRETO DE DESARROLLO POR DEFECTO - solo válido en localhost. Define AUTH_SECRET.")
     return "secreto-desarrollo-por-defecto"
 
+_TEST_USER = "test_user_persistence@example.com"
+_DEV_ENVIRONMENTS = {"development", "dev", "local"}
+
+
+def is_development_mode() -> bool:
+    """True solo si el entorno lo declara explicitamente.
+
+    El valor por defecto es 'production' a proposito: un control de seguridad no
+    puede activarse por la *ausencia* de configuracion (fail-open). Para trabajar
+    en local hay que declarar ENVIRONMENT=development.
+    """
+    return os.getenv("ENVIRONMENT", "production").strip().lower() in _DEV_ENVIRONMENTS
+
+
+def _dev_bypass_allowed(request: Optional[Request]) -> bool:
+    """Permite autenticar como usuario de pruebas SOLO en desarrollo local real.
+
+    Condiciones (todas obligatorias):
+      1. ENVIRONMENT declarado explicitamente como desarrollo.
+      2. No estar ejecutando en Render (RENDER=true).
+      3. La peticion llega desde localhost.
+
+    Caso especial: sin contexto de request (llamadas internas o apps de test que
+    no montan el middleware) se permite solo si 1 y 2 se cumplen; en produccion
+    el contexto siempre existe porque lo instala el middleware.
+    """
+    if os.getenv("RENDER", "false").strip().lower() == "true":
+        return False
+    if not is_development_mode():
+        return False
+    if request is None:
+        return True
+    return _request_is_local(request)
+
+
 def get_authenticated_user() -> str:
     """Extrae y valida el Bearer token del request actual.
     Retorna el email del usuario autenticado (user_id).
-    En producción, exige un token JWT estándar válido.
-    En desarrollo local, si no hay token, retorna el test_user por defecto."""
+    En produccion exige un token JWT valido: si falta configuracion, deniega."""
     request = request_var.get()
-    is_render = os.getenv("RENDER", "false").lower() == "true"
-    is_dev = os.getenv("ENVIRONMENT", "development").lower() == "development"
-    allow_bypass = (not is_render) and is_dev
+    allow_bypass = _dev_bypass_allowed(request)
     
     if not request:
         if not allow_bypass:
             raise HTTPException(status_code=401, detail="No se encontró contexto de petición.")
-        return "test_user_persistence@example.com"
+        return _TEST_USER
         
     auth_header = request.headers.get("Authorization")
     if auth_header and auth_header.startswith("Bearer "):
@@ -124,13 +156,11 @@ def get_authenticated_user() -> str:
     if not allow_bypass:
         raise HTTPException(status_code=401, detail="Se requiere token de autenticación (Bearer Token) en producción.")
         
-    return "test_user_persistence@example.com"
+    return _TEST_USER
 
 def check_authorization(email: str):
     request = request_var.get()
-    is_render = os.getenv("RENDER", "false").lower() == "true"
-    is_dev = os.getenv("ENVIRONMENT", "development").lower() == "development"
-    allow_bypass = (not is_render) and is_dev
+    allow_bypass = _dev_bypass_allowed(request)
     
     # 1. Validar Bearer Token si el request está configurado en el contexto asíncrono
     if request:
@@ -156,8 +186,8 @@ def check_authorization(email: str):
             if not allow_bypass:
                 raise HTTPException(status_code=401, detail="Se requiere token de autenticación (Bearer Token) en producción.")
             else:
-                # En desarrollo local se permite omitir el token si es test_user_persistence@example.com
-                if email.lower() == "test_user_persistence@example.com":
+                # En desarrollo local se permite omitir el token si es el usuario de pruebas
+                if email.lower() == _TEST_USER:
                     return True
 
     # 2. Comprobar contra lista de emails autorizados
@@ -175,7 +205,7 @@ def check_authorization(email: str):
         
     authorized_list = [e.strip().lower() for e in authorized_env.split(",") if e.strip()]
     # En producción test_user_persistence NO se exime si no está en la lista blanca
-    if allow_bypass and email.lower() == "test_user_persistence@example.com":
+    if allow_bypass and email.lower() == _TEST_USER:
         return True
     if email.lower() in authorized_list:
         return True
