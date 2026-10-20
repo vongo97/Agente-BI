@@ -51,7 +51,7 @@ registrado aquí incluye:
 
 ## 2. Resumen (ordenado de mayor a menor)
 
-**Totales:** 3 críticos · 13 altos · 24 medios · 7 bajos · **47 problemas**
+**Totales:** 3 críticos · 13 altos · 25 medios · 7 bajos · **48 problemas**
 
 ### 🔴 CRÍTICOS
 
@@ -108,6 +108,7 @@ registrado aquí incluye:
 | **P-47** | Dev/BD | `migrate_db.py` no cubre el drift real y revienta en Windows (`UnicodeEncodeError`); `create_all` no altera tablas → la app local da 500 por columnas faltantes | `server/src/utils/migrate_db.py:20-36` · runtime `/user-config` |
 | **P-48** | API/BI | `/dashboard/filter` responde `200 success` con columnas inexistentes y no filtra en modo SQL (TODO) | `server/src/routers/dashboard.py:217-250` · runtime |
 | **P-49** | Dev | No hay modo local sin nube: subir archivos exige Supabase válido (503 si no) y el arranque no lo avisa | `server/src/routers/data.py:212-241` · runtime `/upload` |
+| **P-50** | Infra/Dev | ✅ CERRADO — Con credenciales presentes pero inválidas, `/health` decía `not_configured` y el log solo `SupabaseException`; un typo en `SUPABASE_URL` (`hhttps://…`) dejaba `/upload` en 503 sin causa visible | `server/src/services/storage_service.py:34-100` · runtime `/upload` |
 
 ### 🟢 BAJOS
 
@@ -524,6 +525,7 @@ respuestas HTTP deliberadas. Primero `except HTTPException: raise`.
 **P-41** · 4 tests backend fallando. *Cierre:* suite 100% verde (o `xfail` justificado).
 **P-42** · Proveedor ignorado en simulación: `/simulation/suggestions` y `/simulation/ontology` usan siempre Gemini (`simulation.py:339,402` y `:563`) aunque el usuario elija otro proveedor → resultados de otro modelo, sin aviso. **No hay fuga de claves** (la clave de Gemini va contra la API de Gemini). *Verificado en runtime (2026-10-19):* `POST /simulation/suggestions` con `provider=openai` responde `"API key must be set when using the Google AI API"` (demostró que ejecutó Gemini) y `/simulation/ontology` devuelve `{"nodes":[],"edges":[]}` con HTTP 200 (fallo silencioso). *Cierre:* ambos endpoints resuelven el proveedor con `resolve_keys()` y despachan al vendor elegido (o rechazan explícitamente los no soportados); test que falle si vuelven a caer en Gemini. **Regla:** lo que el selector promete es lo que se ejecuta.
 **P-44 · CERRADO** · Login sin credenciales OAuth. Antes, con las variables ausentes, `signIn("google")` enviaba al usuario a Google con `client_id=undefined` → `401 invalid_client`. Ahora `/login` es un *server component* (`force-dynamic`) que exige **id y secreto**; si faltan, **no renderiza** el botón de Google y muestra un aviso ámbar con los nombres exactos de las variables, más el modo Invitado cuando está disponible. Si no hay ningún método, lo dice explícitamente (fail-closed). *Evidencia:* `npx tsc --noEmit` = 0 y el HTML SSR de `/login` contiene `googleEnabled:false`, el aviso y el botón de invitado, y **no** el botón de Google. *Causa raíz del caso reportado:* las líneas de `client/.env.local` seguían comentadas con los placeholders (`# AUTH_GOOGLE_ID=tu_client_id…`).
+**P-50 · CERRADO** · Diagnóstico de Storage opaco (reporte del usuario: "no me deja subir documentos"). Dos causas independientes, ambas invisibles desde la UI: (1) `SUPABASE_URL` local tenía un typo (`hhttps://…`), y `supabase==2.10.0` rechazaba la clave nueva `sb_secret_…` porque exigía un JWT — el cliente quedaba en `None` y `/upload` devolvía 503; (2) `/health` reportaba `not_configured` **aunque las dos variables estaban definidas**, y el log solo imprimía el tipo de excepción. *Corrección:* `supabase` 2.10.0 → **2.33.0** en `requirements.txt` (verificado que ya no valida la clave como JWT); `get_supabase_client()` registra un motivo estable (`invalid_url`, `invalid_api_key`, `client_init_failed`) sin credenciales y `probe_bucket()` lo publica en `/health`. *Evidencia:* 5 tests en `tests/test_storage_diagnostics.py` (incluye regresión de `sb_secret_…` y de JWT legacy, y que la clave no aparece en el log); suite **186 passed / 4 failed** (solo P-41); runtime `/health` → `connected:true` y `POST /upload` → **200 `persisted:true`**; verificado en el bucket el CSV cifrado (1.208 B) y la sesión (3.748 B). *Causa raíz del typo:* edición manual del `.env` local. *Pendiente de usuario:* Render sigue en `connected:false`; revisar `SUPABASE_URL`/`SUPABASE_SERVICE_ROLE_KEY` en su panel y redesplegar para que tome `requirements.txt`.
 
 ---
 
@@ -546,6 +548,7 @@ respuestas HTTP deliberadas. Primero `except HTTPException: raise`.
 | 2026-10-19 | **Prueba local (modo simulación) con backend + frontend reales.** Confirmados: bypass de desarrollo (P-01), cifrado Fernet de archivos y sesiones (P-02), rechazo SSRF de `/connect-sql` (P-33), validaciones de subida (extensión y path traversal), `resolve_keys` devolviendo el mensaje del **proveedor correcto** en `/analyze` y `/visual-summary` (P-04). Nuevos hallazgos registrados: **P-43** (ALTO), **P-44**, **P-45**, **P-47**, **P-48**, **P-49** (MEDIOS) y **P-46** (BAJO); P-42 confirmado en runtime. Detalle en la sección 8. |
 | 2026-10-19 | **P-43 CERRADO**. `except HTTPException: raise` en los 4 endpoints de `simulation.py`, en `dashboard.auto_dashboard` (se tragaba un 404) y en `exports.py` (`export_chart`, `export_pptx`); logs con `safe_error_message`. 4 tests nuevos, incluido un **guardián AST de todos los routers**. Verificado en runtime: 500 "Error interno" → 400 con el mensaje del proveedor. Verificado además que `client/.env.local` ya estaba ignorado por `*.local`; se añadieron reglas explícitas `.env.local` / `.env.*.local` como defensa en profundidad. |
 | 2026-10-19 | **P-44 CERRADO**. `/login` pasa a *server component* que exige id y secreto de Google; sin ellos no se renderiza el botón (nada de `client_id=undefined`) y se muestra un aviso accionable + modo Invitado. Causa raíz del reporte: las variables seguían **comentadas** en `client/.env.local`. |
+| 2026-10-19 | **P-50 CERRADO** (reporte: "no me deja subir documentos"). `supabase` 2.10.0 → 2.33.0 (la vieja rechazaba claves `sb_secret_…`), typo `hhttps://` corregido en el `.env` local y diagnóstico de Storage honesto (`invalid_url`/`invalid_api_key`/`client_init_failed` en `/health`, sin credenciales). 5 tests nuevos; `/upload` real → 200 `persisted:true` y objetos verificados en el bucket. Producción sigue en `connected:false` hasta corregir las variables en Render y redesplegar. |
 
 ---
 

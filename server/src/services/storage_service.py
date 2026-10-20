@@ -31,16 +31,49 @@ def storage_configured() -> bool:
     return bool(os.getenv("SUPABASE_URL") and os.getenv("SUPABASE_SERVICE_ROLE_KEY"))
 
 
+# Motivos estables y sin secretos que /health puede publicar. Los mensajes de
+# supabase-py para el fallo de init son estáticos ("Invalid URL", "... is
+# required"); nunca contienen la credencial. Aun así no reenviamos texto libre.
+_CLIENT_INIT_REASONS = (
+    ("supabase_url is required", "not_configured"),
+    ("supabase_key is required", "not_configured"),
+    ("invalid url", "invalid_url"),
+    ("invalid api key", "invalid_api_key"),
+)
+
+# Último motivo del fallo de init, para que probe_bucket pueda reportarlo.
+_last_client_error: Optional[str] = None
+
+
+def _client_init_reason(exc: Exception) -> str:
+    """Traduce el error de ``create_client`` a un motivo estable y sin secretos."""
+    detail = str(exc).strip().lower()
+    for fragment, reason in _CLIENT_INIT_REASONS:
+        if fragment in detail:
+            return reason
+    return "client_init_failed"
+
+
 def get_supabase_client():
     """Cliente Supabase perezoso. None si no hay configuración o falla el init."""
+    global _last_client_error
     url = os.getenv("SUPABASE_URL")
     key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
     if not url or not key:
+        _last_client_error = None
         return None
     try:
-        return create_client(url, key)
+        client = create_client(url, key)
+        _last_client_error = None
+        return client
     except Exception as e:
-        logger.error("Error inicializando cliente Supabase: %s", type(e).__name__)
+        _last_client_error = _client_init_reason(e)
+        logger.error(
+            "Error inicializando cliente Supabase (%s). Revisa SUPABASE_URL "
+            "(debe ser https://<proyecto>.supabase.co) y "
+            "SUPABASE_SERVICE_ROLE_KEY.",
+            _last_client_error,
+        )
         return None
 
 
@@ -82,7 +115,13 @@ def probe_bucket(force: bool = False) -> dict:
 
     client = get_supabase_client()
     if not client:
-        result = {"ok": False, "reason": "not_configured"}
+        if not storage_configured():
+            reason = "not_configured"
+        else:
+            # Hay credenciales pero el cliente no se pudo crear: URL con typo,
+            # etc. Antes se reportaba "not_configured" y ocultaba la causa real.
+            reason = _last_client_error or "client_init_failed"
+        result = {"ok": False, "reason": reason}
     else:
         try:
             client.storage.from_(BUCKET_NAME).list(path="", options={"limit": 1})
@@ -107,8 +146,9 @@ def upload_bytes(key: str, data: bytes) -> bool:
     client = get_supabase_client()
     if not client:
         logger.error(
-            "STORAGE_UPLOAD_ABORTED motivo=no_configured key=%s "
-            "(SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY ausentes).", key,
+            "STORAGE_UPLOAD_ABORTED motivo=%s key=%s "
+            "(SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY ausentes o inválidas).",
+            _last_client_error or "not_configured", key,
         )
         return False
     try:
