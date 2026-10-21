@@ -509,8 +509,8 @@ respuestas HTTP deliberadas. Primero `except HTTPException: raise`.
 | Campo | Valor |
 |---|---|
 | **Severidad** | ALTO |
-| **Estado** | 🟡 PARCIAL (Fase 1 cerrada; Fase 2 opt-in, 2026-10-20) |
-| **Verificado** | 🧪 Tests + auditoría real del superstore + UI + HTTP local Fase 2 |
+| **Estado** | 🟡 PARCIAL (Fase 1 cerrada; Fase 2 activa por defecto desde 2026-10-21; preguntas generales sin verificar) |
+| **Verificado** | 🧪 Tests + auditoría real del superstore + UI + HTTP local Fase 2 + `/health` de producción |
 | **Archivos** | `server/src/engine/insight_auditor.py` · `server/src/engine/audit_agent.py` · `server/src/routers/analysis.py` · `server/src/routers/dashboard.py` · `client/src/components/chat/InsightCards.tsx` · `client/src/components/chat/MessageItem.tsx:61-131` |
 
 **Qué pasa.** El Executor genera el texto y la figura; el Strategist narra ese texto con el LLM. No hay una capa que
