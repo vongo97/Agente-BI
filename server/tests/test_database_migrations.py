@@ -13,7 +13,7 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from src.database import init_db
+from src.database import db_schema_diagnostic, init_db
 
 
 def test_init_db_adds_missing_columns_after_existing_column(tmp_path):
@@ -48,3 +48,6 @@ def test_init_db_adds_missing_columns_after_existing_column(tmp_path):
     assert "size_bytes" in data_source_columns
     assert "brand_color" in user_config_columns
     assert "pdf_orientation" in user_config_columns
+
+    with patch("src.database.engine", engine):
+        assert db_schema_diagnostic()["upload_schema_ready"] is True

@@ -59,6 +59,23 @@ def db_diagnostic() -> dict:
         "persistent": dialect not in ("sqlite",),
     }
 
+
+def db_schema_diagnostic() -> dict:
+    """Comprueba que las columnas requeridas por /upload existen.
+
+    No expone datos ni credenciales: solo nombres de columnas ya públicos en
+    el código. Sirve para distinguir un 500 de esquema de un fallo de archivo.
+    """
+    required = {"is_encrypted", "size_bytes"}
+    try:
+        columns = {column["name"] for column in inspect(engine).get_columns("data_sources")}
+    except Exception as exc:
+        logger.warning("No se pudo inspeccionar data_sources: %s", sanitize_db_error(str(exc)))
+        return {"upload_schema_ready": None}
+    return {
+        "upload_schema_ready": required.issubset(columns),
+    }
+
 # Aviso temprano: en Render el disco es efímero, así que SQLite significa perder
 # chats, fuentes y configuración guardada en cada reinicio.
 _db_info = db_diagnostic()
