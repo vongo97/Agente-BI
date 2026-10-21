@@ -4,6 +4,8 @@ services:
     # en Render (incluido el sufijo que Render anadio al crearlo). Si aqui pone
     # "agente-bi-server", el Blueprint no encuentra nada que actualizar y crea otro
     # servicio duplicado con un sufijo nuevo, dejando la app apuntando al host viejo.
+    # Este nombre es legado (SQLite no persistente). El backend canónico es
+    # agente-bi-server-7nav-zifr; no renombrar aquí sin comprobar el Blueprint.
     name: agente-bi-server-7nav
     env: python
     buildCommand: pip install -r requirements.txt
@@ -27,6 +29,9 @@ services:
       # aunque RENDER no esté seteado en deployments alternativos.
       - key: ENVIRONMENT
         value: production
+      # Fase 2 de P-54: activa el enrutamiento de auditoría a hechos verificados.
+      - key: AUDIT_AGENT_ENABLED
+        value: "true"
       # CORS explícito: orígenes permitidos (separados por coma). Incluir el
       # dominio real del frontend desplegado, si no el navegador bloquea con
       # "Failed to fetch" aunque el backend esté vivo.
@@ -52,8 +57,10 @@ services:
       # URL completa del backend. NOTA: fromService (property: host) inyecta solo
       # el nombre del servicio ("agente-bi-server") sin esquema ni dominio, lo que
       # rompe las llamadas API (ruta relativa -> 404). Se usa la URL literal.
+      # Backend canónico en producción: Postgres persistente (-zifr).
+      # No usar -7nav (SQLite no persistente) para datos reales.
       - key: NEXT_PUBLIC_API_URL
-        value: https://agente-bi-server-7nav.onrender.com
+        value: https://agente-bi-server-7nav-zifr.onrender.com
       - key: NEXTAUTH_SECRET
         sync: false
       # NEXTAUTH_URL debe ser la URL publica EXACTA del frontend. fromService

@@ -67,7 +67,7 @@ registrado aquí incluye:
 |---|---|---|---|---|
 | **P-03** | SQL | Modo SQL roto + controles `validate_sql_safety`/`execute_sql_safe` desconectados (código muerto) | ABIERTO | `analysis.py:119,137` · `bi_analyst.py:277-306` · `executor.py:377-383,874,913` |
 | **P-05** | Frontend | Bucle infinito de `POST /dashboard/filter` (dependencia circular `items` → `setItems` → efecto) | ABIERTO | `client/src/components/DashboardView.tsx:177-194,242-248` |
-| **P-06** | Dependencias | 11 vulnerabilidades npm (5 críticas): `next 16.1.1` (RCE/DoS), `next-auth beta.30` (fail-open), `plotly.js`→`maplibre-gl` | ABIERTO | `client/package.json` · `npm audit` |
+| **P-06** | Dependencias | 11 vulnerabilidades npm (5 críticas): `next 16.1.1` (RCE/DoS), `next-auth beta.30` (fail-open), `plotly.js`→`maplibre-gl` | ✅ CERRADO | `client/package.json` · `npm audit --omit=dev` → 2 low, 0 critical/high/moderate |
 | **P-07** | Frontend | CSP permisiva: `unsafe-inline`, `unsafe-eval`, `connect-src ws: wss:`, sin `frame-ancestors` | ABIERTO | `client/next.config.ts:19-28` |
 | **P-08** | Frontend | Capa de red sin timeout, `AbortController`, retry ni reacción a 401/403 | ABIERTO | `client/src/lib/api.ts:15-32` |
 | **P-09** | Frontend | Autosync guarda valores por defecto antes de cargar la config → puede sobrescribir ajustes del usuario | ABIERTO | `client/src/context/DashboardContext.tsx:138-211,216-246` |
@@ -324,13 +324,16 @@ y se compara por `id`. Test: con filtro activo, un solo POST por cambio de filtr
 ---
 
 ### P-06 · Dependencias vulnerables
-**Archivo:** `client/package.json`. `npm audit`: **11 vulnerabilidades (5 críticas, 3 altas)**.
+**Archivo:** `client/package.json`. Estado inicial: **11 vulnerabilidades (5 críticas, 3 altas)**.
 - `next 16.1.1` → **fix `16.4.2`** (no es cambio de major). Incluye RCE no autenticado en servidores Windows.
-- `next-auth 5.0.0-beta.30` → *sin fix publicado*: "configuration errors fail open".
-- `plotly.js` → `maplibre-gl` XSS (sin fix en el rango).
-- `vitest`/`tinypool` → RCE por prototype pollution (dev).
+- `next-auth 5.0.0-beta.30` → corregido en **`5.0.0-beta.32`** ("configuration errors fail open").
+- `plotly.js 3.3.1` → `maplibre-gl 4.7.1` XSS; corregido con **`plotly.js 4.1.2`** (`maplibre-gl 6.11.2`).
+- `vitest`/`tinypool` → RCE por prototype pollution (dev); resuelto por actualización transitiva.
 
-**Cierre:** `next@16.4.2`, `npm audit` sin críticas de runtime; build verde. `next-auth` documentado como riesgo aceptado hasta release.
+**Cierre (2026-10-21).** `next@16.4.2`, `next-auth@5.0.0-beta.32`, `eslint-config-next@16.4.2`,
+`plotly.js@4.1.2` y `mermaid@11.17.2`. `npm audit --omit=dev` → **2 low, 0 critical/high/moderate**
+(`mermaid`/`katex`, sin fix dentro de la rama 11). `npm run build` verde, `npx tsc --noEmit` limpio y
+`npx vitest run` → **38 passed**. `next-auth` sigue siendo una beta, pero ya no tiene la vulnerabilidad crítica.
 
 **Regla:** ningún deploy sin `npm audit` revisado; las críticas de runtime bloquean el release.
 
@@ -528,12 +531,12 @@ pueden estar mal definidas o inventadas. Es el mismo patrón de P-13 (KPIs fabri
 `POST /analyze/audit` no usa código generado por el LLM y responde "no medible" cuando faltan `profit`, `discount`
 u orden. La UI muestra tarjetas de hallazgos verificados y el detalle del cálculo.
 
-**Corrección (Fase 2, opt-in).** `audit_agent.py` detecta preguntas de auditoría con reglas conservadoras
+**Corrección (Fase 2, activa por defecto).** `audit_agent.py` detecta preguntas de auditoría con reglas conservadoras
 (`is_audit_query`) y las enruta al mismo paquete determinista. El LLM no escribe cifras: devuelve un JSON con
 `intro`, `fact_ids` y `conclusion`, sin números ni nombres concretos. El servidor valida que los IDs existan y que
 los textos no contengan dígitos, `%`, `$` ni `pp`; después renderiza cada hecho con su `display_value`, título y
 definición. Si el JSON es inválido, el LLM alucina una cifra o el proveedor falla, se usa la narrativa determinista.
-El flag `AUDIT_AGENT_ENABLED` (cerrado por defecto) controla el enrutamiento en `/analyze`; el botón **Auditoría**
+El flag `AUDIT_AGENT_ENABLED` (activo por defecto; `false` lo desactiva) controla el enrutamiento en `/analyze`; el botón **Auditoría**
 sigue usando `/analyze/audit` sin depender del flag ni de una API key. La respuesta incluye `narrative_mode` y la UI
 distingue "sin LLM" de "narración IA con cifras inyectadas".
 

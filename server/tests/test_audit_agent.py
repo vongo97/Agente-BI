@@ -15,6 +15,7 @@ import pandas as pd
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from src.engine.audit_agent import (
+    audit_agent_enabled,
     build_audit_payload,
     generate_audit_narrative,
     is_audit_query,
@@ -54,6 +55,17 @@ def _audit() -> dict:
 
 def _fact(audit: dict, fact_id: str) -> dict:
     return next(item for item in audit["insights"] if item["id"] == fact_id)
+
+
+class TestFeatureFlag:
+    def test_enabled_by_default(self):
+        with patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("AUDIT_AGENT_ENABLED", None)
+            assert audit_agent_enabled()
+
+    def test_can_be_disabled_explicitly(self):
+        with patch.dict(os.environ, {"AUDIT_AGENT_ENABLED": "false"}):
+            assert not audit_agent_enabled()
 
 
 class TestAuditIntent:

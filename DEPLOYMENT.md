@@ -6,17 +6,20 @@ Todo el stack vive en **Render** (el VPS anterior y Vercel quedan fuera de juego
 
 | Servicio | URL pública | Plan | Carpeta |
 |---|---|---|---|
-| Backend (FastAPI) | `https://agente-bi-server-7nav.onrender.com` | free | `server/` |
+| Backend canónico (FastAPI + PostgreSQL) | `https://agente-bi-server-7nav-zifr.onrender.com` | free | `server/` |
 | Frontend (Next.js) | `https://agente-bi-client-5nx4.onrender.com` | free | `client/` |
 
+> **Backend canónico: `-zifr` (PostgreSQL persistente).** El servicio
+> `agente-bi-server-7nav.onrender.com` usa SQLite no persistente y **no debe usarse
+> para datos reales**: pierde las fuentes en cada redeploy. El `render.yaml` todavía
+> declara el nombre legado `-7nav` para no crear un duplicado al sincronizar el
+> Blueprint; el frontend y `NEXT_PUBLIC_API_URL` apuntan al backend `-zifr`.
+
 > **El nombre real de los servicios incluye el sufijo que Render añadió al
-> crearlos.** El `render.yaml` usa esos nombres exactos (`agente-bi-server-7nav` y
-> `agente-bi-client-5nx4`) para que el Blueprint **actualice** los servicios en vez de
-> crear duplicados. Si alguna vez se borran y Render crea uno nuevo con otro sufijo,
-> hay que actualizar las cuatro cosas de golpe: los dos `name:` del yaml,
-> `NEXT_PUBLIC_API_URL` y `NEXTAUTH_URL`. La CSP del frontend se deriva
-> automáticamente de `NEXT_PUBLIC_API_URL` (`client/next.config.ts`), por lo que ya no
-> hay que tocarla a mano.
+> crearlos.** Si un servicio se borra y Render crea otro con distinto sufijo, hay
+> que actualizar de golpe `NEXT_PUBLIC_API_URL`, `NEXTAUTH_URL`, `ALLOWED_ORIGINS`
+> y el redirect de Google. La CSP del frontend se deriva automáticamente de
+> `NEXT_PUBLIC_API_URL` (`client/next.config.ts`), por lo que no hay que tocarla a mano.
 
 > Los nombres con sufijo (`-5nx4`, `-ci55`) los generó Render automáticamente al
 > crear el servicio porque el nombre del `render.yaml` ya estaba ocupado. Si esos
@@ -38,7 +41,7 @@ Las marcadas `sync: false` en `render.yaml` hay que definirlas **a mano** en el 
 de cada servicio (no se despliegan desde el repo). Ningún valor va en el repo: es
 público.
 
-### Backend `agente-bi-server`
+### Backend `agente-bi-server-7nav-zifr`
 
 | Variable | ¿Para qué? | Si falta |
 |---|---|---|
@@ -49,12 +52,13 @@ público.
 | `GEMINI_API_KEY` | Solo para pruebas internas | Los usuarios usan su propia key, cifrada en su perfil |
 | `ALLOWED_ORIGINS` | Ya viene en `render.yaml` | El navegador bloquea con "Failed to fetch" |
 | `ENVIRONMENT` | `production` (viene en `render.yaml`) | Nunca uses `development` en Render: activa el bypass de auth |
+| `AUDIT_AGENT_ENABLED` | `true` (activo por defecto desde Fase 2; `false` lo desactiva) | `/analyze` no enruta preguntas de auditoría a hechos verificados |
 
 ### Frontend `agente-bi-client-5nx4`
 
 | Variable | Valor |
 |---|---|
-| `NEXT_PUBLIC_API_URL` | `https://agente-bi-server.onrender.com` (en `render.yaml`) |
+| `NEXT_PUBLIC_API_URL` | `https://agente-bi-server-7nav-zifr.onrender.com` (en `render.yaml`) |
 | `NEXTAUTH_URL` | `https://agente-bi-client-5nx4.onrender.com` (en `render.yaml`) |
 | `NEXTAUTH_SECRET` | **Idéntico** al `AUTH_SECRET` del backend (`sync: false`) |
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | Credenciales de Google OAuth |
@@ -69,7 +73,7 @@ Redirect URI en Google Cloud Console:
 
 | Síntoma | Causa habitual | Dónde mirar |
 |---|---|---|
-| `Failed to fetch` en el navegador | Origen no está en `ALLOWED_ORIGINS`, o el servicio free estaba dormido (primer request da 502 sin headers CORS) | Pre-flight: `curl -X OPTIONS https://agente-bi-server.onrender.com/api/v1/upload -H "Origin: https://<frontend>" -H "Access-Control-Request-Method: POST"` |
+| `Failed to fetch` en el navegador | Origen no está en `ALLOWED_ORIGINS`, o el servicio free estaba dormido (primer request da 502 sin headers CORS) | Pre-flight: `curl -X OPTIONS https://agente-bi-server-7nav-zifr.onrender.com/api/v1/upload -H "Origin: https://<frontend>" -H "Access-Control-Request-Method: POST"` |
 | `401 Token de sesión inválido` | `NEXTAUTH_SECRET` ≠ `AUTH_SECRET`, o cookie vieja de otro despliegue | Logs: línea `Token inválido: ...` |
 | `401 Se requiere token…` | Petición sin cabecera `Authorization` (frontend sin sesión) | Sesión del usuario |
 | `403 Usuario no autorizado` / `Acceso denegado: AUTHORIZED_EMAILS…` | Correo fuera de la lista blanca, o lista vacía | Logs: `AUTH_REJECTED motivo=...` |

@@ -42,8 +42,8 @@ _TIME_RE = re.compile(r"\b(ano|anios|tiempo|periodo|evolucion\w*|crecimiento|com
 
 
 def audit_agent_enabled() -> bool:
-    """Feature flag cerrado por defecto; se habilita explícitamente por entorno."""
-    return os.getenv("AUDIT_AGENT_ENABLED", "false").strip().lower() in {
+    """Activo por defecto; ``AUDIT_AGENT_ENABLED=false`` lo desactiva."""
+    return os.getenv("AUDIT_AGENT_ENABLED", "true").strip().lower() in {
         "1", "true", "yes", "on",
     }
 

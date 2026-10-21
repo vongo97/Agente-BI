@@ -143,11 +143,14 @@ except Exception as e:
 @app.get("/health")
 async def root():
     from src.database import db_diagnostic
+    from src.engine.audit_agent import audit_agent_enabled
     from src.utils.supabase_storage import storage_diagnostic
     return {
         "status": "online",
         "message": "Agente BI API is running (Modular Mode)",
         "version": "1.0.0",
+        # Permite verificar desde fuera que el despliegue activo tiene Fase 2.
+        "features": {"audit_agent": audit_agent_enabled()},
         # Solo tipo de dato y si hay almacenamiento en nubeConfigured: permite
         # verificar desde fuera que los datos sobreviven a un reinicio. Nunca se
         # expone host, usuario, bucket ni credenciales.
