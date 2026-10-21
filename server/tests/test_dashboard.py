@@ -77,13 +77,11 @@ class TestDashboardRouter(unittest.TestCase):
             if len(args) > 0:
                 model_class = args[0]
                 if model_class == Chat:
-                    result.first.return_value = mock_chat
+                    result.filter.return_value.first.return_value = mock_chat
                 elif model_class == Message:
-                    result.first.return_value = mock_message
-                elif model_class == DashboardItem:
-                    result.first.return_value = None
+                    result.filter.return_value.first.return_value = mock_message
                 else:
-                    result.first.return_value = None
+                    result.filter.return_value.first.return_value = None
             return result
 
         self.mock_db.query.side_effect = filter_side_effect
