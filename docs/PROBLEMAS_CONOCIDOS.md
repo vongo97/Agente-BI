@@ -2,7 +2,7 @@
 
 > **Este documento es de lectura OBLIGATORIA antes de modificar cualquier archivo.**
 > Regla asociada: `.codex/skills/known-issues-registry/SKILL.md`
-> Última actualización: **2026-10-19** · Escaneo base: `bee43447`
+> Última actualización: **2026-10-20** · Escaneo base: `bee43447`
 
 ---
 
@@ -51,7 +51,7 @@ registrado aquí incluye:
 
 ## 2. Resumen (ordenado de mayor a menor)
 
-**Totales:** 3 críticos · 13 altos · 25 medios · 7 bajos · **48 problemas**
+**Totales:** 3 críticos · 15 altos · 26 medios · 7 bajos · **51 problemas**
 
 ### 🔴 CRÍTICOS
 
@@ -78,6 +78,9 @@ registrado aquí incluye:
 | **P-14** | UI/BI | El modelo mostrado en el selector no es el que usa el backend | ABIERTO | `ProviderKeysPanel.tsx:43-54,130` · `DashboardContext.tsx:146-167` |
 | **P-15** | Auth | Sin allowlist ni middleware en el cliente: cualquier cuenta Google entra y la app queda inservible (403) | ABIERTO | `client/src/auth.ts:7-30` · `app/page.tsx:20-24` |
 | **P-16** | Sandbox | Lista negra incompleta: `pd.read_table`, `DataFrame.to_csv`, `np.save`, `plt.savefig`, `pd.io.common.os`… | ABIERTO | `server/src/engine/executor.py:158-175,538-543,745-750` |
+| **P-51** | Sandbox | La allowlist de imports no incluye `time`; pandas/numpy lo importan en runtime y **todo análisis falla** con `ImportError: Librería 'time' bloqueada por seguridad` | ✅ CERRADO | `server/src/engine/executor.py:283-294,457-468,762-769` · `tests/test_sandbox_imports.py` |
+| **P-52** | Sandbox | La lista AST de atributos prohibidos incluye `rename`; bloquea `DataFrame.rename()` legítimo y hace fallar análisis con pandas | ✅ CERRADO | `server/src/engine/executor.py:153-166` · `tests/test_sandbox_imports.py::TestSandboxRename` |
+| **P-54** | IA/BI | La narrativa del análisis no tiene verificación numérica: el LLM puede inventar cifras o mezclar profit neto, pérdida bruta, líneas y órdenes | ✅ CERRADO (Fase 1) | `insight_auditor.py` · `analysis.py:199-336` · `InsightCards.tsx` · `tests/test_insight_auditor.py` · `tests/test_analysis_audit.py` · auditoría real del superstore 27 hechos |
 | **P-43** | API | `except Exception` de los endpoints de simulación se traga los `HTTPException` accionables → todo error se ve como 500 "Error interno" | ✅ CERRADO | `simulation.py` (4 endpoints) · `dashboard.py` (auto_dashboard) · `exports.py` (chart, pptx) · `tests/test_http_exception_passthrough*.py` |
 
 ### 🟡 MEDIOS
@@ -94,12 +97,13 @@ registrado aquí incluye:
 | **P-24** | UI | Clases Tailwind inexistentes (`bg-bi-s0`, `text-bi-text-1`, `duration-3000`) | `SimAgentConfig.tsx:63-69`, `Skeletons.tsx:82` |
 | **P-25** | A11y | Modal de reportes sin `role="dialog"`, ESC ni focus trap; toasts sin `aria-live` | `ReportBuilder.tsx:107-123`, `ToastContainer.tsx:40-41` |
 | **P-26** | UI | "Guardar Cambios" en Ajustes no guarda nada y reporta éxito | `client/src/components/SettingsView.tsx:72-76` |
-| **P-27** | UI | Fuentes guardadas se consultan pero nunca se renderizan (lista vacía al recargar) | `client/src/components/Sidebar.tsx:52-64,228-248` |
+| **P-27** | UI | Fuentes guardadas se consultan pero nunca se renderizan (lista vacía al recargar) | ✅ CERRADO | `client/src/components/Sidebar.tsx:52-96,228-248` · runtime 2026-10-20 |
 | **P-28** | Tests | Suite de cliente no ejecutable (`npm test` no existe) y expectativas desactualizadas | `client/package.json:5-10`, `client/src/tests/*` |
 | **P-29** | UX | Sugerencias de chat sin cancelación + dataset inconsistente (última fuente vs primera) | `Chat.tsx:55-77,100`, `ChatSuggestions.tsx:50-53` |
 | **P-30** | Rendimiento | Force layout O(n²) por frame sin parar; polling de simulación sin `try/catch` | `useForceLayout.ts:88-209`, `SimulationSandbox.tsx:139-154` |
 | **P-31** | Infra | Rate limiting basado en IP de proxy (evadible con `X-Forwarded-For`) | `server/src/utils/limiter.py` |
-| **P-32** | IA | Sin timeouts/reintentos en llamadas a LLM | `server/src/engine/providers.py:220` |
+| **P-32** | IA | Sin timeouts/reintentos en llamadas a LLM | ✅ CERRADO | `server/src/engine/providers.py:220-270` · `tests/test_providers.py::TestTimeout` |
+| **P-53** | IA | `safe_parse_validator_json` no limpia BOM/zero-width; un JSON válido del Validator se rechaza y se pierde su feedback | ✅ CERRADO | `server/src/engine/bi_analyst.py:216-252` · `tests/test_validator_json.py` |
 | **P-33** | Seguridad | `/connect-sql`: validación SSRF débil (DNS rebinding) y allowlist opcional | `security.py:108`, `data.py:313-326` |
 | **P-34** | Datos | La sesión se guarda por usuario (sin `chat_id`) → conversaciones se pisan | `server/src/utils/common.py:188-197` |
 | **P-35** | Memoria | `data_store` global en memoria sin límite ni TTL | `server/src/utils/common.py` |
@@ -119,7 +123,7 @@ registrado aquí incluye:
 | **P-38** | UI | Layout de dashboard desde `localStorage` sin validar; `any` en simulación | `DashboardView.tsx:222-229`, `useForceLayout.ts:13` |
 | **P-39** | UI | Estado `pending` se etiqueta como "Fallo" | `SimHistory.tsx:42` |
 | **P-40** | UI | Texto de 8-10 px y sidebar fija (`w-80`) en móvil | `SimHistory.tsx:12` y varios |
-| **P-41** | Tests | 4 tests backend fallando (deuda de test, no regresión de producción) | `test_dashboard.py:97`, `test_exports.py:82`, `test_simulation.py:129` |
+| **P-41** | Tests | 3 tests backend fallando (deuda de test, no regresión de producción; el de dashboard se corrigió el 2026-10-20) | `test_exports.py:82,112`, `test_simulation.py:129` |
 | **P-46** | API | `/data-sources` y `/sources` devuelven al cliente la `url` interna (clave de nube con el md5 del email o ruta del contenedor) | `server/src/routers/data.py:86-91` · runtime |
 
 ---
@@ -496,6 +500,56 @@ respuestas HTTP deliberadas. Primero `except HTTPException: raise`.
 
 ---
 
+### P-54 · Narrativa sin verificación numérica
+
+| Campo | Valor |
+|---|---|
+| **Severidad** | ALTO |
+| **Estado** | ✅ CERRADO (Fase 1, 2026-10-20) |
+| **Verificado** | 🧪 Tests + auditoría real del superstore + UI |
+| **Archivos** | `server/src/engine/insight_auditor.py` · `server/src/routers/analysis.py:199-336` · `server/src/routers/dashboard.py:25-47` · `client/src/components/chat/InsightCards.tsx` · `client/src/components/chat/MessageItem.tsx:61-131` |
+
+**Qué pasa.** El Executor genera el texto y la figura; el Strategist narra ese texto con el LLM. No hay una capa que
+verifique que cada número de la respuesta exista y tenga la misma definición que el cálculo. En la auditoría manual
+del `superstore_2019_2022.csv` aparecieron exactamente estos cruces:
+
+- `$286K` se presentó como "fuga por descuentos" cuando era el **profit neto** del dataset.
+- `155 clientes` / `-$71.2K` (4 años) se narró como `80 clientes` / `-$66K` **por año**.
+- `26.3%` (cualquier línea negativa) se mezcló con `20.4%` (órdenes con profit neto negativo).
+- `13.7%` (cualquier línea con descuento >50%) se mezcló con `6.3%` (promedio de descuento de la orden >50%).
+- El margen anual `10.2% → 13.1% → 13.4% → 12.7%` se convirtió en una "erosión de cuatro años".
+
+**Impacto.** El usuario toma decisiones de pricing, surtido y clientes sobre cifras que suenan verificadas pero
+pueden estar mal definidas o inventadas. Es el mismo patrón de P-13 (KPIs fabricados), pero en la narrativa.
+
+**Corrección (Fase 1).** `insight_auditor.py` calcula un paquete determinista de hechos con `id`,
+`definition`, `evidence` y `sample_size`; la narrativa se renderiza **solo** desde esos hechos. El endpoint
+`POST /analyze/audit` no usa código generado por el LLM y responde "no medible" cuando faltan `profit`, `discount`
+u orden. La UI muestra tarjetas de hallazgos verificados y el detalle del cálculo.
+
+**Alcance del cierre.** La garantía aplica a la ruta determinista `/analyze/audit`. El flujo `/analyze` con LLM
+sigue existiendo y no se declara verificado en esta fase; cualquier narrativa nueva que use cifras debe migrar al
+paquete de hechos o someterse a un fact-check numérico antes de mostrarse.
+
+**Evidencia de cierre (2026-10-20).**
+- `pytest tests/test_analysis.py tests/test_dashboard.py tests/test_insight_auditor.py tests/test_analysis_audit.py tests/test_sandbox_imports.py tests/test_validator_json.py -q` → **34 passed**. Incluye 13 tests del auditor (líneas vs órdenes, `LOSS-06`, umbral de descuento, brecha regional en pp, ausencia de `profit`/`discount`) y los tests del endpoint sin API key.
+- Superstore real `superstore_2019_2022.csv`: **9,994 líneas**, **5,009 órdenes**, **$2.30M** ventas, **$286.4K** profit, **12.5%** margen. Umbral **30.0%**; tramo ≥30%: **-$135.4K** = **47.3%** del profit neto y **15.8%** de ventas. Pérdidas: **1,871 líneas (18.7%)**, **1,022 órdenes con profit neto negativo (20.4%)** y **1,318 órdenes con al menos una línea negativa (26.3%)**. Central **7.9%** vs West **14.9%**; brecha de descuento ≥30%: **24.0 pp**. Clientes negativos: **155 / -$71.2K**; top 10: **42.5% / -$30.3K**. Margen **10.2% → 12.7% (+2.5 pp)**; último año **-0.7 pp vs 2021**.
+- `POST /api/v1/analyze/audit` con `data_source_id=18`, sin API key → **HTTP 200**, **27 hechos**, figura de **4 paneles**, ~6.4 s. `GET /api/v1/history/30` devuelve el mensaje con `audit` (27 hechos) y la figura.
+- UI en `localhost:3000`: acción **Auditoría** crea el chat, muestra el badge verificado, las 27 tarjetas con definición/evidencia y la figura; recargar el chat desde el historial conserva ambos. Verificado en DOM: "27 hallazgos calculados con pandas" y "24.0 pp (Central vs West)".
+- `npx tsc --noEmit` limpio. `npx vitest run` → **37 passed**.
+
+**Criterio de cierre.**
+- `tests/test_insight_auditor.py`: dataset sintético con valores conocidos (líneas vs órdenes, descuento, región,
+  cliente) y dataset sin `profit`/`discount` → no inventa métricas.
+- Prueba con el superstore real: los totales y el umbral de descuento coinciden con la auditoría manual.
+- `POST /analyze/audit` devuelve `insights`, `profile`, `definitions` y `figure` sin requerir API key.
+- `tsc --noEmit` limpio y la UI muestra las tarjetas.
+
+**Regla anti-repetición.** Todo número de una narrativa ejecutiva debe provenir de un hecho calculado con `id` y
+definición explícita. Si el dato no existe, se dice "no medible"; nunca se rellena con una cifra plausible.
+
+---
+
 ## 5. Fichas resumidas — MEDIOS y BAJOS
 
 **P-17** · Repo inflado. Sacar el `.mp4` (24 MB) y `debug_server.log` del índice; `.gitignore`. *Cierre:* `git ls-files` sin binarios ni logs.
@@ -508,12 +562,12 @@ respuestas HTTP deliberadas. Primero `except HTTPException: raise`.
 **P-24** · Tokens Tailwind inexistentes. *Cierre:* usar `--color-bi-*` reales; revisión visual del paso de configuración.
 **P-25** · A11y modal/toasts. *Cierre:* `role="dialog"`, `aria-modal`, ESC, focus trap, `aria-live`.
 **P-26** · "Guardar Cambios" no-op. *Cierre:* botón ejecuta el guardado real o se elimina.
-**P-27** · Fuentes guardadas no renderizadas. *Cierre:* la lista se pinta desde la API al cargar.
+**P-27 · CERRADO** · Fuentes guardadas no renderizadas. *Causa:* el primer `fetchSources` corría antes de que NextAuth cargara el token; la petición iba sin `Authorization` y en local caía en el usuario de pruebas (lista vacía), en producción daba 401. *Corrección:* el token se configura antes del fetch, no se consulta mientras `status === "loading"` y las fuentes guardadas pasan a ser las activas si no hay ninguna. *Evidencia:* runtime 2026-10-20, tras recargar la UI muestra `DATOS (1/10)` con `superstore_2019_2022.csv` (19 cols) y el chat permite preguntar. *Cierre:* la lista se pinta desde la API al cargar.
 **P-28** · Tests frontend no ejecutables. *Cierre:* `npm test` verde en CI.
 **P-29** · Sugerencias de chat en bucle/dataset inconsistente. *Cierre:* efecto sin `suggestions.length`; misma fuente que el análisis; cancelación.
 **P-30** · Force layout O(n²) + polling sin guard. *Cierre:* `requestAnimationFrame` se detiene al estabilizar; interval con `try/catch` y deps estables.
 **P-31** · Rate limit por IP de proxy. *Cierre:* `X-Forwarded-For` confiable/`ProxyHeadersMiddleware`; test de bypass.
-**P-32** · Sin timeouts LLM. *Cierre:* timeout+retry con backoff; error controlado al usuario.
+**P-32 · CERRADO** · Timeout por modelo + reservas + presupuesto total + 1 reintento; error controlado. Evidencia: `tests/test_providers.py::TestTimeout` y smoke real NVIDIA.
 **P-33** · SSRF en `/connect-sql`. *Cierre:* allowlist obligatoria en producción + bloqueo de IPs privadas tras resolver.
 **P-34** · Sesión sin `chat_id`. *Cierre:* archivo por `user+chat`; test de dos conversaciones simultáneas.
 **P-35** · `data_store` sin límite. *Cierre:* LRU/TTL o persistencia; test de crecimiento.
@@ -522,10 +576,14 @@ respuestas HTTP deliberadas. Primero `except HTTPException: raise`.
 **P-38** · `localStorage` sin validar y `any`. *Cierre:* validación de esquema y tipos reales.
 **P-39** · `pending` = "Fallo". *Cierre:* mapear estados correctamente.
 **P-40** · Tipografía 8-10 px y sidebar fija. *Cierre:* mínimo 12 px y responsive.
-**P-41** · 4 tests backend fallando. *Cierre:* suite 100% verde (o `xfail` justificado).
+**P-41** · 3 tests backend fallando (`test_exports.py` PDF/PPTX y `test_simulation.py`; el test de dashboard se corrigió el 2026-10-20). *Cierre:* suite 100% verde (o `xfail` justificado).
 **P-42** · Proveedor ignorado en simulación: `/simulation/suggestions` y `/simulation/ontology` usan siempre Gemini (`simulation.py:339,402` y `:563`) aunque el usuario elija otro proveedor → resultados de otro modelo, sin aviso. **No hay fuga de claves** (la clave de Gemini va contra la API de Gemini). *Verificado en runtime (2026-10-19):* `POST /simulation/suggestions` con `provider=openai` responde `"API key must be set when using the Google AI API"` (demostró que ejecutó Gemini) y `/simulation/ontology` devuelve `{"nodes":[],"edges":[]}` con HTTP 200 (fallo silencioso). *Cierre:* ambos endpoints resuelven el proveedor con `resolve_keys()` y despachan al vendor elegido (o rechazan explícitamente los no soportados); test que falle si vuelven a caer en Gemini. **Regla:** lo que el selector promete es lo que se ejecuta.
 **P-44 · CERRADO** · Login sin credenciales OAuth. Antes, con las variables ausentes, `signIn("google")` enviaba al usuario a Google con `client_id=undefined` → `401 invalid_client`. Ahora `/login` es un *server component* (`force-dynamic`) que exige **id y secreto**; si faltan, **no renderiza** el botón de Google y muestra un aviso ámbar con los nombres exactos de las variables, más el modo Invitado cuando está disponible. Si no hay ningún método, lo dice explícitamente (fail-closed). *Evidencia:* `npx tsc --noEmit` = 0 y el HTML SSR de `/login` contiene `googleEnabled:false`, el aviso y el botón de invitado, y **no** el botón de Google. *Causa raíz del caso reportado:* las líneas de `client/.env.local` seguían comentadas con los placeholders (`# AUTH_GOOGLE_ID=tu_client_id…`).
-**P-50 · CERRADO** · Diagnóstico de Storage opaco (reporte del usuario: "no me deja subir documentos"). Dos causas independientes, ambas invisibles desde la UI: (1) `SUPABASE_URL` local tenía un typo (`hhttps://…`), y `supabase==2.10.0` rechazaba la clave nueva `sb_secret_…` porque exigía un JWT — el cliente quedaba en `None` y `/upload` devolvía 503; (2) `/health` reportaba `not_configured` **aunque las dos variables estaban definidas**, y el log solo imprimía el tipo de excepción. *Corrección:* `supabase` 2.10.0 → **2.33.0** en `requirements.txt` (verificado que ya no valida la clave como JWT); `get_supabase_client()` registra un motivo estable (`invalid_url`, `invalid_api_key`, `client_init_failed`) sin credenciales y `probe_bucket()` lo publica en `/health`. *Evidencia:* 5 tests en `tests/test_storage_diagnostics.py` (incluye regresión de `sb_secret_…` y de JWT legacy, y que la clave no aparece en el log); suite **186 passed / 4 failed** (solo P-41); runtime `/health` → `connected:true` y `POST /upload` → **200 `persisted:true`**; verificado en el bucket el CSV cifrado (1.208 B) y la sesión (3.748 B). *Causa raíz del typo:* edición manual del `.env` local. *Pendiente de usuario:* Render sigue en `connected:false`; revisar `SUPABASE_URL`/`SUPABASE_SERVICE_ROLE_KEY` en su panel y redesplegar para que tome `requirements.txt`.
+**P-50 · CERRADO** · Diagnóstico de Storage opaco (reporte del usuario: "no me deja subir documentos"). Dos causas independientes, ambas invisibles desde la UI: (1) `SUPABASE_URL` local tenía un typo (`hhttps://…`), y `supabase==2.10.0` rechazaba la clave nueva `sb_secret_…` porque exigía un JWT — el cliente quedaba en `None` y `/upload` devolvía 503; (2) `/health` reportaba `not_configured` **aunque las dos variables estaban definidas**, y el log solo imprimía el tipo de excepción. *Corrección:* `supabase` 2.10.0 → **2.33.0** en `requirements.txt` (verificado que ya no valida la clave como JWT); `get_supabase_client()` registra un motivo estable (`invalid_url`, `invalid_api_key`, `client_init_failed`) sin credenciales y `probe_bucket()` lo publica en `/health`. *Evidencia:* 5 tests en `tests/test_storage_diagnostics.py` (incluye regresión de `sb_secret_…` y de JWT legacy, y que la clave no aparece en el log); suite **186 passed / 4 failed** (solo P-41); runtime `/health` → `connected:true` y `POST /upload` → **200 `persisted:true`**; verificado en el bucket el CSV cifrado (1.208 B) y la sesión (3.748 B). *Causa raíz del typo:* edición manual del `.env` local. *Verificado 2026-10-20:* Render responde `/health` → `connected:true` tras corregir `SUPABASE_URL`/clave y redesplegar.
+
+**P-32 · CERRADO** · Llamadas LLM sin timeout/reintento controlado. *Causa raíz del caso reportado (2026-10-20):* el usuario tenía NVIDIA; los modelos configurados estaban retirados (404/410) y uno de reserva (`deepseek-v4.1-flash`) aceptaba la petición y nunca respondía. Cada llamada esperaba 90 s y el bucle multi-agente hacía 4 intentos → 9-10 min. *Corrección:* modelos NVIDIA verificados contra la cuenta real (`nemotron-3-ultra-550b-a55b` principal; `gpt-oss-20b`, `lightning` y `super-vl` de reserva); `_openai_call` pasa al siguiente modelo ante timeout con presupuesto total (`timeout+30 s`); `max_tokens` por agente (800 planner, 8192 executor, 1536 validator, 2048 strategist); máximo 1 reintento; los errores técnicos empiezan por `⚠️` y Planner/Executor abortan en vez de ejecutar el texto del error como código. *Evidencia:* `tests/test_providers.py::TestTimeout` (2 tests) + smoke real con la clave NVIDIA: Planner 16,8 s · Executor 74 s · Validator 15 s · reintento · resultado válido con `fig` y narrativa en 210 s (local, con el límite de sandbox de 15 s; ahora es 30 s local y 45 s en Render, lo que reduce la probabilidad de reintento por timeout). *Nota:* `lightning` es un modelo de razonamiento y con prompts largos tarda minutos; por eso no es el principal.
+
+**P-51 · CERRADO** · El sandbox bloqueaba `time`. *Síntoma:* todo análisis terminaba en `ImportError: Librería 'time' bloqueada por seguridad` aunque el código fuera correcto; pandas/numpy lo importan en runtime. *Corrección:* `time` añadido a las tres allowlists del executor (`get_safe_environment`, sandbox SQL y limpieza); `os`, `subprocess`, etc. siguen bloqueados. *Evidencia:* `tests/test_sandbox_imports.py` (3 tests) + smoke real: Validator `success`, `FIG_CODE: si` y narrativa generada.
 
 ---
 
@@ -549,6 +607,9 @@ respuestas HTTP deliberadas. Primero `except HTTPException: raise`.
 | 2026-10-19 | **P-43 CERRADO**. `except HTTPException: raise` en los 4 endpoints de `simulation.py`, en `dashboard.auto_dashboard` (se tragaba un 404) y en `exports.py` (`export_chart`, `export_pptx`); logs con `safe_error_message`. 4 tests nuevos, incluido un **guardián AST de todos los routers**. Verificado en runtime: 500 "Error interno" → 400 con el mensaje del proveedor. Verificado además que `client/.env.local` ya estaba ignorado por `*.local`; se añadieron reglas explícitas `.env.local` / `.env.*.local` como defensa en profundidad. |
 | 2026-10-19 | **P-44 CERRADO**. `/login` pasa a *server component* que exige id y secreto de Google; sin ellos no se renderiza el botón (nada de `client_id=undefined`) y se muestra un aviso accionable + modo Invitado. Causa raíz del reporte: las variables seguían **comentadas** en `client/.env.local`. |
 | 2026-10-19 | **P-50 CERRADO** (reporte: "no me deja subir documentos"). `supabase` 2.10.0 → 2.33.0 (la vieja rechazaba claves `sb_secret_…`), typo `hhttps://` corregido en el `.env` local y diagnóstico de Storage honesto (`invalid_url`/`invalid_api_key`/`client_init_failed` en `/health`, sin credenciales). 5 tests nuevos; `/upload` real → 200 `persisted:true` y objetos verificados en el bucket. Producción sigue en `connected:false` hasta corregir las variables en Render y redesplegar. |
+| 2026-10-20 | **P-52 y P-53 CERRADOS**. P-52: `rename` sale de la lista AST; `DataFrame.rename()` es legítimo y `os.rename` sigue bloqueado porque `os` está prohibido. Evidencia: `tests/test_sandbox_imports.py::TestSandboxRename` (2 tests). P-53: `safe_parse_validator_json` limpia BOM/zero-width antes y después de bloques Markdown. Evidencia: `tests/test_validator_json.py` (4 tests). Ejecución conjunta: **9 passed**. |
+| 2026-10-20 | **P-54 registrado (ALTO)**. La narrativa LLM no verifica cifras; se detectaron mezclas de profit neto vs pérdida bruta y de líneas vs órdenes en el superstore. Fase 1 en implementación: auditor determinista + hechos con definición/evidencia + endpoint sin API key + tarjetas en UI. |
+| 2026-10-20 | **P-54 CERRADO (Fase 1)**. La ruta `/analyze/audit` calcula 27 hechos verificables y una narrativa derivada solo de ellos; UI con tarjetas y figura; historial y filtros preservan la foto estática. Evidencia: **34 tests backend**, **37 tests frontend**, `tsc --noEmit` limpio, superstore real con las cifras exactas (30% / -$135.4K / 1,871-1,022-1,318 / 24.0 pp) y verificación UI en `localhost:3000`. El flujo `/analyze` con LLM no se declara verificado; Fase 2 pendiente. |
 
 ---
 

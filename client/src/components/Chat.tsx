@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useSession } from "next-auth/react";
 import { Bot, BarChart3, Database, TrendingUp, Search } from "lucide-react";
-import { analyzeData, pinToDashboard, exportChartAsPng, generateAutoDashboard, suggestQuestions, cleanData } from "@/lib/api";
+import { analyzeData, pinToDashboard, exportChartAsPng, generateAutoDashboard, suggestQuestions, cleanData, runAudit } from "@/lib/api";
 import { useDashboard, Message } from "@/context/DashboardContext";
 import { useToast } from "@/context/ToastContext";
 import { ReportBuilder } from "./ReportBuilder";
@@ -39,6 +39,7 @@ export function Chat() {
     const [loading, setLoading] = useState(false);
     const [loadingMessage, setLoadingMessage] = useState("");
     const [cleaningData, setCleaningData] = useState(false);
+    const [loadingAudit, setLoadingAudit] = useState(false);
     const [loadingAutoDash, setLoadingAutoDash] = useState(false);
     const [reportBuilderOpen, setReportBuilderOpen] = useState(false);
     const scrollRef = useRef<HTMLDivElement>(null);
@@ -117,6 +118,34 @@ export function Chat() {
             }]);
         } finally {
             setLoading(false);
+            setLoadingMessage("");
+        }
+    };
+
+    const handleAudit = async () => {
+        if (loadingAudit) return;
+        if (dataSources.length === 0) {
+            addToast("Por favor, sube al menos una fuente de datos primero.", "warning");
+            return;
+        }
+        setLoadingAudit(true);
+        setLoadingMessage("🔎 Auditando datos con pandas...");
+        try {
+            const res = await runAudit(activeChatId || undefined, dataSources[0].id);
+            const assistantMsg: Message = {
+                id: res.message_id,
+                role: "assistant",
+                content: res.analysis || "Auditoría completada.",
+                fig: res.figure,
+                audit: res.audit,
+            };
+            setMessages((prev) => [...prev, assistantMsg]);
+            if (!activeChatId && res.chat_id) setActiveChatId(res.chat_id);
+        } catch (error) {
+            const err = error as Error;
+            addToast("Error en la auditoría: " + (err.message || "Desconocido"), "error");
+        } finally {
+            setLoadingAudit(false);
             setLoadingMessage("");
         }
     };
@@ -203,6 +232,8 @@ export function Chat() {
                 dataSources={dataSources}
                 cleaningData={cleaningData}
                 handleCleanData={handleCleanData}
+                loadingAudit={loadingAudit}
+                handleAudit={handleAudit}
                 loadingAutoDash={loadingAutoDash}
                 handleAutoDash={handleAutoDash}
                 messages={messages}

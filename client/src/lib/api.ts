@@ -1,4 +1,6 @@
-﻿// Normaliza la URL base del backend: quita barras finales y evita duplicar
+﻿import type { AuditResponse } from "@/types/shared";
+
+// Normaliza la URL base del backend: quita barras finales y evita duplicar
 // "/api/v1" si la variable de entorno ya lo incluye (error frecuente al
 // configurar NEXT_PUBLIC_API_URL en Vercel/Render: puntear "https://host/api/v1").
 const RAW_API_URL = (process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000").replace(/\/+$/, "");
@@ -70,6 +72,18 @@ export async function analyzeData(query: string, apiKey: string, userId: string,
     body: formData,
   });
   return handleResponse(response);
+}
+
+export async function runAudit(chatId?: number, dataSourceId?: number): Promise<AuditResponse> {
+  const formData = new FormData();
+  if (chatId) formData.append("chat_id", chatId.toString());
+  if (dataSourceId) formData.append("data_source_id", dataSourceId.toString());
+
+  const response = await securedFetch(`${API_URL}/analyze/audit`, {
+    method: "POST",
+    body: formData,
+  });
+  return handleResponse(response) as Promise<AuditResponse>;
 }
 
 export async function getHistory(userId: string) {

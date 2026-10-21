@@ -14,11 +14,64 @@ export interface AutoDashItem {
     error?: string;
 }
 
+export type AuditSeverity = 'alta' | 'media' | 'baja' | 'info';
+export type AuditDirection = 'positive' | 'negative' | 'neutral';
+
+export interface AuditFact {
+    id: string;
+    title: string;
+    value: number;
+    display_value: string;
+    unit: string;
+    category: string;
+    severity: AuditSeverity;
+    direction: AuditDirection;
+    definition: string;
+    evidence: string;
+    sample_size: number;
+}
+
+export interface AuditProfile {
+    source_name: string;
+    rows: number;
+    columns: number;
+    column_names: string[];
+    orders: number | null;
+    date_start: string | null;
+    date_end: string | null;
+    grain: string;
+    roles: Record<string, string | null>;
+    quality: string[];
+}
+
+export interface AuditDefinition {
+    term: string;
+    definition: string;
+}
+
+export interface AuditPayload {
+    insights: AuditFact[];
+    profile: AuditProfile;
+    definitions: AuditDefinition[];
+    methodology: string[];
+    source_name: string | null;
+    generated_at: string;
+}
+
+export interface AuditResponse {
+    chat_id: number;
+    message_id: number;
+    analysis: string;
+    figure?: unknown;
+    audit: AuditPayload;
+}
+
 export interface ChatMessage {
     id?: number;
     role: MessageRole;
     content: string;
     fig?: unknown;
+    audit?: AuditPayload;
     dashboardData?: {
         charts: AutoDashItem[];
         metrics: Metric[];

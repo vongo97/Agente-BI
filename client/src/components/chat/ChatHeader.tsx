@@ -1,4 +1,4 @@
-import { Menu, Bot, Sparkles, LayoutDashboard, FileText, FileDown, Plus, Loader2 } from "lucide-react";
+import { Menu, Bot, Sparkles, LayoutDashboard, FileText, FileDown, Plus, Loader2, ShieldCheck } from "lucide-react";
 import { exportPdf } from "@/lib/api";
 import { useState } from "react";
 import { ChatMessage, DataSource } from "@/types/shared";
@@ -9,6 +9,8 @@ interface ChatHeaderProps {
     dataSources: DataSource[];
     cleaningData: boolean;
     handleCleanData: () => void;
+    loadingAudit: boolean;
+    handleAudit: () => void;
     loadingAutoDash: boolean;
     handleAutoDash: () => void;
     messages: ChatMessage[];
@@ -48,6 +50,8 @@ export function ChatHeader({
     dataSources,
     cleaningData,
     handleCleanData,
+    loadingAudit,
+    handleAudit,
     loadingAutoDash,
     handleAutoDash,
     messages,
@@ -115,6 +119,14 @@ export function ChatHeader({
             <div className="flex items-center gap-1">
                 {dataSources.length > 0 && (
                     <>
+                        <ToolbarButton
+                            onClick={handleAudit}
+                            disabled={loadingAudit}
+                            title="Auditoría verificada — calcula hallazgos con pandas, sin LLM ni API key"
+                            icon={loadingAudit ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ShieldCheck className="w-3.5 h-3.5" />}
+                            label="Auditoría"
+                            highlight
+                        />
                         <ToolbarButton
                             onClick={handleCleanData}
                             disabled={cleaningData}

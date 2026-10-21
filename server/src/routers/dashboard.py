@@ -7,6 +7,7 @@ import logging
 from src.database import get_db, Chat, Message, DashboardItem
 from src.engine.bi_analyst import generate_auto_dashboard
 from src.engine.executor import execute_analysis
+from src.engine.insight_auditor import AUDIT_MARKER
 from src.utils.common import check_authorization, get_user_data, get_authenticated_user
 from src.utils.limiter import limiter
 import pandas as pd
@@ -31,11 +32,18 @@ async def get_chat_details(chat_id: int, db: Session = Depends(get_db)):
     
     messages = []
     for m in chat.messages:
+        audit_payload = None
+        if m.analysis_code and m.analysis_code.startswith(AUDIT_MARKER):
+            try:
+                audit_payload = json.loads(m.analysis_code[len(AUDIT_MARKER):])
+            except (TypeError, ValueError):
+                logger.warning("Auditoría persistida con payload inválido en mensaje %s", m.id)
         messages.append({
             "id": m.id,
             "role": m.role,
             "content": m.content,
-            "fig": json.loads(m.figure_json) if m.figure_json else None
+            "fig": json.loads(m.figure_json) if m.figure_json else None,
+            "audit": audit_payload,
         })
     
     source_info = None
@@ -260,6 +268,15 @@ async def filter_dashboard(
         
         for item in items:
             if not item.message or not item.message.analysis_code:
+                continue
+            if item.message.analysis_code.startswith(AUDIT_MARKER):
+                # La auditoría es una foto determinista del dataset; no se
+                # re-ejecuta con filtros porque los hechos quedarían fuera de
+                # contexto. Se conserva la figura original.
+                results.append({
+                    "id": item.id,
+                    "fig": json.loads(item.message.figure_json) if item.message.figure_json else None
+                })
                 continue
             
             try:

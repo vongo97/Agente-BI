@@ -1,9 +1,10 @@
-import { Bot, User, ShieldAlert, Download, Pin } from "lucide-react";
+import { Bot, User, ShieldAlert, ShieldCheck, Download, Pin } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import dynamic from "next/dynamic";
 import { Loader2 } from "lucide-react";
 import AutoDashGrid from "../AutoDashGrid";
+import { InsightCards } from "./InsightCards";
 import { Message } from "@/context/DashboardContext";
 
 const Plot = dynamic(() => import("react-plotly.js"), {
@@ -60,7 +61,7 @@ const isAnomaly = (content: string) =>
 export function MessageItem({ msg, userId, handleExportPng, handlePin, handleSendAsQuery }: MessageItemProps) {
     const isUser = msg.role === "user";
     const isAssistant = msg.role === "assistant";
-    const anomaly = isAssistant && isAnomaly(msg.content);
+    const anomaly = isAssistant && !msg.audit && isAnomaly(msg.content);
 
     return (
         <div className={`flex gap-3 animate-in slide-in-from-bottom-2 duration-300 ${isUser ? "justify-end" : "items-start"}`}>
@@ -84,6 +85,16 @@ export function MessageItem({ msg, userId, handleExportPng, handlePin, handleSen
                         }
                     `}
                 >
+                    {/* Verified audit badge */}
+                    {msg.audit && (
+                        <div className="flex items-center gap-1.5 mb-2 text-[var(--bi-teal)]">
+                            <ShieldCheck className="w-3.5 h-3.5 flex-shrink-0" />
+                            <span className="text-[10px] font-semibold uppercase tracking-wider">
+                                Auditoría verificada · sin LLM
+                            </span>
+                        </div>
+                    )}
+
                     {/* Anomaly badge */}
                     {anomaly && (
                         <div className="flex items-center gap-1.5 mb-2 text-[var(--bi-amber)]">
@@ -100,7 +111,7 @@ export function MessageItem({ msg, userId, handleExportPng, handlePin, handleSen
                         </ReactMarkdown>
                     </div>
 
-                    {isAssistant && handleSendAsQuery && (
+                    {isAssistant && !msg.audit && handleSendAsQuery && (
                         <div className="flex flex-wrap gap-2 mt-3 pt-3 border-t border-[var(--bi-border)]">
                             {getCTAs(msg.content).map((cta, idx) => (
                                 <button
@@ -114,6 +125,10 @@ export function MessageItem({ msg, userId, handleExportPng, handlePin, handleSen
                         </div>
                     )}
                 </div>
+
+                {isAssistant && msg.audit && (
+                    <InsightCards audit={msg.audit} />
+                )}
 
                 {/* Chart */}
                 {(() => {

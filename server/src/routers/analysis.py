@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from typing import Optional
 from src.database import get_db, Chat, Message, UserConfig, DataSource
 from src.engine.bi_analyst import analyze_data, execute_analysis, suggest_questions, validate_data_quality
+from src.engine.insight_auditor import AUDIT_MARKER, AuditError, build_audit
 from src.utils.common import check_authorization, get_user_data, get_authenticated_user, ensure_user_session
 from src.utils.security import decrypt_key
 
@@ -194,6 +195,146 @@ async def analyze(
         else:
             logger.error("ERROR 500 /analyze [%s]: %s", type(e).__name__, clean_msg)
         raise HTTPException(status_code=500, detail="Error interno del servidor al procesar el análisis de datos.")
+
+@router.post("/analyze/audit")
+@limiter.limit("10/minute")
+@limiter.limit("60/hour")
+def analyze_audit(
+    request: Request,
+    chat_id: Optional[int] = Form(None),
+    data_source_id: Optional[int] = Form(None),
+    db: Session = Depends(get_db)
+):
+    """Auditoría determinista y verificable (Fase 1 de P-54).
+
+    No usa LLM ni API key: calcula hechos con pandas, los expone con
+    definición/evidencia y renderiza una narrativa a partir de ellos.
+    """
+    authenticated_user = get_authenticated_user()
+    check_authorization(authenticated_user)
+
+    db_chat = None
+    if chat_id:
+        db_chat = db.query(Chat).filter(
+            Chat.id == chat_id, Chat.user_id == authenticated_user
+        ).first()
+        if not db_chat:
+            raise HTTPException(status_code=404, detail="Recurso no encontrado o sin acceso")
+        if not data_source_id and db_chat.data_source_id:
+            data_source_id = db_chat.data_source_id
+
+    source_obj = None
+    if data_source_id:
+        source_obj = db.query(DataSource).filter(
+            DataSource.id == data_source_id, DataSource.user_id == authenticated_user
+        ).first()
+        if not source_obj:
+            raise HTTPException(status_code=404, detail="Recurso no encontrado o sin acceso")
+
+    try:
+        session_data = get_user_data(authenticated_user, chat_id)
+        if session_data is None:
+            session_data = ensure_user_session(authenticated_user, db, chat_id)
+        if not session_data:
+            raise HTTPException(
+                status_code=400,
+                detail="No hay datos cargados para auditar. Por favor selecciona una fuente de datos."
+            )
+        pool_ids = set()
+        if session_data.get("source_id") is not None:
+            pool_ids.add(session_data.get("source_id"))
+        for source_id in session_data.get("sources", []) or []:
+            pool_ids.add(source_id)
+        if data_source_id and pool_ids and data_source_id not in pool_ids:
+            raise HTTPException(
+                status_code=400,
+                detail="La fuente solicitada no está cargada en esta conversación. Vuelve a seleccionarla antes de auditar."
+            )
+        if session_data.get("type") != "file":
+            raise HTTPException(
+                status_code=400,
+                detail="La auditoría verificada Fase 1 solo está disponible para archivos CSV/Excel. "
+                       "El modo SQL sigue pendiente (P-03)."
+            )
+
+        is_valid, reason = validate_data_quality(session_data.get("data"))
+        if not is_valid:
+            raise HTTPException(status_code=400, detail=reason)
+
+        primary_source_name = None
+        source_name = None
+        if source_obj:
+            source_name = source_obj.name
+            primary_source_name = "".join(
+                [c if c.isalnum() else "_" for c in source_obj.name.split('.')[0]]
+            )
+        elif db_chat and db_chat.data_source:
+            source_name = db_chat.data_source.name
+            primary_source_name = "".join(
+                [c if c.isalnum() else "_" for c in source_name.split('.')[0]]
+            )
+
+        audit = build_audit(
+            session_data.get("data"),
+            primary_source_name=primary_source_name,
+            source_name=source_name,
+        )
+
+        figure = audit.get("figure")
+        fig_json = json.loads(figure.to_json()) if figure is not None and hasattr(figure, "to_json") else None
+        payload = {
+            "insights": audit.get("insights", []),
+            "profile": audit.get("profile", {}),
+            "definitions": audit.get("definitions", []),
+            "methodology": audit.get("methodology", []),
+            "source_name": audit.get("source_name"),
+            "generated_at": audit.get("generated_at"),
+        }
+
+        if db_chat is None:
+            title_source = (audit.get("source_name") or "dataset").strip()
+            db_chat = Chat(
+                user_id=authenticated_user,
+                title=f"Auditoría verificada: {title_source[:55]}",
+                data_source_id=data_source_id,
+            )
+            db.add(db_chat)
+            db.commit()
+            db.refresh(db_chat)
+            from src.utils.common import promote_active_session
+            promote_active_session(authenticated_user, db_chat.id)
+
+        from src.utils.common import SafeJSONEncoder, json_serializable
+        assistant_msg = Message(
+            chat_id=db_chat.id,
+            role="assistant",
+            content=audit.get("analysis") or "Auditoría completada.",
+            figure_json=json.dumps(fig_json, cls=SafeJSONEncoder) if fig_json else None,
+            analysis_code=AUDIT_MARKER + json.dumps(payload, cls=SafeJSONEncoder),
+        )
+        db.add(assistant_msg)
+        db.commit()
+        db.refresh(assistant_msg)
+
+        return json_serializable({
+            "chat_id": db_chat.id,
+            "message_id": assistant_msg.id,
+            "analysis": audit.get("analysis"),
+            "figure": fig_json,
+            "audit": payload,
+        })
+    except HTTPException:
+        db.rollback()
+        raise
+    except AuditError as e:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        db.rollback()
+        from src.utils.logging_config import safe_error_message
+        logger.error("ERROR /analyze/audit [%s]: %s", type(e).__name__, safe_error_message(e))
+        raise HTTPException(status_code=500, detail="Error interno al generar la auditoría verificada.")
+
 
 @router.post("/suggest-questions")
 @limiter.limit("10/minute")

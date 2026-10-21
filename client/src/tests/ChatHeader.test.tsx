@@ -2,12 +2,18 @@ import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { ChatHeader } from '@/components/chat/ChatHeader';
 
+vi.mock('@/context/ToastContext', () => ({
+  useToast: () => ({ addToast: vi.fn() }),
+}));
+
 describe('ChatHeader', () => {
   const defaultProps = {
     setSidebarOpen: vi.fn(),
     dataSources: [],
     cleaningData: false,
     handleCleanData: vi.fn(),
+    loadingAudit: false,
+    handleAudit: vi.fn(),
     loadingAutoDash: false,
     handleAutoDash: vi.fn(),
     messages: [],
@@ -25,7 +31,7 @@ describe('ChatHeader', () => {
 
   it('renderiza el badge del proveedor Gemini', () => {
     render(<ChatHeader {...defaultProps} />);
-    expect(screen.getByText('Gemini 2.5')).toBeInTheDocument();
+    expect(screen.getByText('Gemini')).toBeInTheDocument();
   });
 
   it('renderiza botón de nuevo chat', () => {
@@ -40,6 +46,7 @@ describe('ChatHeader', () => {
         dataSources={[{ filename: 'test.csv', columns: ['a', 'b'] }]}
       />
     );
+    expect(screen.getByTitle('Auditoría verificada — calcula hallazgos con pandas, sin LLM ni API key')).toBeInTheDocument();
     expect(screen.getByTitle('Magic Clean — limpia y normaliza el dataset con IA')).toBeInTheDocument();
     expect(screen.getByTitle('Auto-Dashboard — genera panel automático con métricas clave')).toBeInTheDocument();
   });
