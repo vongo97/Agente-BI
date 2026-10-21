@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine, Column, Integer, String, Text, ForeignKey, DateTime, Float, Boolean, text
+from sqlalchemy import create_engine, Column, Integer, String, Text, ForeignKey, DateTime, Float, Boolean, text, inspect
 from sqlalchemy.orm import sessionmaker, relationship, DeclarativeBase
 from datetime import datetime
 import os
@@ -201,33 +201,58 @@ class SimulationMessage(Base):
     simulation = relationship("Simulation", back_populates="messages")
     agent = relationship("SimulationAgent", back_populates="messages")
 
+def _ensure_columns(table: str, columns: list[tuple[str, str]]) -> None:
+    """Agrega columnas faltantes sin abortar las migraciones siguientes.
+
+    Un ``ALTER TABLE`` que falla porque la columna ya existe deja la
+    transacción abortada en PostgreSQL; si se reutiliza la misma conexión,
+    las columnas posteriores nunca se agregan. Por eso se inspecciona el
+    esquema y cada ALTER se ejecuta en su propia transacción.
+    """
+    try:
+        existing = {column["name"] for column in inspect(engine).get_columns(table)}
+    except Exception as exc:
+        logger.warning(
+            "No se pudo inspeccionar la tabla %s: %s",
+            table,
+            sanitize_db_error(str(exc)),
+        )
+        return
+
+    for column, column_type in columns:
+        if column in existing:
+            continue
+        try:
+            with engine.begin() as conn:
+                conn.execute(
+                    text(f"ALTER TABLE {table} ADD COLUMN {column} {column_type};")
+                )
+            logger.info("Migrada DB: columna %s añadida a %s.", column, table)
+        except Exception as exc:
+            logger.warning(
+                "No se pudo migrar %s.%s: %s",
+                table,
+                column,
+                sanitize_db_error(str(exc)),
+            )
+
+
 def init_db():
-    """
-    Inicializa las tablas. Las migraciones de columnas ahora se delegan a Alembic.
-    """
+    """Crea las tablas y agrega las columnas nuevas de forma idempotente."""
     try:
         Base.metadata.create_all(bind=engine)
         logger.info("Tablas sincronizadas con Base.metadata.create_all")
-        # Migración rápida en caliente para agregar nuevas columnas si no existen
-        with engine.connect() as conn:
-            # Migración: columna is_encrypted en data_sources
-            try:
-                conn.execute(text("ALTER TABLE data_sources ADD COLUMN is_encrypted BOOLEAN DEFAULT FALSE;"))
-                conn.commit()
-                logger.info("Migrada DB: columna is_encrypted añadida a data_sources.")
-            except Exception:
-                pass
 
-            # Migración: columna size_bytes en data_sources (cuotas sin depender del disco local)
-            try:
-                conn.execute(text("ALTER TABLE data_sources ADD COLUMN size_bytes INTEGER;"))
-                conn.commit()
-                logger.info("Migrada DB: columna size_bytes añadida a data_sources.")
-            except Exception:
-                pass
-
-            # Migración: columnas de user_configs
-            for col, col_type in [
+        _ensure_columns(
+            "data_sources",
+            [
+                ("is_encrypted", "BOOLEAN DEFAULT FALSE"),
+                ("size_bytes", "INTEGER"),
+            ],
+        )
+        _ensure_columns(
+            "user_configs",
+            [
                 ("groq_key", "VARCHAR"),
                 ("openai_key", "VARCHAR"),
                 ("anthropic_key", "VARCHAR"),
@@ -246,14 +271,9 @@ def init_db():
                 ("report_footer_text", "VARCHAR"),
                 ("pdf_orientation", "VARCHAR"),
                 ("pdf_include_data_table", "BOOLEAN"),
-                ("chart_theme", "VARCHAR")
-            ]:
-                try:
-                    conn.execute(text(f"ALTER TABLE user_configs ADD COLUMN {col} {col_type};"))
-                    conn.commit()
-                    logger.info(f"Migrada DB: columna {col} añadida a user_configs.")
-                except Exception:
-                    pass
+                ("chart_theme", "VARCHAR"),
+            ],
+        )
     except Exception as e:
         logger.error("ERROR en init_db: %s", sanitize_db_error(str(e)))
 

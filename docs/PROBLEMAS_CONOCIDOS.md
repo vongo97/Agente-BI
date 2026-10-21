@@ -110,7 +110,7 @@ registrado aquí incluye:
 | **P-35** | Memoria | `data_store` global en memoria sin límite ni TTL | `server/src/utils/common.py` |
 | **P-44** | Frontend | ✅ CERRADO — Sin cliente OAuth la UI redirigía a Google con `client_id=undefined` ("OAuth client was not found") en vez de avisar | `client/src/app/login/page.tsx` + `LoginForm.tsx` |
 | **P-45** | Frontend | Error de hidratación en la landing (atributos SSR ≠ cliente) al cargar | `client/src/app/page.tsx` · consola del navegador |
-| **P-47** | Dev/BD | `migrate_db.py` no cubre el drift real y revienta en Windows (`UnicodeEncodeError`); `create_all` no altera tablas → la app local da 500 por columnas faltantes | `server/src/utils/migrate_db.py:20-36` · runtime `/user-config` |
+| **P-47** | Dev/BD | 🟡 PARCIAL — `migrate_db.py` legado sigue sin cubrir el drift ni Windows; `init_db` ya inspecciona el esquema y migra cada columna en su propia transacción (el fallo de `is_encrypted` ya no bloquea `size_bytes`) | `server/src/database.py:204-280` · `tests/test_database_migrations.py` |
 | **P-48** | API/BI | `/dashboard/filter` responde `200 success` con columnas inexistentes y no filtra en modo SQL (TODO) | `server/src/routers/dashboard.py:217-250` · runtime |
 | **P-49** | Dev | No hay modo local sin nube: subir archivos exige Supabase válido (503 si no) y el arranque no lo avisa | `server/src/routers/data.py:212-241` · runtime `/upload` |
 | **P-50** | Infra/Dev | ✅ CERRADO — Con credenciales presentes pero inválidas, `/health` decía `not_configured` y el log solo `SupabaseException`; un typo en `SUPABASE_URL` (`hhttps://…`) dejaba `/upload` en 503 sin causa visible | `server/src/services/storage_service.py:34-100` · runtime `/upload` |
