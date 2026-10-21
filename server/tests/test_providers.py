@@ -215,6 +215,49 @@ class TestModeloRetirado:
         assert "retir" in msg.lower() or "disponible" in msg.lower()
 
 
+class TestTimeout:
+    """Un modelo que acepta la petición y nunca responde no puede cortar la cadena
+    de reservas: se pasa al siguiente modelo con el presupuesto restante."""
+
+    def test_timeout_cambia_al_siguiente_modelo(self, monkeypatch):
+        vistos = []
+
+        class Resp200:
+            status_code = 200
+
+            def raise_for_status(self):
+                return None
+
+            def json(self):
+                return {"choices": [{"message": {"content": "ok"}}]}
+
+        def fake_post(url, headers=None, json=None, timeout=None):
+            vistos.append(json["model"])
+            if len(vistos) == 1:
+                raise providers.requests.Timeout("sin respuesta")
+            return Resp200()
+
+        monkeypatch.setattr(providers.requests, "post", fake_post)
+        texto = providers.chat("nvidia", "nvapi-" + "a" * 60, "hola")
+        assert texto == "ok"
+        assert vistos[0] == providers.get_meta("nvidia")["model"]
+        assert len(vistos) == 2, "tras un timeout debe probar el modelo de reserva"
+
+    def test_error_tecnico_se_marca_para_abortar(self, monkeypatch):
+        """Regresión del bucle de 4 intentos: Planner/Executor solo abortan si el
+        texto contiene ⚠️. Un 'Error técnico' sin marca se ejecutaba como código."""
+        import requests
+        from src.engine import bi_analyst
+
+        def boom(*args, **kwargs):
+            raise requests.Timeout("sin respuesta")
+
+        monkeypatch.setattr("src.engine.providers.chat", boom)
+        texto = bi_analyst.generate_ai_content("hola", "nvapi-" + "a" * 60, "nvidia")
+        assert texto.startswith("⚠️")
+        assert "Error técnico" in texto
+
+
 class TestListModels:
     """El desplegable de Ajustes se alimenta de aquí, para no mantener a mano una
     lista de modelos que queda obsoleta cuando el proveedor retira modelos."""
@@ -275,8 +318,8 @@ class TestModeloElegidoPorUsuario:
             self.provider_models = raw
 
     def test_usa_el_modelo_elegido(self):
-        cfg = self.Cfg('{"nvidia": "moonshotai/kimi-k3"}')
-        assert providers.get_model("nvidia", cfg) == "moonshotai/kimi-k3"
+        cfg = self.Cfg('{"nvidia": "nvidia/nemotron-3.5-lightning-30b-a3b"}')
+        assert providers.get_model("nvidia", cfg) == "nvidia/nemotron-3.5-lightning-30b-a3b"
 
     def test_ignora_json_corrupto(self):
         assert providers.get_model("nvidia", self.Cfg("no es json")) is None

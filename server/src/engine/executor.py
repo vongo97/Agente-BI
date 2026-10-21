@@ -26,7 +26,7 @@ execution_semaphore = asyncio.Semaphore(2)
 # LÍMITES DE RECURSOS DEL SANDBOX
 # ──────────────────────────────────────────────────────────────────────────────
 _SANDBOX_MEMORY_MB = 384          # Límite de RAM por proceso hijo (MB) — 256 era insuficiente para pandas+plotly en Render
-_SANDBOX_TIMEOUT_S  = 15          # Timeout base de pared (segundos) — 10 era insuficiente por cold-start de imports
+_SANDBOX_TIMEOUT_S  = 30          # Timeout base de pared (segundos) — 15 obligaba a reintentar código válido pero con imports fríos
 _SANDBOX_MAX_INPUT_BYTES = 50 * 1024 * 1024   # 50 MB máximo para pickle de entrada
 _IS_LINUX = platform.system() == "Linux"
 
@@ -160,7 +160,10 @@ def validate_code_safety(code):
         'read_sql', 'read_sql_query', 'read_sql_table',
         'to_pickle', 'to_excel', 'to_feather', 'to_hdf', 'to_parquet', 'to_sql',
         'open', 'getenv', 'environ', 'system', 'popen', 'listdir', 'walk',
-        'remove', 'rmdir', 'unlink', 'rename', 'chmod', 'kill', 'fork', 'spawn',
+        # `rename` NO se bloquea: DataFrame.rename/Series.rename son operaciones
+        # legítimas de pandas. `os.rename` sigue inaccesible porque `os` está
+        # prohibido tanto en el AST como en el import restringido.
+        'remove', 'rmdir', 'unlink', 'chmod', 'kill', 'fork', 'spawn',
         'ExcelFile', 'ExcelWriter', 'HDFStore',
         'NamedTemporaryFile', 'TemporaryFile', 'mkstemp', 'mkdtemp',
     }
@@ -282,7 +285,7 @@ def get_safe_environment(var_name=None, context_obj=None):
     def restricted_import(name, globals=None, locals=None, fromlist=(), level=0):
         allowed_packages = {
             'pandas', 'pd', 'numpy', 'np', 'plotly', 'px', 'json', 're',
-            'math', 'datetime', 'collections', 'itertools', 'six', 'pytz',
+            'math', 'time', 'datetime', 'collections', 'itertools', 'six', 'pytz',
             'scipy', 'statsmodels', 'matplotlib', 'plt', 'sklearn', 'stats',
             'textwrap', 'functools', 'operator',
             'decimal', 'fractions', 'random', 'string', 'copy',
@@ -456,7 +459,7 @@ class SmartDataContext(dict):
 def restricted_import(name, globals=None, locals=None, fromlist=(), level=0):
     allowed_packages = {{
         'pandas', 'pd', 'numpy', 'np', 'plotly', 'px', 'json', 're',
-        'math', 'datetime', 'collections', 'itertools', 'six', 'pytz',
+        'math', 'time', 'datetime', 'collections', 'itertools', 'six', 'pytz',
         'scipy', 'statsmodels', 'matplotlib', 'plt', 'sklearn', 'stats',
         'textwrap', 'functools', 'operator',
         'decimal', 'fractions', 'random', 'string', 'copy',
@@ -761,7 +764,7 @@ except Exception:
 def restricted_import(name, globals=None, locals=None, fromlist=(), level=0):
     allowed_packages = {{
         'pandas', 'pd', 'numpy', 'np', 'json', 're',
-        'math', 'datetime', 'collections', 'itertools', 'copy'
+        'math', 'time', 'datetime', 'collections', 'itertools', 'copy'
     }}
     root_package = name.split('.')[0]
     if root_package in allowed_packages:

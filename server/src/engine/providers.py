@@ -16,6 +16,7 @@ Aquí se centraliza:
 import json
 import logging
 import re
+import time
 from contextvars import ContextVar
 from typing import Optional, Tuple
 
@@ -99,14 +100,16 @@ PROVIDERS = {
         "label": "NVIDIA NIM",
         "style": "openai",
         "base_url": "https://integrate.api.nvidia.com/v1",
-        "model": "nvidia/nemotron-3-super-120b-a12b",
+        "model": "nvidia/nemotron-3-ultra-550b-a55b",
         # El catalogo de NVIDIA cambia sin avisar: cuando retiran un modelo el
         # endpoint responde 410 Gone. En vez de romper, se prueban alternativas.
+        # Verificados el 2026-10-20 contra la cuenta real (200 en todos):
+        # ultra responde el prompt del Executor en ~14 s con codigo valido.
+        # lightning es un modelo de razonamiento: tarda mucho mas con prompts largos.
         "model_fallbacks": [
-            "nvidia/nemotron-4-340b-instruct",
-            "moonshotai/kimi-k3",
-            "deepseek-ai/deepseek-v4.1-flash",
             "openai/gpt-oss-20b",
+            "nvidia/nemotron-3.5-lightning-30b-a3b",
+            "nvidia/nemotron-3.5-super-vl-120b-a12b",
         ],
         "prefixes": ("nvapi-",),
         "min_len": 40,
@@ -217,14 +220,24 @@ def get_model(provider: str, user_config=None) -> Optional[str]:
     return chosen if chosen in disponibles else None
 
 
-def _openai_call(provider: str, key: str, payload_extra: dict, timeout: int, model_override: Optional[str] = None):
+def _openai_call(provider: str, key: str, payload_extra: dict, timeout: int, model_override: Optional[str] = None,
+                 total_timeout: Optional[int] = None):
     """POST a /chat/completions probando el modelo principal y, si el proveedor lo
-    ha retirado (410/404), los de reserva. Devuelve (respuesta, modelo_usado)."""
+    ha retirado (410/404) o no responde a tiempo, los de reserva.
+
+    `total_timeout` acota el tiempo de TODA la cadena: un modelo colgado no puede
+    consumir el presupuesto de los siguientes. Devuelve (respuesta, modelo_usado).
+    """
     meta = PROVIDERS[provider]
     principal = model_override or meta["model"]
     modelos = [principal] + [m for m in meta.get("model_fallbacks", []) if m != principal]
-    ultimo = None
+    deadline = time.monotonic() + (total_timeout if total_timeout is not None else timeout + 30)
+    ultimo_timeout: Optional[requests.Timeout] = None
     for model in modelos:
+        restante = deadline - time.monotonic()
+        if restante <= 1:
+            logger.warning("%s: sin tiempo para probar '%s'", provider, model)
+            break
         headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
         if provider == "openrouter":
             headers["HTTP-Referer"] = "https://agente-bi.onrender.com"
@@ -234,16 +247,21 @@ def _openai_call(provider: str, key: str, payload_extra: dict, timeout: int, mod
                 f"{meta['base_url']}/chat/completions",
                 headers=headers,
                 json={"model": model, **payload_extra},
-                timeout=timeout,
+                timeout=min(timeout, restante),
             )
+        except requests.Timeout as exc:
+            logger.warning("%s: el modelo '%s' no respondio a tiempo, probando alternativa", provider, model)
+            ultimo_timeout = exc
+            continue
         except requests.RequestException:
             raise
         if resp.status_code in (410, 404) and model != modelos[-1]:
             logger.info("%s: el modelo '%s' ya no esta disponible, probando alternativa", provider, model)
-            ultimo = resp
             continue
         return resp, model
-    raise ultimo if ultimo is not None else None
+    if ultimo_timeout is not None:
+        raise ultimo_timeout
+    raise requests.Timeout(f"{provider}: ningun modelo respondio dentro del tiempo limite")
 
 
 def _verify_openai_chat(provider: str, key: str) -> Tuple[bool, Optional[str]]:
@@ -254,7 +272,7 @@ def _verify_openai_chat(provider: str, key: str) -> Tuple[bool, Optional[str]]:
         resp, model = _openai_call(
             provider, key,
             {"messages": [{"role": "user", "content": "hi"}], "max_tokens": 1},
-            timeout=25,
+            timeout=25, total_timeout=30,
         )
     except requests.RequestException:
         return True, None  # sin red: no se puede afirmar que la clave sea inválida
@@ -453,7 +471,7 @@ def resolve_keys(provider: str, api_key: Optional[str], mistral_key: Optional[st
 
 def chat(provider: str, key: str, prompt: str, temperature: float = 0.7,
          system_instruction: Optional[str] = None, timeout: int = 90,
-         model_override: Optional[str] = None) -> str:
+         model_override: Optional[str] = None, max_tokens: int = 4096) -> str:
     """Generación unificada. Lanza excepción para que el llamador la gestione."""
     key = normalize_key(key)
     meta = get_meta(provider)
@@ -477,7 +495,7 @@ def chat(provider: str, key: str, prompt: str, temperature: float = 0.7,
     messages.append({"role": "user", "content": prompt})
 
     if style == "anthropic":
-        payload = {"model": meta["model"], "max_tokens": 4096,
+        payload = {"model": meta["model"], "max_tokens": max_tokens,
                    "temperature": temperature, "messages": messages}
         resp = requests.post(
             "https://api.anthropic.com/v1/messages",
@@ -490,7 +508,9 @@ def chat(provider: str, key: str, prompt: str, temperature: float = 0.7,
         return "".join(b.get("text", "") for b in blocks if b.get("type") == "text")
 
     # OpenAI y compatibles
-    payload = {"messages": messages, "temperature": temperature}
+    # max_tokens evita generaciones sin limite: un modelo de razonamiento podia
+    # quedarse "pensando" minutos y agotar el timeout de toda la cadena.
+    payload = {"messages": messages, "temperature": temperature, "max_tokens": max_tokens}
     resp, _model = _openai_call(provider, key, payload, timeout=timeout, model_override=model_override)
     if resp is None:
         raise RuntimeError("Ningún modelo disponible en este proveedor ahora mismo.")

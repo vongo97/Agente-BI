@@ -99,9 +99,9 @@ _SECURITY_MODE_STRICT = os.getenv("SECURITY_MODE_STRICT", "false").lower() == "t
 # Mensaje seguro para logs de validación de API keys
 _SECURITY_LOG_PREFIX = "VALIDATION_"
 
-def generate_ai_content(prompt, api_key, provider="gemini", temperature=0.7, model_level="SWARM", system_instruction=None):
+def generate_ai_content(prompt, api_key, provider="gemini", temperature=0.7, model_level="SWARM", system_instruction=None, max_tokens=4096):
     """Generación con manejo de niveles de potencia (Gemini 3.1) e inyección de System Prompt."""
-    if not api_key: return "Error: API Key no proporcionada."
+    if not api_key: return "⚠️ Error: API Key no proporcionada."
     clean_key = api_key.strip()
     
     import time
@@ -142,7 +142,8 @@ def generate_ai_content(prompt, api_key, provider="gemini", temperature=0.7, mod
                     
                     resp = client.chat.complete(
                         model=MODELS["MISTRAL"],
-                        messages=messages
+                        messages=messages,
+                        max_tokens=max_tokens,
                     )
                     return resp.choices[0].message.content
                 elif provider == "groq":
@@ -161,7 +162,8 @@ def generate_ai_content(prompt, api_key, provider="gemini", temperature=0.7, mod
                     payload = {
                         "model": "llama-3.3-70b-versatile",
                         "messages": messages,
-                        "temperature": temperature
+                        "temperature": temperature,
+                        "max_tokens": max_tokens,
                     }
                     response = requests.post(url, json=payload, headers=headers, timeout=30)
                     response.raise_for_status()
@@ -179,6 +181,7 @@ def generate_ai_content(prompt, api_key, provider="gemini", temperature=0.7, mod
                         prompt=prompt,
                         temperature=temperature,
                         system_instruction=system_instruction,
+                        max_tokens=max_tokens,
                         # Modelo elegido por el usuario en Ajustes, si lo hay.
                         model_override=get_model_override(),
                     )
@@ -204,29 +207,43 @@ def generate_ai_content(prompt, api_key, provider="gemini", temperature=0.7, mod
             return f"⚠️ **Error de Autenticación con {provider.capitalize()}.**\nTu API Key parece ser inválida. Revísala en Configuración."
         
         logger.error("Error AI (%s): %s", provider, type(e).__name__)
-        return f"Error técnico ({provider}): {type(e).__name__}"
+        # El prefijo ⚠️ es contrato: Planner/Executor lo usan para abortar en vez
+        # de tratar el texto del error como si fuera plan o código válido.
+        return f"⚠️ Error técnico ({provider}): {type(e).__name__}"
     
     return f"⚠️ Error: El motor de {provider} no pudo generar una respuesta. Verifica tu API Key."
+
+_INVISIBLE_JSON_CHARS = ("\ufeff", "\u200b", "\u200c", "\u200d", "\u2060")
+
+
+def _clean_json_text(text: str) -> str:
+    """Quita BOM y espacios de ancho cero que rompen json.loads."""
+    for ch in _INVISIBLE_JSON_CHARS:
+        text = text.replace(ch, "")
+    return text.strip()
+
 
 def safe_parse_validator_json(raw_text):
     """
     Limpia y parsea de forma robusta la respuesta en formato JSON del Validator Agent.
     """
     try:
-        clean_text = raw_text.strip()
+        # Algunos modelos insertan BOM o espacios de ancho cero después de '{';
+        # json.loads los rechaza con "Expecting property name..." (char 1).
+        clean_text = _clean_json_text(raw_text)
         # 1. Quitar bloques markdown de código si existen
         if "```json" in clean_text:
             clean_text = re.search(r"```json\s*(.*?)\s*```", clean_text, re.DOTALL).group(1)
         elif "```" in clean_text:
             clean_text = re.search(r"```\s*(.*?)\s*```", clean_text, re.DOTALL).group(1)
         
-        clean_text = clean_text.strip()
+        clean_text = _clean_json_text(clean_text)
         
         # 2. Si todavía no empieza por '{' y termina por '}', extraer la subcadena JSON más externa
         if not (clean_text.startswith("{") and clean_text.endswith("}")):
             match = re.search(r"(\{.*\})", clean_text, re.DOTALL)
             if match:
-                clean_text = match.group(1).strip()
+                clean_text = _clean_json_text(match.group(1))
         
         # 3. Intentar parsear
         data = json.loads(clean_text)
@@ -237,7 +254,7 @@ def safe_parse_validator_json(raw_text):
                 "feedback": data.get("feedback", "No proporcionado")
             }
     except Exception as e:
-        logger.warning("Error parseando JSON del validador: %s. Texto crudo: %s", e, raw_text)
+        logger.warning("Error parseando JSON del validador: %s. Texto crudo: %s", e, raw_text[:400])
     
     # Fallback seguro
     return {
@@ -321,9 +338,10 @@ async def analyze_data(data_context, query, api_key, chat_history=[], mode="file
             eng_provider, 
             temperature=temperature, 
             model_level="ANALYTICS",
-            system_instruction=planner_system
+            system_instruction=planner_system,
+            max_tokens=800,
         )
-        if not plan or "⚠️" in plan:
+        if not plan or plan.startswith("⚠️"):
             return plan or "⚠️ Error en Planner Agent.", None, None
 
         # Si es Groq, esperamos para enfriar la tasa de peticiones y respetar el límite de 3 RPM
@@ -331,9 +349,11 @@ async def analyze_data(data_context, query, api_key, chat_history=[], mode="file
             logger.info("Enfriando la API de Groq por 3 segundos antes de invocar al Executor...")
             time.sleep(3.0)
 
-        # 4. Bucle Multi-Agente (Executor ➔ Execution ➔ Validator) con máximo 3 reintentos (4 intentos en total)
+        # 4. Bucle Multi-Agente (Executor ➔ Execution ➔ Validator) con máximo 1 reintento
+        # (2 intentos). Antes eran 4 intentos: con un proveedor lento eso podía
+        # convertir un fallo en 9-10 minutos de espera.
         retry_count = 0
-        max_retries = 3
+        max_retries = 1
         validator_feedback = ""
         
         raw_code = ""
@@ -366,9 +386,10 @@ async def analyze_data(data_context, query, api_key, chat_history=[], mode="file
                 eng_provider, 
                 temperature=temperature, 
                 model_level="ANALYTICS",
-                system_instruction=executor_system
+                system_instruction=executor_system,
+                max_tokens=8192,
             )
-            if not raw_code or "⚠️" in raw_code:
+            if not raw_code or raw_code.startswith("⚠️"):
                 return raw_code or "⚠️ Error en Executor Agent.", None, None
             
             # Si es Groq, enfriamos la API antes de proceder a la validación
@@ -426,7 +447,8 @@ async def analyze_data(data_context, query, api_key, chat_history=[], mode="file
                     eng_provider, 
                     temperature=0.2, 
                     model_level="ANALYTICS",
-                    system_instruction=validator_system
+                    system_instruction=validator_system,
+                    max_tokens=1536,
                 )
             
             # Parseo robusto del JSON del Validator
@@ -466,7 +488,8 @@ async def analyze_data(data_context, query, api_key, chat_history=[], mode="file
             str_provider, 
             temperature=temperature, 
             model_level="ANALYTICS",
-            system_instruction=strategist_system
+            system_instruction=strategist_system,
+            max_tokens=2048,
         )
         
         return final_narrative, fig_code, raw_code
