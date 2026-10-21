@@ -12,6 +12,7 @@ import {
     getHistory, getChatDetails, getDataSources,
     removeSessionSource, clearSession
 } from "@/lib/api";
+import { setApiAuthToken } from "@/lib/api";
 import { useDashboard } from "@/context/DashboardContext";
 import { useToast } from "@/context/ToastContext";
 import { ChatSession, DataSource } from "@/types/shared";
@@ -30,7 +31,7 @@ type NavView = typeof NAV_ITEMS[number]['view'] | 'visual-summary';
 export type { NavView };
 
 export function Sidebar() {
-    const { data: session } = useSession();
+    const { data: session, status } = useSession();
     const {
         dataSources, setDataSources, addDataSource, removeDataSource,
         isSidebarOpen, setSidebarOpen,
@@ -48,11 +49,53 @@ export function Sidebar() {
     const [savedSources, setSavedSources] = useState<DataSource[]>([]);
 
     const userId = session?.user?.email || "invitado@agente-bi.local";
+    const accessToken = (session as { accessToken?: string } | null)?.accessToken;
+
+    // El token debe estar disponible ANTES del primer fetch de fuentes. Si se
+    // configura en un efecto del provider, los efectos hijos corren primero y
+    // /sources se pide sin Authorization: en local cae en el usuario de pruebas
+    // (lista vacía) y en producción devuelve 401. Eso dejaba el chat bloqueado
+    // con "Datos (0/10)" aunque las fuentes estuvieran guardadas.
+    useEffect(() => {
+        if (status === "loading") return;
+        setApiAuthToken(status === "authenticated" ? (accessToken ?? null) : null);
+    }, [status, accessToken]);
+
+    type ApiSource = {
+        id?: number;
+        name?: string;
+        filename?: string;
+        columns?: string | string[];
+        type?: string;
+        created_at?: string;
+    };
 
     const fetchSources = useCallback(async () => {
-        try { const data = await getDataSources(userId); setSavedSources(data); }
-        catch (err) { console.error("Error fetching sources:", err); }
-    }, [userId]);
+        try {
+            const data = await getDataSources(userId);
+            const mapped: DataSource[] = (data as ApiSource[]).map((s) => {
+                let cols: string[] = [];
+                if (Array.isArray(s.columns)) cols = s.columns;
+                else if (typeof s.columns === "string") {
+                    try { cols = JSON.parse(s.columns); } catch { cols = []; }
+                }
+                return {
+                    id: s.id,
+                    filename: s.name || s.filename || "Fuente",
+                    name: s.name,
+                    columns: cols,
+                    type: s.type === "sql" || s.type === "gsheets" ? s.type : "file",
+                    created_at: s.created_at,
+                };
+            });
+            setSavedSources(mapped);
+            // Al abrir la app, las fuentes guardadas son las activas. Sin esto
+            // el chat exige una fuente y el usuario tendría que volver a subirla.
+            setDataSources((prev) => (prev.length > 0 ? prev : mapped));
+        } catch (err) {
+            console.error("Error fetching sources:", err);
+        }
+    }, [userId, setDataSources]);
 
     const fetchHistory = useCallback(async () => {
         try { const data = await getHistory(userId); setHistory(data); }
@@ -60,8 +103,10 @@ export function Sidebar() {
     }, [userId]);
 
     useEffect(() => {
-        if (userId) { fetchHistory(); fetchSources(); }
-    }, [userId, activeChatId, fetchHistory, fetchSources]);
+        // No consultar mientras NextAuth carga: sin token la petición caería en
+        // el usuario de pruebas y llenaría la lista con fuentes ajenas.
+        if (status !== "loading" && userId) { fetchHistory(); fetchSources(); }
+    }, [status, userId, activeChatId, fetchHistory, fetchSources]);
 
     const loadChat = async (id: number) => {
         try {

@@ -26,7 +26,7 @@ interface DashboardContextType {
     aiProvider: string;
     setAiProvider: (provider: string) => void;
     dataSources: DataSource[];
-    setDataSources: (sources: DataSource[]) => void;
+    setDataSources: (sources: DataSource[] | ((prev: DataSource[]) => DataSource[])) => void;
     addDataSource: (source: DataSource) => void;
     removeDataSource: (filename: string) => void;
     isSidebarOpen: boolean;
