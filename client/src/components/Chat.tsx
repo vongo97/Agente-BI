@@ -105,7 +105,8 @@ export function Chat() {
                 id: res.message_id,
                 role: 'assistant',
                 content: res.analysis || "He procesado tu solicitud.",
-                fig: res.figure
+                fig: res.figure,
+                audit: res.audit,
             };
             setMessages(prev => [...prev, assistantMsg]);
 

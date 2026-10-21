@@ -2,7 +2,7 @@ import os
 import sys
 import types
 import unittest
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pandas as pd
 from fastapi import FastAPI
@@ -58,6 +58,7 @@ class FakeSession:
 
 class TestAuditEndpoint(unittest.TestCase):
     def setUp(self):
+        limiter.reset()
         app = FastAPI()
         app.state.limiter = limiter
         self.db = FakeSession()
@@ -144,6 +145,138 @@ class TestAuditEndpoint(unittest.TestCase):
 
         self.assertEqual(response.status_code, 400)
         self.assertIn("datos cargados", response.json()["detail"])
+
+
+class TestAnalyzeAuditRouting(unittest.TestCase):
+    """Fase 2: /analyze enruta intención de auditoría sin exigir API key."""
+
+    def setUp(self):
+        limiter.reset()
+        app = FastAPI()
+        app.state.limiter = limiter
+        self.db = FakeSession()
+        app.dependency_overrides[get_db] = lambda: self.db
+        app.include_router(analysis_router.router, prefix="/api/v1")
+        self.client = TestClient(app)
+        data_store.clear()
+
+    def tearDown(self):
+        data_store.clear()
+
+    def _data(self):
+        return {
+            "type": "file",
+            "data": pd.DataFrame(
+                {
+                    "order_id": [f"O{i}" for i in range(12)],
+                    "sales": [100.0] * 12,
+                    "profit": [10.0] * 6 + [-20.0] * 6,
+                    "discount": [0.0] * 6 + [0.4] * 6,
+                    "region": ["Norte"] * 6 + ["Sur"] * 6,
+                    "customer": ["Ana"] * 6 + ["Bob"] * 6,
+                }
+            ),
+        }
+
+    @patch("src.routers.analysis.get_authenticated_user")
+    @patch("src.routers.analysis.check_authorization")
+    @patch("src.routers.analysis.get_user_data")
+    @patch("src.routers.analysis.analyze_data")
+    @patch("src.engine.providers.resolve_keys", return_value=("", None, None))
+    @patch("src.engine.providers.set_model_override")
+    def test_audit_intent_uses_deterministic_path_without_key(
+        self,
+        mock_model_override,
+        mock_resolve_keys,
+        mock_analyze_data,
+        mock_get_data,
+        mock_authz,
+        mock_get_user,
+    ):
+        mock_get_user.return_value = "test_user_persistence@example.com"
+        mock_get_data.return_value = self._data()
+
+        with patch.dict(os.environ, {"AUDIT_AGENT_ENABLED": "true"}), \
+             patch("src.utils.common.promote_active_session"):
+            response = self.client.post(
+                "/api/v1/analyze",
+                data={"query": "Audita los márgenes y descuentos", "api_key": ""},
+            )
+
+        self.assertEqual(response.status_code, 200, response.text)
+        body = response.json()
+        self.assertIn("audit", body)
+        self.assertEqual(body["narrative_mode"], "deterministic")
+        self.assertTrue(body["analysis"])
+        self.assertGreaterEqual(len(body["audit"]["insights"]), 1)
+        self.assertNotIn("{{", body["analysis"])
+        mock_analyze_data.assert_not_called()
+
+        message = next(obj for obj in self.db.added if obj.__class__.__name__ == "Message" and obj.role == "assistant")
+        self.assertTrue(message.analysis_code.startswith(AUDIT_MARKER))
+
+    @patch("src.routers.analysis.get_authenticated_user")
+    @patch("src.routers.analysis.check_authorization")
+    @patch("src.routers.analysis.get_user_data")
+    @patch("src.routers.analysis.analyze_data", new_callable=AsyncMock)
+    @patch("src.engine.providers.resolve_keys", return_value=("test-key", None, None))
+    @patch("src.engine.providers.set_model_override")
+    def test_flag_off_keeps_original_analyze_path(
+        self,
+        mock_model_override,
+        mock_resolve_keys,
+        mock_analyze_data,
+        mock_get_data,
+        mock_authz,
+        mock_get_user,
+    ):
+        mock_get_user.return_value = "test_user_persistence@example.com"
+        mock_get_data.return_value = self._data()
+        mock_analyze_data.return_value = ("Análisis original", None, "codigo")
+
+        with patch.dict(os.environ, {"AUDIT_AGENT_ENABLED": "false"}), \
+             patch("src.utils.common.promote_active_session"):
+            response = self.client.post(
+                "/api/v1/analyze",
+                data={"query": "Audita los márgenes y descuentos", "api_key": "test-key"},
+            )
+
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(response.json()["analysis"], "Análisis original")
+        mock_analyze_data.assert_called_once()
+
+    @patch("src.routers.analysis.get_authenticated_user")
+    @patch("src.routers.analysis.check_authorization")
+    @patch("src.routers.analysis.get_user_data")
+    @patch("src.routers.analysis.analyze_data", new_callable=AsyncMock)
+    @patch("src.routers.analysis.build_audit", side_effect=AuditError("Sin columnas auditables"))
+    @patch("src.engine.providers.resolve_keys", return_value=("test-key", None, None))
+    @patch("src.engine.providers.set_model_override")
+    def test_unusable_dataset_falls_back_to_normal_analyze(
+        self,
+        mock_model_override,
+        mock_resolve_keys,
+        mock_build_audit,
+        mock_analyze_data,
+        mock_get_data,
+        mock_authz,
+        mock_get_user,
+    ):
+        mock_get_user.return_value = "test_user_persistence@example.com"
+        mock_get_data.return_value = self._data()
+        mock_analyze_data.return_value = ("Análisis de respaldo", None, "codigo")
+
+        with patch.dict(os.environ, {"AUDIT_AGENT_ENABLED": "true"}), \
+             patch("src.utils.common.promote_active_session"):
+            response = self.client.post(
+                "/api/v1/analyze",
+                data={"query": "Audita los márgenes y descuentos", "api_key": "test-key"},
+            )
+
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(response.json()["analysis"], "Análisis de respaldo")
+        mock_build_audit.assert_called_once()
+        mock_analyze_data.assert_called_once()
 
 
 if __name__ == "__main__":

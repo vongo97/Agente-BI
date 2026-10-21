@@ -90,7 +90,9 @@ export function MessageItem({ msg, userId, handleExportPng, handlePin, handleSen
                         <div className="flex items-center gap-1.5 mb-2 text-[var(--bi-teal)]">
                             <ShieldCheck className="w-3.5 h-3.5 flex-shrink-0" />
                             <span className="text-[10px] font-semibold uppercase tracking-wider">
-                                Auditoría verificada · sin LLM
+                                {msg.audit.narrative_mode === "llm"
+                                    ? "Auditoría verificada · narración IA con cifras inyectadas"
+                                    : "Auditoría verificada · sin LLM"}
                             </span>
                         </div>
                     )}

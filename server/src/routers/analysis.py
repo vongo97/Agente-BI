@@ -7,6 +7,12 @@ from sqlalchemy.orm import Session
 from typing import Optional
 from src.database import get_db, Chat, Message, UserConfig, DataSource
 from src.engine.bi_analyst import analyze_data, execute_analysis, suggest_questions, validate_data_quality
+from src.engine.audit_agent import (
+    audit_agent_enabled,
+    build_audit_payload,
+    generate_audit_narrative,
+    is_audit_query,
+)
 from src.engine.insight_auditor import AUDIT_MARKER, AuditError, build_audit
 from src.utils.common import check_authorization, get_user_data, get_authenticated_user, ensure_user_session
 from src.utils.security import decrypt_key
@@ -15,6 +21,39 @@ from src.utils.limiter import limiter
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["Analysis"])
+
+
+def _audit_figure_json(audit) -> Optional[dict]:
+    figure = audit.get("figure")
+    return json.loads(figure.to_json()) if figure is not None and hasattr(figure, "to_json") else None
+
+
+def _save_audit_message(db: Session, chat_id: int, content: str, fig_json, payload: dict) -> Message:
+    from src.utils.common import SafeJSONEncoder
+
+    assistant_msg = Message(
+        chat_id=chat_id,
+        role="assistant",
+        content=content,
+        figure_json=json.dumps(fig_json, cls=SafeJSONEncoder) if fig_json else None,
+        analysis_code=AUDIT_MARKER + json.dumps(payload, cls=SafeJSONEncoder),
+    )
+    db.add(assistant_msg)
+    db.commit()
+    db.refresh(assistant_msg)
+    return assistant_msg
+
+
+def _narrator_credentials(provider: str, api_key: Optional[str], mistral_key: Optional[str]):
+    """Elige una sola credencial para el narrador; nunca mezcla proveedores."""
+    if provider == "hybrid":
+        if mistral_key:
+            return "mistral", mistral_key
+        return "gemini", api_key
+    if provider == "mistral":
+        return "mistral", mistral_key
+    return provider, api_key
+
 
 @router.post("/analyze")
 @limiter.limit("5/minute")
@@ -31,6 +70,7 @@ async def analyze(
 ):
     authenticated_user = get_authenticated_user()
     check_authorization(authenticated_user)
+    audit_requested = audit_agent_enabled() and is_audit_query(query)
 
     # Cargar la configuración del usuario una única vez para API keys y parámetros adicionales
     user_config = db.query(UserConfig).filter(UserConfig.user_id == authenticated_user).first()
@@ -52,20 +92,21 @@ async def analyze(
     # Modelo elegido por el usuario en Ajustes. Viaja por ContextVar para que las diez
     # funciones del motor lo vean sin añadir un parámetro a cada una.
     set_model_override(get_model(provider, user_config))
-    if key_error and provider != "hybrid":
-        raise HTTPException(status_code=400, detail=key_error)
+    if not audit_requested:
+        if key_error and provider != "hybrid":
+            raise HTTPException(status_code=400, detail=key_error)
 
-    if provider == "hybrid":
-        if not api_key:
-            raise HTTPException(
-                status_code=400,
-                detail="Clave API de Gemini no válida o corrupta. Por favor, re-ingresa tu clave API en Ajustes."
-            )
-        if not mistral_key:
-            raise HTTPException(
-                status_code=400,
-                detail="Clave API de Mistral no válida o corrupta. Por favor, re-ingresa tu clave API en Ajustes."
-            )
+        if provider == "hybrid":
+            if not api_key:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Clave API de Gemini no válida o corrupta. Por favor, re-ingresa tu clave API en Ajustes."
+                )
+            if not mistral_key:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Clave API de Mistral no válida o corrupta. Por favor, re-ingresa tu clave API en Ajustes."
+                )
     
     # Filtro de saludos
     greetings = ["hola", "hi", "hey", "buenos dias", "buenas tardes", "buenas noches"]
@@ -133,7 +174,103 @@ async def analyze(
             new_msg = Message(chat_id=chat_id, role="assistant", content=content)
             db.add(new_msg); db.commit()
             return {"analysis": content, "chat_id": chat_id, "message_id": new_msg.id}
-        
+
+        if audit_requested and data_type == "file":
+            # --- AGENTE DE AUDITORÍA (Fase 2, opt-in) ---
+            # Los hechos se calculan con pandas; el LLM solo selecciona IDs y
+            # redacta un marco sin cifras. El servidor inserta los valores
+            # exactos junto al título y la definición de cada hecho.
+            db_chat = None
+            if chat_id:
+                db_chat = db.query(Chat).filter(
+                    Chat.id == chat_id, Chat.user_id == authenticated_user
+                ).first()
+                if not db_chat:
+                    raise HTTPException(status_code=404, detail="Recurso no encontrado o sin acceso")
+
+            source_name = None
+            audit_primary_name = None
+            if data_source_id:
+                source_obj = db.query(DataSource).filter(
+                    DataSource.id == data_source_id, DataSource.user_id == authenticated_user
+                ).first()
+                if source_obj:
+                    source_name = source_obj.name
+                    audit_primary_name = "".join(
+                        [c if c.isalnum() else "_" for c in source_obj.name.split('.')[0]]
+                    )
+            elif db_chat and db_chat.data_source:
+                source_name = db_chat.data_source.name
+                audit_primary_name = "".join(
+                    [c if c.isalnum() else "_" for c in source_name.split('.')[0]]
+                )
+
+            audit = None
+            try:
+                audit = build_audit(
+                    session_data.get("data"),
+                    primary_source_name=audit_primary_name,
+                    source_name=source_name,
+                )
+            except AuditError as exc:
+                # Un dataset sin columnas auditables no debe romper /analyze:
+                # se continúa con el camino normal, que aplicará sus claves.
+                logger.info("Auditoría Fase 2 no aplicable; se usa el flujo normal: %s", exc)
+                audit_requested = False
+
+            if audit_requested and audit is not None:
+                narrator_provider, narrator_key = _narrator_credentials(provider, api_key, mistral_key)
+                narrative, narrative_mode, fallback_reason = generate_audit_narrative(
+                    query,
+                    audit,
+                    api_key=narrator_key,
+                    provider=narrator_provider,
+                    temperature=user_temp,
+                )
+                if fallback_reason:
+                    logger.info("Auditoría Fase 2 usó narrativa determinista: %s", fallback_reason)
+
+                payload = build_audit_payload(audit, narrative_mode)
+                fig_json = _audit_figure_json(audit)
+
+                if db_chat is None:
+                    db_chat = Chat(
+                        user_id=authenticated_user,
+                        title=query[:50] + "...",
+                        data_source_id=data_source_id,
+                    )
+                    db.add(db_chat)
+                    db.commit()
+                    db.refresh(db_chat)
+                    from src.utils.common import promote_active_session
+                    promote_active_session(authenticated_user, db_chat.id)
+
+                user_msg = Message(chat_id=db_chat.id, role="user", content=query)
+                db.add(user_msg)
+                assistant_msg = _save_audit_message(
+                    db, db_chat.id, narrative, fig_json, payload
+                )
+
+                from src.utils.common import json_serializable
+                return json_serializable({
+                    "chat_id": db_chat.id,
+                    "message_id": assistant_msg.id,
+                    "analysis": narrative,
+                    "figure": fig_json,
+                    "audit": payload,
+                    "narrative_mode": narrative_mode,
+                })
+
+        # Si la auditoría no aplica (SQL, dataset no auditable o flag apagado),
+        # se aplican las validaciones de clave que se difirieron al inicio.
+        if key_error and provider != "hybrid":
+            raise HTTPException(status_code=400, detail=key_error)
+        if provider == "hybrid" and (not api_key or not mistral_key):
+            raise HTTPException(
+                status_code=400,
+                detail="El proveedor híbrido requiere las claves de Gemini y Mistral."
+            )
+
         # 1. Obtener análisis, gráfico y código de la IA
         output_text, fig, raw_response = await analyze_data(
             session_data["data"], 
@@ -186,6 +323,12 @@ async def analyze(
             "figure": fig_json,
             "code": raw_response
         })
+    except HTTPException:
+        db.rollback()
+        raise
+    except AuditError as e:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         is_render = os.getenv("RENDER", "false").lower() == "true"
         from src.utils.logging_config import safe_error_message
@@ -280,16 +423,8 @@ def analyze_audit(
             source_name=source_name,
         )
 
-        figure = audit.get("figure")
-        fig_json = json.loads(figure.to_json()) if figure is not None and hasattr(figure, "to_json") else None
-        payload = {
-            "insights": audit.get("insights", []),
-            "profile": audit.get("profile", {}),
-            "definitions": audit.get("definitions", []),
-            "methodology": audit.get("methodology", []),
-            "source_name": audit.get("source_name"),
-            "generated_at": audit.get("generated_at"),
-        }
+        fig_json = _audit_figure_json(audit)
+        payload = build_audit_payload(audit, "deterministic")
 
         if db_chat is None:
             title_source = (audit.get("source_name") or "dataset").strip()
@@ -304,17 +439,14 @@ def analyze_audit(
             from src.utils.common import promote_active_session
             promote_active_session(authenticated_user, db_chat.id)
 
-        from src.utils.common import SafeJSONEncoder, json_serializable
-        assistant_msg = Message(
-            chat_id=db_chat.id,
-            role="assistant",
-            content=audit.get("analysis") or "Auditoría completada.",
-            figure_json=json.dumps(fig_json, cls=SafeJSONEncoder) if fig_json else None,
-            analysis_code=AUDIT_MARKER + json.dumps(payload, cls=SafeJSONEncoder),
+        from src.utils.common import json_serializable
+        assistant_msg = _save_audit_message(
+            db,
+            db_chat.id,
+            audit.get("analysis") or "Auditoría completada.",
+            fig_json,
+            payload,
         )
-        db.add(assistant_msg)
-        db.commit()
-        db.refresh(assistant_msg)
 
         return json_serializable({
             "chat_id": db_chat.id,

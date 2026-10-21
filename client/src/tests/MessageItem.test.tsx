@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { MessageItem } from '@/components/chat/MessageItem';
+import type { AuditPayload } from '@/types/shared';
 
 vi.mock('react-markdown', () => ({
   default: ({ children }: { children: string }) => (
@@ -23,6 +24,10 @@ vi.mock('next/dynamic', () => ({
 
 vi.mock('../AutoDashGrid', () => ({
   default: () => <div data-testid="autodash-grid" />,
+}));
+
+vi.mock('@/components/chat/InsightCards', () => ({
+  InsightCards: () => <div data-testid="insight-cards" />,
 }));
 
 describe('MessageItem', () => {
@@ -91,5 +96,17 @@ describe('MessageItem', () => {
     render(<MessageItem msg={msg} {...defaultProps} />);
     const pinButtons = screen.getAllByTitle('Anclar al panel');
     expect(pinButtons.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('distingue la narración IA de la auditoría determinista', () => {
+    const msg = {
+      id: 8,
+      role: 'assistant' as const,
+      content: 'El margen es 12.5%.',
+      audit: { narrative_mode: 'llm' } as AuditPayload,
+    };
+    render(<MessageItem msg={msg} {...defaultProps} />);
+    expect(screen.getByText('Auditoría verificada · narración IA con cifras inyectadas')).toBeInTheDocument();
+    expect(screen.getByTestId('insight-cards')).toBeInTheDocument();
   });
 });

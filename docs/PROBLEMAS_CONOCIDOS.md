@@ -80,7 +80,7 @@ registrado aquí incluye:
 | **P-16** | Sandbox | Lista negra incompleta: `pd.read_table`, `DataFrame.to_csv`, `np.save`, `plt.savefig`, `pd.io.common.os`… | ABIERTO | `server/src/engine/executor.py:158-175,538-543,745-750` |
 | **P-51** | Sandbox | La allowlist de imports no incluye `time`; pandas/numpy lo importan en runtime y **todo análisis falla** con `ImportError: Librería 'time' bloqueada por seguridad` | ✅ CERRADO | `server/src/engine/executor.py:283-294,457-468,762-769` · `tests/test_sandbox_imports.py` |
 | **P-52** | Sandbox | La lista AST de atributos prohibidos incluye `rename`; bloquea `DataFrame.rename()` legítimo y hace fallar análisis con pandas | ✅ CERRADO | `server/src/engine/executor.py:153-166` · `tests/test_sandbox_imports.py::TestSandboxRename` |
-| **P-54** | IA/BI | La narrativa del análisis no tiene verificación numérica: el LLM puede inventar cifras o mezclar profit neto, pérdida bruta, líneas y órdenes | ✅ CERRADO (Fase 1) | `insight_auditor.py` · `analysis.py:199-336` · `InsightCards.tsx` · `tests/test_insight_auditor.py` · `tests/test_analysis_audit.py` · auditoría real del superstore 27 hechos |
+| **P-54** | IA/BI | La narrativa del análisis no tiene verificación numérica: el LLM puede inventar cifras o mezclar profit neto, pérdida bruta, líneas y órdenes | 🟡 PARCIAL (Fase 1 + Fase 2 opt-in) | `insight_auditor.py` · `audit_agent.py` · `analysis.py` · `InsightCards.tsx` · `tests/test_insight_auditor.py` · `tests/test_audit_agent.py` · `tests/test_analysis_audit.py` · auditoría real del superstore 27 hechos |
 | **P-43** | API | `except Exception` de los endpoints de simulación se traga los `HTTPException` accionables → todo error se ve como 500 "Error interno" | ✅ CERRADO | `simulation.py` (4 endpoints) · `dashboard.py` (auto_dashboard) · `exports.py` (chart, pptx) · `tests/test_http_exception_passthrough*.py` |
 
 ### 🟡 MEDIOS
@@ -505,9 +505,9 @@ respuestas HTTP deliberadas. Primero `except HTTPException: raise`.
 | Campo | Valor |
 |---|---|
 | **Severidad** | ALTO |
-| **Estado** | ✅ CERRADO (Fase 1, 2026-10-20) |
-| **Verificado** | 🧪 Tests + auditoría real del superstore + UI |
-| **Archivos** | `server/src/engine/insight_auditor.py` · `server/src/routers/analysis.py:199-336` · `server/src/routers/dashboard.py:25-47` · `client/src/components/chat/InsightCards.tsx` · `client/src/components/chat/MessageItem.tsx:61-131` |
+| **Estado** | 🟡 PARCIAL (Fase 1 cerrada; Fase 2 opt-in, 2026-10-20) |
+| **Verificado** | 🧪 Tests + auditoría real del superstore + UI + HTTP local Fase 2 |
+| **Archivos** | `server/src/engine/insight_auditor.py` · `server/src/engine/audit_agent.py` · `server/src/routers/analysis.py` · `server/src/routers/dashboard.py` · `client/src/components/chat/InsightCards.tsx` · `client/src/components/chat/MessageItem.tsx:61-131` |
 
 **Qué pasa.** El Executor genera el texto y la figura; el Strategist narra ese texto con el LLM. No hay una capa que
 verifique que cada número de la respuesta exista y tenga la misma definición que el cálculo. En la auditoría manual
@@ -527,22 +527,36 @@ pueden estar mal definidas o inventadas. Es el mismo patrón de P-13 (KPIs fabri
 `POST /analyze/audit` no usa código generado por el LLM y responde "no medible" cuando faltan `profit`, `discount`
 u orden. La UI muestra tarjetas de hallazgos verificados y el detalle del cálculo.
 
-**Alcance del cierre.** La garantía aplica a la ruta determinista `/analyze/audit`. El flujo `/analyze` con LLM
-sigue existiendo y no se declara verificado en esta fase; cualquier narrativa nueva que use cifras debe migrar al
-paquete de hechos o someterse a un fact-check numérico antes de mostrarse.
+**Corrección (Fase 2, opt-in).** `audit_agent.py` detecta preguntas de auditoría con reglas conservadoras
+(`is_audit_query`) y las enruta al mismo paquete determinista. El LLM no escribe cifras: devuelve un JSON con
+`intro`, `fact_ids` y `conclusion`, sin números ni nombres concretos. El servidor valida que los IDs existan y que
+los textos no contengan dígitos, `%`, `$` ni `pp`; después renderiza cada hecho con su `display_value`, título y
+definición. Si el JSON es inválido, el LLM alucina una cifra o el proveedor falla, se usa la narrativa determinista.
+El flag `AUDIT_AGENT_ENABLED` (cerrado por defecto) controla el enrutamiento en `/analyze`; el botón **Auditoría**
+sigue usando `/analyze/audit` sin depender del flag ni de una API key. La respuesta incluye `narrative_mode` y la UI
+distingue "sin LLM" de "narración IA con cifras inyectadas".
+
+**Alcance del cierre.** La garantía numérica estricta aplica a `/analyze/audit` y a la ruta de intención de auditoría
+de `/analyze` con el flag activo. Las preguntas generales que no se clasifican como auditoría siguen usando el flujo
+LLM existente y **no** se declaran verificadas. Si el dataset no tiene columnas auditables, la ruta de auditoría cae
+al flujo normal en lugar de romper `/analyze`.
 
 **Evidencia de cierre (2026-10-20).**
 - `pytest tests/test_analysis.py tests/test_dashboard.py tests/test_insight_auditor.py tests/test_analysis_audit.py tests/test_sandbox_imports.py tests/test_validator_json.py -q` → **34 passed**. Incluye 13 tests del auditor (líneas vs órdenes, `LOSS-06`, umbral de descuento, brecha regional en pp, ausencia de `profit`/`discount`) y los tests del endpoint sin API key.
 - Superstore real `superstore_2019_2022.csv`: **9,994 líneas**, **5,009 órdenes**, **$2.30M** ventas, **$286.4K** profit, **12.5%** margen. Umbral **30.0%**; tramo ≥30%: **-$135.4K** = **47.3%** del profit neto y **15.8%** de ventas. Pérdidas: **1,871 líneas (18.7%)**, **1,022 órdenes con profit neto negativo (20.4%)** y **1,318 órdenes con al menos una línea negativa (26.3%)**. Central **7.9%** vs West **14.9%**; brecha de descuento ≥30%: **24.0 pp**. Clientes negativos: **155 / -$71.2K**; top 10: **42.5% / -$30.3K**. Margen **10.2% → 12.7% (+2.5 pp)**; último año **-0.7 pp vs 2021**.
 - `POST /api/v1/analyze/audit` con `data_source_id=18`, sin API key → **HTTP 200**, **27 hechos**, figura de **4 paneles**, ~6.4 s. `GET /api/v1/history/30` devuelve el mensaje con `audit` (27 hechos) y la figura.
 - UI en `localhost:3000`: acción **Auditoría** crea el chat, muestra el badge verificado, las 27 tarjetas con definición/evidencia y la figura; recargar el chat desde el historial conserva ambos. Verificado en DOM: "27 hallazgos calculados con pandas" y "24.0 pp (Central vs West)".
-- `npx tsc --noEmit` limpio. `npx vitest run` → **37 passed**.
+- `npx tsc --noEmit` limpio. `npx vitest run` → **38 passed**.
+- **Fase 2:** `pytest tests/test_audit_agent.py tests/test_analysis_audit.py tests/test_http_exception_passthrough_static.py -q` → **22 passed**. Cubre intención positiva/negativa, JSON válido, cifra literal rechazada, IDs desconocidos, citas fuera de la selección, fallback sin clave/JSON inválido/error del proveedor y dataset no auditable que vuelve al flujo normal. Suite completa: `pytest tests -q` → **232 passed, 3 failed** (solo los fallos preexistentes de P-41: `test_exports.py` PDF/PPTX y `test_simulation.py`).
+- **Fase 2 HTTP local:** `POST /api/v1/analyze` con `data_source_id=18`, sin API key y flag activo → **HTTP 200**, `narrative_mode=llm`, **27 hechos** y figura. Tres preguntas ("audita márgenes y descuentos", "qué región tiene peor margen", "clientes con más pérdidas") seleccionaron IDs relevantes (`KPI-03/DISC-01/DISC-02/DISC-03/DISC-04/DISC-06/LOSS-02/SEG-02`, `REG-01..04`, `CUST-01/CUST-02/LOSS-02/LOSS-04`); el texto introductorio no contiene cifras y cada valor aparece junto a su título/definición. La consulta "genera un gráfico de ventas por región" **no** se enrutó a auditoría.
 
 **Criterio de cierre.**
 - `tests/test_insight_auditor.py`: dataset sintético con valores conocidos (líneas vs órdenes, descuento, región,
   cliente) y dataset sin `profit`/`discount` → no inventa métricas.
 - Prueba con el superstore real: los totales y el umbral de descuento coinciden con la auditoría manual.
 - `POST /analyze/audit` devuelve `insights`, `profile`, `definitions` y `figure` sin requerir API key.
+- Fase 2: el LLM solo selecciona IDs y escribe texto sin cifras; el servidor renderiza los valores exactos junto a
+  título y definición. Cualquier violación cae a la narrativa determinista.
 - `tsc --noEmit` limpio y la UI muestra las tarjetas.
 
 **Regla anti-repetición.** Todo número de una narrativa ejecutiva debe provenir de un hecho calculado con `id` y
@@ -610,6 +624,7 @@ definición explícita. Si el dato no existe, se dice "no medible"; nunca se rel
 | 2026-10-20 | **P-52 y P-53 CERRADOS**. P-52: `rename` sale de la lista AST; `DataFrame.rename()` es legítimo y `os.rename` sigue bloqueado porque `os` está prohibido. Evidencia: `tests/test_sandbox_imports.py::TestSandboxRename` (2 tests). P-53: `safe_parse_validator_json` limpia BOM/zero-width antes y después de bloques Markdown. Evidencia: `tests/test_validator_json.py` (4 tests). Ejecución conjunta: **9 passed**. |
 | 2026-10-20 | **P-54 registrado (ALTO)**. La narrativa LLM no verifica cifras; se detectaron mezclas de profit neto vs pérdida bruta y de líneas vs órdenes en el superstore. Fase 1 en implementación: auditor determinista + hechos con definición/evidencia + endpoint sin API key + tarjetas en UI. |
 | 2026-10-20 | **P-54 CERRADO (Fase 1)**. La ruta `/analyze/audit` calcula 27 hechos verificables y una narrativa derivada solo de ellos; UI con tarjetas y figura; historial y filtros preservan la foto estática. Evidencia: **34 tests backend**, **37 tests frontend**, `tsc --noEmit` limpio, superstore real con las cifras exactas (30% / -$135.4K / 1,871-1,022-1,318 / 24.0 pp) y verificación UI en `localhost:3000`. El flujo `/analyze` con LLM no se declara verificado; Fase 2 pendiente. |
+| 2026-10-20 | **P-54 FASE 2 (opt-in)**. `/analyze` enruta intenciones de auditoría al paquete determinista; el LLM solo selecciona IDs y escribe un marco sin cifras, y el servidor renderiza cada valor con su título/definición. Flag `AUDIT_AGENT_ENABLED=false` por defecto; si el dataset no es auditable, cae al flujo normal. Evidencia: **22 tests dirigidos**, HTTP local con 3 preguntas (modo `llm`, 27 hechos, IDs relevantes), badge UI y `tsc` limpio. El resto de `/analyze` sigue sin verificación numérica. |
 
 ---
 

@@ -1,4 +1,4 @@
-﻿import type { AuditResponse } from "@/types/shared";
+﻿import type { AnalyzeResponse, AuditResponse } from "@/types/shared";
 
 // Normaliza la URL base del backend: quita barras finales y evita duplicar
 // "/api/v1" si la variable de entorno ya lo incluye (error frecuente al
@@ -57,7 +57,7 @@ export async function uploadFile(file: File, userId: string) {
   return handleResponse(response);
 }
 
-export async function analyzeData(query: string, apiKey: string, userId: string, chatId?: number, dataSourceId?: number, provider?: string, mistralKey?: string) {
+export async function analyzeData(query: string, apiKey: string, userId: string, chatId?: number, dataSourceId?: number, provider?: string, mistralKey?: string): Promise<AnalyzeResponse> {
   const formData = new FormData();
   formData.append("query", query);
   formData.append("api_key", apiKey);

@@ -56,6 +56,7 @@ export interface AuditPayload {
     methodology: string[];
     source_name: string | null;
     generated_at: string;
+    narrative_mode?: 'deterministic' | 'llm';
 }
 
 export interface AuditResponse {
@@ -64,6 +65,16 @@ export interface AuditResponse {
     analysis: string;
     figure?: unknown;
     audit: AuditPayload;
+}
+
+export interface AnalyzeResponse {
+    chat_id: number;
+    message_id: number;
+    analysis: string;
+    figure?: unknown;
+    code?: string | null;
+    audit?: AuditPayload;
+    narrative_mode?: 'deterministic' | 'llm';
 }
 
 export interface ChatMessage {
