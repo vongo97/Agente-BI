@@ -2,7 +2,7 @@
 
 > **Este documento es de lectura OBLIGATORIA antes de modificar cualquier archivo.**
 > Regla asociada: `.codex/skills/known-issues-registry/SKILL.md`
-> Última actualización: **2026-10-20** · Escaneo base: `bee43447`
+> Última actualización: **2026-10-21** · Escaneo base: `bee43447`
 
 ---
 
@@ -51,7 +51,7 @@ registrado aquí incluye:
 
 ## 2. Resumen (ordenado de mayor a menor)
 
-**Totales:** 3 críticos · 15 altos · 26 medios · 7 bajos · **51 problemas**
+**Totales:** 3 críticos · 16 altos · 26 medios · 7 bajos · **52 problemas**
 
 ### 🔴 CRÍTICOS
 
@@ -81,6 +81,7 @@ registrado aquí incluye:
 | **P-51** | Sandbox | La allowlist de imports no incluye `time`; pandas/numpy lo importan en runtime y **todo análisis falla** con `ImportError: Librería 'time' bloqueada por seguridad` | ✅ CERRADO | `server/src/engine/executor.py:283-294,457-468,762-769` · `tests/test_sandbox_imports.py` |
 | **P-52** | Sandbox | La lista AST de atributos prohibidos incluye `rename`; bloquea `DataFrame.rename()` legítimo y hace fallar análisis con pandas | ✅ CERRADO | `server/src/engine/executor.py:153-166` · `tests/test_sandbox_imports.py::TestSandboxRename` |
 | **P-54** | IA/BI | La narrativa del análisis no tiene verificación numérica: el LLM puede inventar cifras o mezclar profit neto, pérdida bruta, líneas y órdenes | 🟡 PARCIAL (Fase 1 + Fase 2 opt-in) | `insight_auditor.py` · `audit_agent.py` · `analysis.py` · `InsightCards.tsx` · `tests/test_insight_auditor.py` · `tests/test_audit_agent.py` · `tests/test_analysis_audit.py` · auditoría real del superstore 27 hechos |
+| **P-55** | Infra/API | El frontend de Render apunta al backend `-zifr`, pero su CORS no incluye ese origen; además hay dos backends (`-7nav` SQLite y `-zifr` Postgres) y `render.yaml` describe el SQLite | ABIERTO | `render.yaml:7,33-34,56` · `server/main.py:38-58` · `client/next.config.ts:10-30` · CORS real 2026-10-21 |
 | **P-43** | API | `except Exception` de los endpoints de simulación se traga los `HTTPException` accionables → todo error se ve como 500 "Error interno" | ✅ CERRADO | `simulation.py` (4 endpoints) · `dashboard.py` (auto_dashboard) · `exports.py` (chart, pptx) · `tests/test_http_exception_passthrough*.py` |
 
 ### 🟡 MEDIOS
@@ -564,6 +565,42 @@ definición explícita. Si el dato no existe, se dice "no medible"; nunca se rel
 
 ---
 
+### P-55 · CORS y backend equivocado en Render
+
+| Campo | Valor |
+|---|---|
+| **Severidad** | ALTO |
+| **Estado** | ABIERTO |
+| **Verificado** | 🧪 Con comandos contra producción (2026-10-21) |
+| **Archivos** | `render.yaml:7,33-34,56` · `server/main.py:38-58` · `client/next.config.ts:10-30` |
+
+**Qué pasa.** Hay dos backends vivos y el frontend desplegado no coincide con el que declara el Blueprint:
+
+- `agente-bi-client-5nx4.onrender.com` tiene `NEXT_PUBLIC_API_URL=https://agente-bi-server-7nav-zifr.onrender.com` (se ve en su CSP).
+- `agente-bi-server-7nav-zifr.onrender.com` responde `/health` con **PostgreSQL persistente**, pero su preflight `OPTIONS /api/v1/upload` desde el frontend devuelve **400 `Disallowed CORS origin`** y sus respuestas no incluyen `access-control-allow-origin` para ese origen. Solo acepta, entre los dominios probados, `https://vektra-bi-eight.vercel.app`.
+- `agente-bi-server-7nav.onrender.com` responde `/health` con **SQLite no persistente** y sí permite los orígenes del frontend.
+- `render.yaml` declara `agente-bi-server-7nav` y `NEXT_PUBLIC_API_URL=https://agente-bi-server-7nav.onrender.com`: describe el backend SQLite, no el Postgres que usa el frontend real.
+
+**Impacto.** El navegador bloquea **todas** las llamadas al API desde `agente-bi-client-5nx4` (no solo `/upload`): el usuario ve `Failed to fetch`, `DATOS (0/10)` y "Sin historial". Si se "arregla" apuntando el frontend a `-7nav`, los datos se guardan en SQLite y se pierden en cada redeploy de Render free.
+
+**Evidencia.**
+```text
+GET  https://agente-bi-server-7nav-zifr.onrender.com/health
+  -> 200 database.dialect=postgresql persistent=true
+OPTIONS /api/v1/upload  Origin: https://agente-bi-client-5nx4.onrender.com
+  -> 400 Disallowed CORS origin   (sin access-control-allow-origin)
+OPTIONS /api/v1/upload  Origin: https://vektra-bi-eight.vercel.app
+  -> 200 access-control-allow-origin: https://vektra-bi-eight.vercel.app
+GET  https://agente-bi-server-7nav.onrender.com/health
+  -> 200 database.dialect=sqlite persistent=false
+```
+
+**Criterio de cierre.** Agregar el origen real del frontend a `ALLOWED_ORIGINS` del backend Postgres (`-zifr`), verificar preflight 200 con `access-control-allow-origin`, subir un archivo desde producción y confirmar `persisted:true`; después reconciliar `render.yaml`/servicios para que exista un solo backend canónico y el Blueprint no vuelva a apuntar al SQLite.
+
+**Regla anti-repetición.** Un despliegue debe tener una única fuente de verdad para host y CORS. El `render.yaml` y el panel de Render no pueden describir backends distintos; el CORS se prueba desde el origen real, no solo con `curl` sin `Origin`.
+
+---
+
 ## 5. Fichas resumidas — MEDIOS y BAJOS
 
 **P-17** · Repo inflado. Sacar el `.mp4` (24 MB) y `debug_server.log` del índice; `.gitignore`. *Cierre:* `git ls-files` sin binarios ni logs.
@@ -625,6 +662,7 @@ definición explícita. Si el dato no existe, se dice "no medible"; nunca se rel
 | 2026-10-20 | **P-54 registrado (ALTO)**. La narrativa LLM no verifica cifras; se detectaron mezclas de profit neto vs pérdida bruta y de líneas vs órdenes en el superstore. Fase 1 en implementación: auditor determinista + hechos con definición/evidencia + endpoint sin API key + tarjetas en UI. |
 | 2026-10-20 | **P-54 CERRADO (Fase 1)**. La ruta `/analyze/audit` calcula 27 hechos verificables y una narrativa derivada solo de ellos; UI con tarjetas y figura; historial y filtros preservan la foto estática. Evidencia: **34 tests backend**, **37 tests frontend**, `tsc --noEmit` limpio, superstore real con las cifras exactas (30% / -$135.4K / 1,871-1,022-1,318 / 24.0 pp) y verificación UI en `localhost:3000`. El flujo `/analyze` con LLM no se declara verificado; Fase 2 pendiente. |
 | 2026-10-20 | **P-54 FASE 2 (opt-in)**. `/analyze` enruta intenciones de auditoría al paquete determinista; el LLM solo selecciona IDs y escribe un marco sin cifras, y el servidor renderiza cada valor con su título/definición. Flag `AUDIT_AGENT_ENABLED=false` por defecto; si el dataset no es auditable, cae al flujo normal. Evidencia: **22 tests dirigidos**, HTTP local con 3 preguntas (modo `llm`, 27 hechos, IDs relevantes), badge UI y `tsc` limpio. El resto de `/analyze` sigue sin verificación numérica. |
+| 2026-10-21 | **P-55 registrado (ALTO)**. El frontend `agente-bi-client-5nx4` apunta al backend Postgres `-zifr`, pero ese backend rechaza su origen con `400 Disallowed CORS origin`; las llamadas fallan como `Failed to fetch` y la UI queda en `0/10`. Además hay un segundo backend `-7nav` con SQLite no persistente y `render.yaml` describe ese, no el Postgres real. No se tocó configuración de producción; el cierre requiere corregir `ALLOWED_ORIGINS` en el servicio `-zifr` y reconciliar el Blueprint. |
 
 ---
 
