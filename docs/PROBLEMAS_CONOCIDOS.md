@@ -553,6 +553,7 @@ al flujo normal en lugar de romper `/analyze`.
 - `npx tsc --noEmit` limpio. `npx vitest run` → **38 passed**.
 - **Fase 2:** `pytest tests/test_audit_agent.py tests/test_analysis_audit.py tests/test_http_exception_passthrough_static.py -q` → **22 passed**. Cubre intención positiva/negativa, JSON válido, cifra literal rechazada, IDs desconocidos, citas fuera de la selección, fallback sin clave/JSON inválido/error del proveedor y dataset no auditable que vuelve al flujo normal. Suite completa: `pytest tests -q` → **232 passed, 3 failed** (solo los fallos preexistentes de P-41: `test_exports.py` PDF/PPTX y `test_simulation.py`).
 - **Fase 2 HTTP local:** `POST /api/v1/analyze` con `data_source_id=18`, sin API key y flag activo → **HTTP 200**, `narrative_mode=llm`, **27 hechos** y figura. Tres preguntas ("audita márgenes y descuentos", "qué región tiene peor margen", "clientes con más pérdidas") seleccionaron IDs relevantes (`KPI-03/DISC-01/DISC-02/DISC-03/DISC-04/DISC-06/LOSS-02/SEG-02`, `REG-01..04`, `CUST-01/CUST-02/LOSS-02/LOSS-04`); el texto introductorio no contiene cifras y cada valor aparece junto a su título/definición. La consulta "genera un gráfico de ventas por región" **no** se enrutó a auditoría.
+- **Fase 2 activa por defecto (2026-10-21):** `audit_agent_enabled()` devuelve `true` si la variable no está definida; `false` la desactiva. Tests de flag: `pytest tests/test_audit_agent.py tests/test_analysis_audit.py -q` → **23 passed**. Suite completa: **235 passed, 3 failed** (solo P-41 preexistente). El backend desplegado en `-zifr` publica `features.audit_agent=true`. Las preguntas generales de `/analyze` siguen fuera del alcance verificado.
 
 **Criterio de cierre.**
 - `tests/test_insight_auditor.py`: dataset sintético con valores conocidos (líneas vs órdenes, descuento, región,
@@ -573,30 +574,43 @@ definición explícita. Si el dato no existe, se dice "no medible"; nunca se rel
 | Campo | Valor |
 |---|---|
 | **Severidad** | ALTO |
-| **Estado** | ABIERTO |
+| **Estado** | 🟡 PARCIAL (CORS y token resueltos; falta confirmar upload persistido y retirar el backend SQLite) |
 | **Verificado** | 🧪 Con comandos contra producción (2026-10-21) |
-| **Archivos** | `render.yaml:7,33-34,56` · `server/main.py:38-58` · `client/next.config.ts:10-30` |
+| **Archivos** | `render.yaml:7,33-34,56` · `server/main.py:38-58` · `client/next.config.ts:10-30` · `client/src/components/Sidebar.tsx:59-62` |
 
 **Qué pasa.** Hay dos backends vivos y el frontend desplegado no coincide con el que declara el Blueprint:
 
 - `agente-bi-client-5nx4.onrender.com` tiene `NEXT_PUBLIC_API_URL=https://agente-bi-server-7nav-zifr.onrender.com` (se ve en su CSP).
-- `agente-bi-server-7nav-zifr.onrender.com` responde `/health` con **PostgreSQL persistente**, pero su preflight `OPTIONS /api/v1/upload` desde el frontend devuelve **400 `Disallowed CORS origin`** y sus respuestas no incluyen `access-control-allow-origin` para ese origen. Solo acepta, entre los dominios probados, `https://vektra-bi-eight.vercel.app`.
-- `agente-bi-server-7nav.onrender.com` responde `/health` con **SQLite no persistente** y sí permite los orígenes del frontend.
-- `render.yaml` declara `agente-bi-server-7nav` y `NEXT_PUBLIC_API_URL=https://agente-bi-server-7nav.onrender.com`: describe el backend SQLite, no el Postgres que usa el frontend real.
+- `agente-bi-server-7nav-zifr.onrender.com` responde `/health` con **PostgreSQL persistente** y su preflight desde el frontend ya devuelve **200 con `access-control-allow-origin`**.
+- `agente-bi-server-7nav.onrender.com` sigue vivo con **SQLite no persistente**. No debe usarse para datos reales.
+- `render.yaml` mantiene el `name` legado `-7nav` para no crear un duplicado al sincronizar el Blueprint, pero el frontend ya apunta al backend Postgres `-zifr`.
 
-**Impacto.** El navegador bloquea **todas** las llamadas al API desde `agente-bi-client-5nx4` (no solo `/upload`): el usuario ve `Failed to fetch`, `DATOS (0/10)` y "Sin historial". Si se "arregla" apuntando el frontend a `-7nav`, los datos se guardan en SQLite y se pierden en cada redeploy de Render free.
+**Impacto.** Antes el navegador bloqueaba **todas** las llamadas al API desde `agente-bi-client-5nx4` (no solo `/upload`): el usuario veía `Failed to fetch`, `DATOS (0/10)` y "Sin historial". También faltaba el Bearer token en el primer fetch del sidebar. Si se "arregla" apuntando el frontend a `-7nav`, los datos se guardan en SQLite y se pierden en cada redeploy de Render free.
 
 **Evidencia.**
 ```text
+2026-10-21 (después del deploy de main 677f519a)
+
 GET  https://agente-bi-server-7nav-zifr.onrender.com/health
-  -> 200 database.dialect=postgresql persistent=true
+  -> 200 features.audit_agent=true
+         database.dialect=postgresql persistent=true
+         database.schema.upload_schema_ready=true
+         storage.connected=true
 OPTIONS /api/v1/upload  Origin: https://agente-bi-client-5nx4.onrender.com
-  -> 400 Disallowed CORS origin   (sin access-control-allow-origin)
-OPTIONS /api/v1/upload  Origin: https://vektra-bi-eight.vercel.app
-  -> 200 access-control-allow-origin: https://vektra-bi-eight.vercel.app
+  -> 200 access-control-allow-origin: https://agente-bi-client-5nx4.onrender.com
+GET  https://agente-bi-client-5nx4.onrender.com/login
+  -> 200; CSP connect-src incluye https://agente-bi-server-7nav-zifr.onrender.com
+GET  https://agente-bi-client-5nx4.onrender.com/api/auth/providers
+  -> 200 google (callback correcto)
+Chunk del sidebar en producción
+  -> contiene el efecto setApiAuthToken(session.accessToken)
 GET  https://agente-bi-server-7nav.onrender.com/health
-  -> 200 database.dialect=sqlite persistent=false
+  -> 200 database.dialect=sqlite persistent=false (legado, no usar)
 ```
+
+**Pendiente de cierre.** Reintentar `/upload` desde `agente-bi-client-5nx4` con una sesión real y confirmar
+`persisted:true`; retirar o desactivar `-7nav` y decidir si se renombra el `name` del yaml a `-zifr` sin crear
+un duplicado.
 
 **Criterio de cierre.** Agregar el origen real del frontend a `ALLOWED_ORIGINS` del backend Postgres (`-zifr`), verificar preflight 200 con `access-control-allow-origin`, subir un archivo desde producción y confirmar `persisted:true`; después reconciliar `render.yaml`/servicios para que exista un solo backend canónico y el Blueprint no vuelva a apuntar al SQLite.
 
