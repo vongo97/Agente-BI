@@ -136,7 +136,7 @@ async def process_simulation(sim_id: int, api_key: str, provider: str, mistral_k
         logger.exception("[Sim-%d] FALLO INESPERADO:", sim_id)
         if sim:
             sim.status = "error"
-            sim.result_report = f"Error: {type(e).__name__} - {str(e)}"
+            sim.result_report = "Error interno al ejecutar la simulación. Consulte los registros del servidor para más detalles."
             db.commit()
     finally:
         db.close()
@@ -444,13 +444,13 @@ async def get_simulation_suggestions(request: Request, req: SuggestionRequest, d
             return final_suggestions
         except Exception as e:
             logger.exception("[Sim-sugg] Error en generación IA")
-            return [{"title": "Error en Motor IA", "hypothesis": f"La IA no pudo procesar los datos. Detalles: {str(e)}"}]
+            return [{"title": "Error en Motor IA", "hypothesis": "La IA no pudo procesar los datos. Consulte los registros del servidor para más detalles."}]
     except HTTPException:
         # P-43: la validación de claves (400) debe llegar al cliente tal cual.
         raise
     except Exception as e:
         logger.exception("[Sim-sugg] Error crítico")
-        return [{"title": "Error Crítico", "hypothesis": f"Error interno al procesar los archivos para el simulador. Detalles: {str(e)}"}]
+        return [{"title": "Error Crítico", "hypothesis": "Error interno al procesar los archivos para el simulador. Consulte los registros del servidor para más detalles."}]
 
 
 class OntologyRequest(BaseModel):
