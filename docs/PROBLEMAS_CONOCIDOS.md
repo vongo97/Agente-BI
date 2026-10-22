@@ -73,7 +73,7 @@ registrado aquí incluye:
 | **P-09** | Frontend | Autosync guarda valores por defecto antes de cargar la config → puede sobrescribir ajustes del usuario | ABIERTO | `client/src/context/DashboardContext.tsx:138-211,216-246` |
 | **P-10** | Cifrado | `ENCRYPTION_KEY` inválida genera clave efímera; `encrypt/decrypt` aceptan texto plano | ✅ CERRADO | `server/src/utils/security.py` · fail-closed en producción sin clave · clave determinista en dev · `encrypt_key` lanza `ValueError` en vez de texto plano · `decrypt_key` rechaza no-Fernet · `tests/test_security_encryption_key.py` (10 passed) · Antigravity 2026-10-22 |
 | **P-11** | Uploads | Original escrito en claro en `.tmp` antes de cifrar; sin mitigación de zip-bomb | ✅ CERRADO | `server/src/routers/data.py` · `server/src/utils/security.py` · `encrypt_bytes` cifra en memoria sin `.tmp` en claro · zip-bomb temprano desde bytes (Excel dimensiones + CSV líneas) · `server/tests/test_upload_security.py` (7 passed) · Antigravity 2026-10-22 |
-| **P-12** | API | `str(e)` de excepciones internas persistido y devuelto al cliente | ABIERTO | `server/src/routers/simulation.py:139,458,461` |
+| **P-12** | API | `str(e)` de excepciones internas persistido y devuelto al cliente | ✅ CERRADO | `server/src/routers/simulation.py` · `str(e)` reemplazado por mensajes genéricos en 3 ubicaciones (líneas 139, 447, 453) · detalle solo en logs internos con `logger.exception` · Antigravity 2026-10-22 |
 | **P-13** | UI/BI | KPIs inventados presentados como análisis real (`38.4 + n*1.2`, `96.5%`) | ✅ CERRADO | `client/src/components/DashboardView.tsx:73-131` · métricas reales derivadas de datos (visualizaciones activas, filtros, fuentes) · Antigravity 2026-10-22 |
 | **P-14** | UI/BI | El modelo mostrado en el selector no es el que usa el backend | ABIERTO | `ProviderKeysPanel.tsx:43-54,130` · `DashboardContext.tsx:146-167` |
 | **P-15** | Auth | Sin allowlist ni middleware en el cliente: cualquier cuenta Google entra y la app queda inservible (403) | ? CERRADO | `client/src/lib/auth-allowlist.ts` � `client/src/app/page.tsx` � `isAuthorizedEmail()` lee NEXT_PUBLIC_AUTHORIZED_EMAILS � acceso denegado con mensaje claro � `client/src/tests/AuthAllowlist.test.ts` (4 passed) � Antigravity 2026-10-22 |
@@ -420,15 +420,20 @@ Se escribía el original a `permanent_path + ".tmp"` sin cifrar antes de `encryp
 
 ---
 
-### P-12 · Errores internos devueltos al cliente
-**Archivo:** `server/src/routers/simulation.py:139`, `:458`, `:461`.
-`f"Error: {type(e).__name__} - {str(e)}"` se persiste y se devuelve en el JSON.
+### P-12 · Errores internos devueltos al cliente (CERRADO por Antigravity 2026-10-22)
+**Archivo:** `server/src/routers/simulation.py`.
 
-**Verificado en runtime (2026-10-19):** `GET /api/v1/user-config` → `500`
-`{"detail":"Internal Server Error: OperationalError"}`, exponiendo la clase de excepción y el
-motor de base de datos al cliente.
+`f"Error: {type(e).__name__} - {str(e)}"` se persistía y se devolvía en el JSON, exponiendo
+la clase de excepción y el texto al cliente.
 
-**Cierre:** mensaje genérico al cliente + `X-Request-Id`; detalle solo en logs internos.
+**Corrección aplicada.**
+- Línea 139 (`run_simulation` background task): `sim.result_report` ahora usa mensaje genérico: `"Error interno al ejecutar la simulación. Consulte los registros del servidor para más detalles."`
+- Línea 447 (`get_simulation_suggestions`): mensaje genérico sin `str(e)`.
+- Línea 453 (`get_simulation_suggestions` crítico): mensaje genérico sin `str(e)`.
+- El detalle de la excepción solo se registra en logs internos con `logger.exception`.
+- El cliente recibe un mensaje genérico y puede usar los logs del servidor (con request-id) para depurar.
+
+**Verificación:** `pytest server/tests/test_upload_security.py tests/test_sql_mode_safety.py tests/test_sandbox_imports.py tests/test_security_encryption_key.py` → 47 passed.
 
 **Regla:** el cliente recibe código y request-id, nunca el texto de la excepción.
 
