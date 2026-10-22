@@ -348,7 +348,38 @@ async def analyze(
         )
         
         fig_json = json.loads(fig.to_json()) if fig and hasattr(fig, 'to_json') else fig
-            
+        
+        # ── P-54: verificación numérica también en el flujo general de /analyze ──
+        # Siempre que sea posible, calcular hechos verificables con pandas y
+        # adjuntarlos a la respuesta. El frontend renderiza InsightCards cuando
+        # hay audit, por lo que el usuario ve cifras verificadas junto a la
+        # narrativa del LLM. Si el dataset no es auditable, se continúa sin
+        # payload de auditoría (no romper el flujo normal).
+        audit_payload = None
+        audit_narrative_mode = None
+        try:
+            audit = await asyncio.to_thread(
+                build_audit,
+                data_to_analyze,
+                primary_source_name=primary_source_name,
+                source_name=source_name,
+            )
+            audit_payload = build_audit_payload(audit, "deterministic")
+            audit_narrative_mode = "deterministic"
+            # Enriquecer la narrativa del LLM con los hechos verificados si el
+            # LLM no aportó cifras verificables.
+            if audit_payload and audit_payload.get("insights"):
+                verified_facts = "\n".join(
+                    f"• {f.get('title', '')}: {f.get('display_value', '')}"
+                    for f in audit_payload["insights"][:5]
+                )
+                output_text = (
+                    f"{output_text}\n\n---\n**Hechos verificados (pandas, sin LLM):**\n{verified_facts}"
+                )
+        except AuditError:
+            # Dataset no auditable: continuar con el flujo normal sin auditoría.
+            pass
+        
         # Persistencia
         if chat_id:
             db_chat = db.query(Chat).filter(Chat.id == chat_id, Chat.user_id == authenticated_user).first()
@@ -385,7 +416,9 @@ async def analyze(
             "message_id": assistant_msg.id,
             "analysis": output_text,
             "figure": fig_json,
-            "code": raw_response
+            "code": raw_response,
+            "audit": audit_payload,
+            "narrative_mode": audit_narrative_mode,
         })
     except HTTPException:
         db.rollback()
