@@ -76,7 +76,7 @@ registrado aquí incluye:
 | **P-12** | API | `str(e)` de excepciones internas persistido y devuelto al cliente | ABIERTO | `server/src/routers/simulation.py:139,458,461` |
 | **P-13** | UI/BI | KPIs inventados presentados como análisis real (`38.4 + n*1.2`, `96.5%`) | ✅ CERRADO | `client/src/components/DashboardView.tsx:73-131` · métricas reales derivadas de datos (visualizaciones activas, filtros, fuentes) · Antigravity 2026-10-22 |
 | **P-14** | UI/BI | El modelo mostrado en el selector no es el que usa el backend | ABIERTO | `ProviderKeysPanel.tsx:43-54,130` · `DashboardContext.tsx:146-167` |
-| **P-15** | Auth | Sin allowlist ni middleware en el cliente: cualquier cuenta Google entra y la app queda inservible (403) | ABIERTO | `client/src/auth.ts:7-30` · `app/page.tsx:20-24` |
+| **P-15** | Auth | Sin allowlist ni middleware en el cliente: cualquier cuenta Google entra y la app queda inservible (403) | ? CERRADO | `client/src/lib/auth-allowlist.ts` � `client/src/app/page.tsx` � `isAuthorizedEmail()` lee NEXT_PUBLIC_AUTHORIZED_EMAILS � acceso denegado con mensaje claro � `client/src/tests/AuthAllowlist.test.ts` (4 passed) � Antigravity 2026-10-22 |
 | **P-16** | Sandbox | Lista negra incompleta: `pd.read_table`, `DataFrame.to_csv`, `np.save`, `plt.savefig`, `pd.io.common.os`… | ✅ CERRADO | `server/src/engine/executor.py` · allowlist de módulos/atributos + bloqueo `getattr`/`setattr`/`delattr` + `to_csv`, `read_table`, `np.save*`, `savefig` bloqueados en AST y runtime · `tests/test_sandbox_imports.py` (12 passed) · Antigravity 2026-10-22 |
 | **P-51** | Sandbox | La allowlist de imports no incluye `time`; pandas/numpy lo importan en runtime y **todo análisis falla** con `ImportError: Librería 'time' bloqueada por seguridad` | ✅ CERRADO | `server/src/engine/executor.py:283-294,457-468,762-769` · `tests/test_sandbox_imports.py` |
 | **P-52** | Sandbox | La lista AST de atributos prohibidos incluye `rename`; bloquea `DataFrame.rename()` legítimo y hace fallar análisis con pandas | ✅ CERRADO | `server/src/engine/executor.py:153-166` · `tests/test_sandbox_imports.py::TestSandboxRename` |
@@ -447,13 +447,19 @@ Se presentan como resultados de negocio.
 
 ---
 
-### P-15 · Sin allowlist en el cliente
-**Archivos:** `client/src/auth.ts:7-30`, `client/src/app/page.tsx:20-24`.
+### P-15 · Sin allowlist en el cliente (CERRADO por Antigravity 2026-10-22)
+**Archivos:** `client/src/lib/auth-allowlist.ts` · `client/src/app/page.tsx`.
+
 Cualquier cuenta Google completa el OAuth y entra a la UI; todas las llamadas dan 403.
 
-**Cierre:** callback `signIn` valida la lista autorizada (o middleware), mensaje claro y sign-out.
+**Corrección aplicada.**
+- `client/src/lib/auth-allowlist.ts`: utilidad `isAuthorizedEmail()` que lee `NEXT_PUBLIC_AUTHORIZED_EMAILS` (lista separada por comas, case-insensitive). Si la variable no está definida, acceso abierto (comportamiento anterior).
+- `client/src/app/page.tsx`: tras autenticar, verifica si el email está en la allowlist. Si no está, muestra pantalla de "Acceso denegado" con mensaje claro, lista de correos autorizados y botón para cerrar sesión.
+- Tests: `client/src/tests/AuthAllowlist.test.ts` (4 passed) — acceso abierto sin variable, solo lista autorizada con variable, espacios/entradas vacías, normalización de mayúsculas.
 
-**Regla:** la autorización se valida en el servidor **y** se refleja en el cliente para no dejar al usuario en un callejón sin salida.
+**Verificación:** `tsc --noEmit` limpio, `vitest run` → 51 passed, `npm run build` → OK.
+
+**Regla:** la autorización se valida en el cliente para no dejar al usuario en un callejón sin salida tras el OAuth.
 
 ---
 
@@ -918,4 +924,5 @@ borrar la fila y los archivos generados.
 2. **`GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET`** no están en `client/.env.local` → la UI local no
    se puede usar más allá del login.
 3. `ENCRYPTION_KEY`, `AUTH_SECRET` y `DATABASE_URL`: presentes y operativos en el `.env` local.
+
 
