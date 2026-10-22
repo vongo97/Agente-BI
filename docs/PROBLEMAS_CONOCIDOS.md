@@ -68,7 +68,7 @@ registrado aquí incluye:
 | **P-03** | SQL | Modo SQL roto + controles `validate_sql_safety`/`execute_sql_safe` desconectados (código muerto) | ✅ CERRADO | `analysis.py:175-215` cableado con `execute_sql_safe` + `validate_sql_safety` · `executor.py` `execute_sql_safe` usa `conn.execute` · `tests/test_sql_mode_safety.py` (18 passed) · Antigravity 2026-10-22 |
 | **P-05** | Frontend | Bucle infinito de `POST /dashboard/filter` (dependencia circular `items` → `setItems` → efecto) | ✅ CERRADO | `client/src/components/DashboardView.tsx:177-194` · functional updater `setItems(prevItems => ...)` + `tsc --noEmit` limpio · Antigravity 2026-10-22 |
 | **P-06** | Dependencias | 11 vulnerabilidades npm (5 críticas): `next 16.1.1` (RCE/DoS), `next-auth beta.30` (fail-open), `plotly.js`→`maplibre-gl` | ✅ CERRADO | `client/package.json` · `npm audit --omit=dev` → 2 low, 0 critical/high/moderate |
-| **P-07** | Frontend | CSP permisiva: `unsafe-inline`, `unsafe-eval`, `connect-src ws: wss:`, sin `frame-ancestors` | ABIERTO | `client/next.config.ts:19-28` |
+| **P-07** | Frontend | CSP permisiva: `unsafe-inline`, `unsafe-eval`, `connect-src ws: wss:`, sin `frame-ancestors` | ✅ CERRADO | `client/next.config.ts` · `script-src 'self'` (sin unsafe-eval/unsafe-inline) · `style-src 'self'` (sin unsafe-inline) · `frame-ancestors 'none'` · `base-uri 'self'` · `form-action 'self'` · `object-src 'none'` · `frame-src 'none'` · `connect-src` con hosts específicos (no ws:/wss: genéricos) · `client/src/tests/CSP.test.ts` (13 passed) · Antigravity 2026-10-22 |
 | **P-08** | Frontend | Capa de red sin timeout, `AbortController`, retry ni reacci�n a 401/403 | ? CERRADO | `client/src/lib/api.ts` � `securedFetch` con AbortController (30 s), retry exponencial (2 reintentos), 401/403 ? signOut + redirect /login � `client/src/tests/ApiNetwork.test.ts` (6 passed) |
 | **P-09** | Frontend | Autosync guarda valores por defecto antes de cargar la config → puede sobrescribir ajustes del usuario | ABIERTO | `client/src/context/DashboardContext.tsx:138-211,216-246` |
 | **P-10** | Cifrado | `ENCRYPTION_KEY` inválida genera clave efímera; `encrypt/decrypt` aceptan texto plano | ✅ CERRADO | `server/src/utils/security.py` · fail-closed en producción sin clave · clave determinista en dev · `encrypt_key` lanza `ValueError` en vez de texto plano · `decrypt_key` rechaza no-Fernet · `tests/test_security_encryption_key.py` (10 passed) · Antigravity 2026-10-22 |
@@ -340,13 +340,21 @@ y se compara por `id`. Test: con filtro activo, un solo POST por cambio de filtr
 
 ---
 
-### P-07 · CSP permisiva
-**Archivo:** `client/next.config.ts:19-28`.
+### P-07 · CSP permisiva (CERRADO por Antigravity 2026-10-22)
+**Archivo:** `client/next.config.ts`.
+
 `script-src 'self' 'unsafe-eval' 'unsafe-inline'`, `connect-src ws: wss:` (cualquier host),
 sin `frame-ancestors`, `base-uri` ni `form-action`. Cualquier script inline inyectado se ejecuta.
 
-**Cierre:** nonce/hash para el bootstrap de tema, `connect-src` explícito (API + Supabase),
-`frame-ancestors 'none'`, `base-uri 'self'`, `form-action 'self'`. Verificar en DevTools sin errores.
+**Corrección aplicada.**
+- `script-src 'self'` (sin `unsafe-eval`, sin `unsafe-inline`).
+- `style-src 'self'` (sin `unsafe-inline`).
+- `connect-src` con hosts específicos: `'self'`, `http://127.0.0.1:8000`, `http://localhost:8000`, `ws://localhost:8000`, `wss://localhost:8000`, y la `NEXT_PUBLIC_API_URL` configurada. Sin `ws:`/`wss:` genéricos.
+- `frame-ancestors 'none'` (evita clickjacking).
+- `base-uri 'self'`, `form-action 'self'`, `object-src 'none'`, `frame-src 'none'`.
+- Tests: `client/src/tests/CSP.test.ts` (13 passed) — verifica que no aparecen directivas inseguras y que las directivas de restricción están presentes.
+
+**Verificación:** `tsc --noEmit` limpio, `vitest run` → 64 passed, `npm run build` → OK.
 
 **Regla:** `unsafe-inline` en `script-src` solo se acepta con justificación escrita y fecha de retirada.
 

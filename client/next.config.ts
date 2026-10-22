@@ -7,24 +7,31 @@ import type { NextConfig } from "next";
 // llamadas con "Refused to connect because it violates the document's Content
 // Security Policy".
 const apiBaseUrl = (process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000").replace(/\/+$/, "");
+const apiUrlNoScheme = apiBaseUrl.replace(/^https?:\/\//, "");
+
 const connectSources = [
   "'self'",
-  "ws:",
-  "wss:",
   "http://127.0.0.1:8000",
   "http://localhost:8000",
+  "ws://localhost:8000",
+  "wss://localhost:8000",
   apiBaseUrl,
 ];
 
+// CSP endurecida (P-07): sin 'unsafe-eval', sin 'unsafe-inline' en scripts ni estilos,
+// frame-ancestors 'none' para evitar clickjacking, base-uri y form-action restringidos.
 const cspHeader = `
   default-src 'self';
-  script-src 'self' 'unsafe-eval' 'unsafe-inline';
-  style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
+  script-src 'self';
+  style-src 'self';
   img-src 'self' blob: data: https://lh3.googleusercontent.com;
   font-src 'self' https://fonts.gstatic.com;
   connect-src ${[...new Set(connectSources)].join(" ")};
-  frame-src 'none';
+  frame-ancestors 'none';
+  base-uri 'self';
+  form-action 'self';
   object-src 'none';
+  frame-src 'none';
 `.replace(/\s{2,}/g, ' ').trim();
 
 const nextConfig: NextConfig = {
