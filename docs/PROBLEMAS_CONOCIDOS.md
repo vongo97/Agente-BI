@@ -99,7 +99,7 @@ registrado aquí incluye:
 | **P-24** | UI | Clases Tailwind inexistentes (`bg-bi-s0`, `text-bi-text-1`, `duration-3000`) | `SimAgentConfig.tsx:63-69`, `Skeletons.tsx:82` |
 | **P-25** | A11y | Modal de reportes sin `role="dialog"`, ESC ni focus trap; toasts sin `aria-live` | `ReportBuilder.tsx:107-123`, `ToastContainer.tsx:40-41` |
 | **P-26** | UI | "Guardar Cambios" en Ajustes no guarda nada y reporta éxito | `client/src/components/SettingsView.tsx:72-76` |
-| **P-27** | UI | Fuentes guardadas se consultan pero nunca se renderizan (lista vacía al recargar) | ✅ CERRADO | `client/src/components/Sidebar.tsx:52-96,228-248` · runtime 2026-10-20 |
+| **P-27** | UI | Fuentes guardadas se consultan pero nunca se renderizan (lista vacía al recargar). **Evolución 2026-10-21:** por decisión de producto ya no se precargan al iniciar sesión; solo se restauran al abrir una conversación del historial | ✅ CERRADO | `client/src/components/Sidebar.tsx:52-96,228-248` · runtime 2026-10-20 · `client/src/tests/Sidebar.test.tsx` |
 | **P-28** | Tests | Suite de cliente no ejecutable (`npm test` no existe) y expectativas desactualizadas | `client/package.json:5-10`, `client/src/tests/*` |
 | **P-29** | UX | Sugerencias de chat sin cancelación + dataset inconsistente (última fuente vs primera) | `Chat.tsx:55-77,100`, `ChatSuggestions.tsx:50-53` |
 | **P-30** | Rendimiento | Force layout O(n²) por frame sin parar; polling de simulación sin `try/catch` | `useForceLayout.ts:88-209`, `SimulationSandbox.tsx:139-154` |
@@ -107,7 +107,7 @@ registrado aquí incluye:
 | **P-32** | IA | Sin timeouts/reintentos en llamadas a LLM | ✅ CERRADO | `server/src/engine/providers.py:220-270` · `tests/test_providers.py::TestTimeout` |
 | **P-53** | IA | `safe_parse_validator_json` no limpia BOM/zero-width; un JSON válido del Validator se rechaza y se pierde su feedback | ✅ CERRADO | `server/src/engine/bi_analyst.py:216-252` · `tests/test_validator_json.py` |
 | **P-33** | Seguridad | `/connect-sql`: validación SSRF débil (DNS rebinding) y allowlist opcional | `security.py:108`, `data.py:313-326` |
-| **P-34** | Datos | La sesión se guarda por usuario (sin `chat_id`) → conversaciones se pisan | `server/src/utils/common.py:188-197` |
+| **P-34** | Datos | La sesión se guarda por usuario (sin `chat_id`) → conversaciones se pisan. **Nota 2026-10-21:** `ensure_user_session` todavía reconstruye el pool con todas las fuentes del usuario; el alcance por conversación implementado en la UI aún no está garantizado en el backend | `server/src/utils/common.py:234-320,455-490` · `client/src/components/Sidebar.tsx` |
 | **P-35** | Memoria | `data_store` global en memoria sin límite ni TTL | `server/src/utils/common.py` |
 | **P-44** | Frontend | ✅ CERRADO — Sin cliente OAuth la UI redirigía a Google con `client_id=undefined` ("OAuth client was not found") en vez de avisar | `client/src/app/login/page.tsx` + `LoginForm.tsx` |
 | **P-45** | Frontend | Error de hidratación en la landing (atributos SSR ≠ cliente) al cargar | `client/src/app/page.tsx` · consola del navegador |
@@ -543,13 +543,14 @@ bloqueo, y puede terminar en OOM (512 MB en Render free).
 - `pytest tests/test_audit_agent.py tests/test_storage_persistence.py tests/test_session_encryption.py tests/test_analysis.py tests/test_analysis_audit.py tests/test_analysis_nonblocking.py -q` → **44 passed**.
 - `pytest tests -q` → **236 passed, 4 failed**: los 3 fallos preexistentes de P-41 y
   `test_storage_diagnostics.py::test_clave_nueva_sb_secret_crea_cliente` (clave local inválida, no relacionado).
-- `npx tsc --noEmit` limpio; `npx vitest run` → **38 passed**; `npm run build` → OK.
+- `npx tsc --noEmit` limpio; `npx vitest run` → **40 passed** (incluye `Sidebar.test.tsx`); `npm run build` → OK.
 - **Desplegado `main` 378be8b7 (2026-10-21 19:15 UTC):** `GET /live` → **200** (endpoint nuevo, confirma el deploy);
   `GET /health` → **200**, `postgresql persistent=true`, `audit_agent=true`, `storage.connected=true`.
 
 **Pendiente de cierre.** Una pregunta general y "Detectar anomalías" con sesión real deben completar sin 502 ni
 `Failed to fetch`; además `/health` debe seguir respondiendo mientras el análisis largo está en curso. Sin esa
-evidencia no se marca CERRADO.
+evidencia no se marca CERRADO. **Reporte del usuario (2026-10-21):** el análisis general y "Detectar anomalías" ya
+funcionan en producción; falta medir `/health` durante la petición larga.
 
 **Regla anti-repetición.** Ningún endpoint `async` puede llamar directamente a SDKs/`requests` síncronos ni
 serializar sesiones completas. Las operaciones lentas van a `asyncio.to_thread` o a un worker; el health check debe
@@ -688,14 +689,14 @@ un duplicado.
 **P-24** · Tokens Tailwind inexistentes. *Cierre:* usar `--color-bi-*` reales; revisión visual del paso de configuración.
 **P-25** · A11y modal/toasts. *Cierre:* `role="dialog"`, `aria-modal`, ESC, focus trap, `aria-live`.
 **P-26** · "Guardar Cambios" no-op. *Cierre:* botón ejecuta el guardado real o se elimina.
-**P-27 · CERRADO** · Fuentes guardadas no renderizadas. *Causa:* el primer `fetchSources` corría antes de que NextAuth cargara el token; la petición iba sin `Authorization` y en local caía en el usuario de pruebas (lista vacía), en producción daba 401. *Corrección:* el token se configura antes del fetch, no se consulta mientras `status === "loading"` y las fuentes guardadas pasan a ser las activas si no hay ninguna. *Evidencia:* runtime 2026-10-20, tras recargar la UI muestra `DATOS (1/10)` con `superstore_2019_2022.csv` (19 cols) y el chat permite preguntar. *Cierre:* la lista se pinta desde la API al cargar.
+**P-27 · CERRADO** · Fuentes guardadas no renderizadas. *Causa:* el primer `fetchSources` corría antes de que NextAuth cargara el token; la petición iba sin `Authorization` y en local caía en el usuario de pruebas (lista vacía), en producción daba 401. *Corrección original:* el token se configura antes del fetch, no se consulta mientras `status === "loading"` y las fuentes guardadas pasan a ser las activas si no hay ninguna. *Evolución 2026-10-21:* por decisión de producto **se retiró la precarga global**; una sesión nueva arranca sin fuentes y el historial restaura la fuente del chat al abrirlo. *Evidencia:* `client/src/tests/Sidebar.test.tsx` (no llama a `getDataSources` al montar; `loadChat` restaura la fuente) + `npx vitest run` → 40 passed + `npm run build` OK. *Cierre:* la lista de la conversación se pinta desde su fuente vinculada, no desde todas las fuentes del usuario.
 **P-28** · Tests frontend no ejecutables. *Cierre:* `npm test` verde en CI.
 **P-29** · Sugerencias de chat en bucle/dataset inconsistente. *Cierre:* efecto sin `suggestions.length`; misma fuente que el análisis; cancelación.
 **P-30** · Force layout O(n²) + polling sin guard. *Cierre:* `requestAnimationFrame` se detiene al estabilizar; interval con `try/catch` y deps estables.
 **P-31** · Rate limit por IP de proxy. *Cierre:* `X-Forwarded-For` confiable/`ProxyHeadersMiddleware`; test de bypass.
 **P-32 · CERRADO** · Timeout por modelo + reservas + presupuesto total + 1 reintento; error controlado. Evidencia: `tests/test_providers.py::TestTimeout` y smoke real NVIDIA.
 **P-33** · SSRF en `/connect-sql`. *Cierre:* allowlist obligatoria en producción + bloqueo de IPs privadas tras resolver.
-**P-34** · Sesión sin `chat_id`. *Cierre:* archivo por `user+chat`; test de dos conversaciones simultáneas.
+**P-34** · Sesión sin `chat_id`. *Cierre:* archivo por `user+chat`; test de dos conversaciones simultáneas. *Nota 2026-10-21:* `ensure_user_session()` (`server/src/utils/common.py:455-490`) todavía carga **todas** las `DataSource` del usuario al reconstruir el pool; el alcance por conversación de la UI no garantiza aislamiento en el backend. El cierre real exige cargar solo las fuentes del chat (o sus asociaciones) y un test que suba dos archivos en chats distintos y verifique que no se mezclan.
 **P-35** · `data_store` sin límite. *Cierre:* LRU/TTL o persistencia; test de crecimiento.
 **P-36** · Errores ocultos (`safe_error_message`, `except: pass`). *Cierre:* log con tipo+mensaje saneado y `request_id`; prohibido `except: pass`.
 **P-37** · `generate_auto_dashboard` stub. *Cierre:* implementar o devolver 501 explícito.
@@ -738,6 +739,7 @@ un duplicado.
 | 2026-10-20 | **P-54 CERRADO (Fase 1)**. La ruta `/analyze/audit` calcula 27 hechos verificables y una narrativa derivada solo de ellos; UI con tarjetas y figura; historial y filtros preservan la foto estática. Evidencia: **34 tests backend**, **37 tests frontend**, `tsc --noEmit` limpio, superstore real con las cifras exactas (30% / -$135.4K / 1,871-1,022-1,318 / 24.0 pp) y verificación UI en `localhost:3000`. El flujo `/analyze` con LLM no se declara verificado; Fase 2 pendiente. |
 | 2026-10-20 | **P-54 FASE 2 (opt-in)**. `/analyze` enruta intenciones de auditoría al paquete determinista; el LLM solo selecciona IDs y escribe un marco sin cifras, y el servidor renderiza cada valor con su título/definición. Flag `AUDIT_AGENT_ENABLED=false` por defecto; si el dataset no es auditable, cae al flujo normal. Evidencia: **22 tests dirigidos**, HTTP local con 3 preguntas (modo `llm`, 27 hechos, IDs relevantes), badge UI y `tsc` limpio. El resto de `/analyze` sigue sin verificación numérica. |
 | 2026-10-21 | **P-55 registrado (ALTO)**. El frontend `agente-bi-client-5nx4` apunta al backend Postgres `-zifr`, pero ese backend rechaza su origen con `400 Disallowed CORS origin`; las llamadas fallan como `Failed to fetch` y la UI queda en `0/10`. Además hay un segundo backend `-7nav` con SQLite no persistente y `render.yaml` describe ese, no el Postgres real. No se tocó configuración de producción; el cierre requiere corregir `ALLOWED_ORIGINS` en el servicio `-zifr` y reconciliar el Blueprint. |
+| 2026-10-21 | **Evolución de P-27: fuentes con alcance por conversación**. El sidebar ya no llama a `/data-sources` al iniciar sesión; una conversación nueva arranca sin fuentes y "Nuevo chat" limpia las activas. Al abrir un chat del historial se restaura su `data_source` con `GET /history/{id}`. Se retiró el botón global "Limpiar" porque `POST /clear-session` borraba **todas** las `DataSource` del usuario y habría roto el historial. Evidencia: `npx tsc --noEmit` limpio, `npx vitest run` → **40 passed** (`Sidebar.test.tsx` incluido), `npm run build` → OK. Limitación: `Chat.data_source_id` guarda una sola fuente; varios archivos por chat no se restauran completos y **P-34** sigue abierto porque el backend reconstruye el pool con todas las fuentes del usuario. |
 
 ---
 

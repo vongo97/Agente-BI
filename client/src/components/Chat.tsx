@@ -21,6 +21,7 @@ export function Chat() {
         mistralKey,
         aiProvider,
         dataSources,
+        setDataSources,
         setSidebarOpen,
         messages,
         setMessages,
@@ -245,7 +246,7 @@ export function Chat() {
                 setReportBuilderOpen={setReportBuilderOpen}
                 activeChatId={activeChatId}
                 userId={userId}
-                handleNewChat={() => { setMessages([]); setActiveChatId(null); }}
+                handleNewChat={() => { setMessages([]); setActiveChatId(null); setDataSources([]); }}
                 aiProvider={aiProvider}
             />
 

@@ -9,8 +9,8 @@ import {
 import { useState, useEffect, useCallback } from "react";
 import {
     uploadFile, connectSql, connectGoogleSheets,
-    getHistory, getChatDetails, getDataSources,
-    removeSessionSource, clearSession
+    getHistory, getChatDetails,
+    removeSessionSource
 } from "@/lib/api";
 import { setApiAuthToken } from "@/lib/api";
 import { useDashboard } from "@/context/DashboardContext";
@@ -46,56 +46,18 @@ export function Sidebar() {
     const [sqlUrl, setSqlUrl] = useState("");
     const [gsheetsUrl, setGsheetsUrl] = useState("");
     const [history, setHistory] = useState<ChatSession[]>([]);
-    const [savedSources, setSavedSources] = useState<DataSource[]>([]);
 
     const userId = session?.user?.email || "invitado@agente-bi.local";
     const accessToken = (session as { accessToken?: string } | null)?.accessToken;
 
-    // El token debe estar disponible ANTES del primer fetch de fuentes. Si se
-    // configura en un efecto del provider, los efectos hijos corren primero y
-    // /sources se pide sin Authorization: en local cae en el usuario de pruebas
-    // (lista vacía) y en producción devuelve 401. Eso dejaba el chat bloqueado
-    // con "Datos (0/10)" aunque las fuentes estuvieran guardadas.
+    // El token debe estar disponible antes de cualquier petición autenticada.
+    // Si se configura en un efecto del provider, los efectos hijos corren
+    // primero y /history se pide sin Authorization: en local cae en el usuario
+    // de pruebas (historial ajeno) y en producción devuelve 401.
     useEffect(() => {
         if (status === "loading") return;
         setApiAuthToken(status === "authenticated" ? (accessToken ?? null) : null);
     }, [status, accessToken]);
-
-    type ApiSource = {
-        id?: number;
-        name?: string;
-        filename?: string;
-        columns?: string | string[];
-        type?: string;
-        created_at?: string;
-    };
-
-    const fetchSources = useCallback(async () => {
-        try {
-            const data = await getDataSources(userId);
-            const mapped: DataSource[] = (data as ApiSource[]).map((s) => {
-                let cols: string[] = [];
-                if (Array.isArray(s.columns)) cols = s.columns;
-                else if (typeof s.columns === "string") {
-                    try { cols = JSON.parse(s.columns); } catch { cols = []; }
-                }
-                return {
-                    id: s.id,
-                    filename: s.name || s.filename || "Fuente",
-                    name: s.name,
-                    columns: cols,
-                    type: s.type === "sql" || s.type === "gsheets" ? s.type : "file",
-                    created_at: s.created_at,
-                };
-            });
-            setSavedSources(mapped);
-            // Al abrir la app, las fuentes guardadas son las activas. Sin esto
-            // el chat exige una fuente y el usuario tendría que volver a subirla.
-            setDataSources((prev) => (prev.length > 0 ? prev : mapped));
-        } catch (err) {
-            console.error("Error fetching sources:", err);
-        }
-    }, [userId, setDataSources]);
 
     const fetchHistory = useCallback(async () => {
         try { const data = await getHistory(userId); setHistory(data); }
@@ -104,9 +66,11 @@ export function Sidebar() {
 
     useEffect(() => {
         // No consultar mientras NextAuth carga: sin token la petición caería en
-        // el usuario de pruebas y llenaría la lista con fuentes ajenas.
-        if (status !== "loading" && userId) { fetchHistory(); fetchSources(); }
-    }, [status, userId, activeChatId, fetchHistory, fetchSources]);
+        // el usuario de pruebas y mostraría un historial ajeno.
+        // fetchHistory actualiza el estado después del await de la API.
+        // eslint-disable-next-line react-hooks/set-state-in-effect
+        if (status !== "loading" && userId) { fetchHistory(); }
+    }, [status, userId, activeChatId, fetchHistory]);
 
     const loadChat = async (id: number) => {
         try {
@@ -139,7 +103,6 @@ export function Sidebar() {
                 const res = await uploadFile(file, userId) as { id: number; filename: string; columns: string[] };
                 addDataSource({ id: res.id, filename: res.filename, columns: res.columns, type: 'file' });
             }
-            fetchSources();
             setView('chat');
         } catch (err) {
             const error = err as Error;
@@ -154,8 +117,8 @@ export function Sidebar() {
         if (!sqlUrl && !url) return;
         setUploading(true);
         try {
-            await connectSql(url || sqlUrl, userId);
-            addDataSource({ filename: "Base de Datos SQL", columns: ["SQL Engine Active"], type: 'sql' });
+            const res = await connectSql(url || sqlUrl, userId) as { id?: number };
+            addDataSource({ id: res.id, filename: "Base de Datos SQL", columns: ["SQL Engine Active"], type: 'sql' });
             setShowSqlInput(false); setSqlUrl("");
         } catch (err) {
             const error = err as Error;
@@ -167,8 +130,8 @@ export function Sidebar() {
         if (!gsheetsUrl && !url) return;
         setUploading(true);
         try {
-            const res = await connectGoogleSheets(url || gsheetsUrl, userId);
-            addDataSource({ filename: "Google Sheet", columns: res.columns, type: 'gsheets' });
+            const res = await connectGoogleSheets(url || gsheetsUrl, userId) as { id?: number; columns: string[] };
+            addDataSource({ id: res.id, filename: "Google Sheet", columns: res.columns, type: 'gsheets' });
             setShowGSheetsInput(false); setGsheetsUrl("");
         } catch (err) {
             const error = err as Error;
@@ -256,17 +219,6 @@ export function Sidebar() {
                                 <Database className="w-3 h-3" />
                                 Datos ({dataSources.length}/10)
                             </span>
-                            {(dataSources.length > 0 || savedSources.length > 0) && (
-                                <button
-                                    onClick={async () => {
-                                        try { await clearSession(userId); setDataSources([]); fetchSources(); }
-                                        catch { setDataSources([]); fetchSources(); }
-                                    }}
-                                    className="text-[10px] font-medium text-[var(--bi-text-3)] hover:text-[var(--bi-red)] transition-colors"
-                                >
-                                    Limpiar
-                                </button>
-                            )}
                         </div>
 
                         {/* Active sources */}
