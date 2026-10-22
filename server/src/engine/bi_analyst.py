@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import os
 import json
@@ -332,7 +333,12 @@ async def analyze_data(data_context, query, api_key, chat_history=[], mode="file
         )
         logger.info("Invocando Planner Agent...")
         planner_system = skill_loader.get_system_prompt_for_agent("PLANNER")
-        plan = generate_ai_content(
+        # Las llamadas a proveedores son síncronas (requests / SDK). Si se
+        # ejecutan directamente dentro de una corrutina bloquean el event loop
+        # y con él los health checks de Render, que acaban reiniciando el
+        # servicio a mitad de análisis. Se ejecutan en un hilo aparte.
+        plan = await asyncio.to_thread(
+            generate_ai_content,
             planner_prompt, 
             eng_key, 
             eng_provider, 
@@ -347,7 +353,7 @@ async def analyze_data(data_context, query, api_key, chat_history=[], mode="file
         # Si es Groq, esperamos para enfriar la tasa de peticiones y respetar el límite de 3 RPM
         if eng_provider == "groq":
             logger.info("Enfriando la API de Groq por 3 segundos antes de invocar al Executor...")
-            time.sleep(3.0)
+            await asyncio.sleep(3.0)
 
         # 4. Bucle Multi-Agente (Executor ➔ Execution ➔ Validator) con máximo 1 reintento
         # (2 intentos). Antes eran 4 intentos: con un proveedor lento eso podía
@@ -380,7 +386,8 @@ async def analyze_data(data_context, query, api_key, chat_history=[], mode="file
             # Generar código Python
             logger.info("Invocando Executor Agent...")
             executor_system = skill_loader.get_system_prompt_for_agent("EXECUTOR")
-            raw_code = generate_ai_content(
+            raw_code = await asyncio.to_thread(
+                generate_ai_content,
                 executor_prompt, 
                 eng_key, 
                 eng_provider, 
@@ -395,7 +402,7 @@ async def analyze_data(data_context, query, api_key, chat_history=[], mode="file
             # Si es Groq, enfriamos la API antes de proceder a la validación
             if eng_provider == "groq":
                 logger.info("Enfriando la API de Groq por 3 segundos antes de la validación...")
-                time.sleep(3.0)
+                await asyncio.sleep(3.0)
             
             # Ejecutar el código en el Sandbox
             logger.info("Ejecutando código en Sandbox...")
@@ -417,7 +424,7 @@ async def analyze_data(data_context, query, api_key, chat_history=[], mode="file
             validator_system = skill_loader.get_system_prompt_for_agent("VALIDATOR")
             validation_raw = ""
             if eng_provider == "gemini":
-                try:
+                def _gemini_validation() -> str:
                     client = get_client(eng_key.strip())
                     model_name = MODELS.get("GEMINI_ANALYTICS", MODELS["GEMINI_SWARM"])
                     response = client.models.generate_content(
@@ -429,10 +436,14 @@ async def analyze_data(data_context, query, api_key, chat_history=[], mode="file
                             system_instruction=validator_system
                         )
                     )
-                    validation_raw = response.text
+                    return response.text
+
+                try:
+                    validation_raw = await asyncio.to_thread(_gemini_validation)
                 except Exception as e:
                     logger.warning("Fallo en validación estructurada JSON nativo, usando fallback: %s", e)
-                    validation_raw = generate_ai_content(
+                    validation_raw = await asyncio.to_thread(
+                        generate_ai_content,
                         validator_prompt, 
                         eng_key, 
                         eng_provider, 
@@ -441,7 +452,8 @@ async def analyze_data(data_context, query, api_key, chat_history=[], mode="file
                         system_instruction=validator_system
                     )
             else:
-                validation_raw = generate_ai_content(
+                validation_raw = await asyncio.to_thread(
+                    generate_ai_content,
                     validator_prompt, 
                     eng_key, 
                     eng_provider, 
@@ -465,7 +477,7 @@ async def analyze_data(data_context, query, api_key, chat_history=[], mode="file
                 retry_count += 1
                 if eng_provider == "groq" and retry_count <= max_retries:
                     logger.info("Enfriando la API de Groq por 3 segundos antes del reintento...")
-                    time.sleep(3.0)
+                    await asyncio.sleep(3.0)
                 
         # 5. Generar la Narrativa Final con el Estratega
         clean_res = execution_text.split("---")[-1].strip() if "---" in execution_text else execution_text
@@ -478,11 +490,12 @@ async def analyze_data(data_context, query, api_key, chat_history=[], mode="file
         # Enfriamiento para Groq antes de invocar al Estratega
         if str_provider == "groq":
             logger.info("Enfriando la API de Groq por 3 segundos antes de invocar al Estratega...")
-            time.sleep(3.0)
+            await asyncio.sleep(3.0)
             
         logger.info("Invocando Estratega...")
         strategist_system = skill_loader.get_system_prompt_for_agent("STRATEGIST")
-        final_narrative = generate_ai_content(
+        final_narrative = await asyncio.to_thread(
+            generate_ai_content,
             p_strat, 
             str_key, 
             str_provider, 

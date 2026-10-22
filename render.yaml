@@ -12,7 +12,9 @@ services:
     startCommand: python main.py
     rootDir: server
     plan: free
-    healthCheckPath: /
+    # /live no consulta DB ni almacenamiento: evita reinicios por un health
+    # check lento mientras el análisis (LLM/pandas) sigue en curso.
+    healthCheckPath: /live
     envVars:
       - key: DATABASE_URL
         sync: false # Configurar en el Dashboard de Render con la URL de Supabase
@@ -32,6 +34,10 @@ services:
       # Fase 2 de P-54: activa el enrutamiento de auditoría a hechos verificados.
       - key: AUDIT_AGENT_ENABLED
         value: "true"
+      # Presupuesto del narrador LLM de auditoría. Al agotarse, se usa la
+      # narrativa determinista (con las mismas cifras verificadas).
+      - key: AUDIT_NARRATOR_TIMEOUT_S
+        value: "25"
       # CORS explícito: orígenes permitidos (separados por coma). Incluir el
       # dominio real del frontend desplegado, si no el navegador bloquea con
       # "Failed to fetch" aunque el backend esté vivo.

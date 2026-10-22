@@ -1,3 +1,4 @@
+import asyncio
 import json
 import os
 import logging
@@ -21,6 +22,14 @@ from src.utils.limiter import limiter
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["Analysis"])
+
+# El narrador de auditoría es opcional: si el proveedor tarda, se devuelve la
+# narrativa determinista (que ya contiene las cifras verificadas) en vez de
+# mantener la petición abierta varios minutos.
+try:
+    _AUDIT_NARRATOR_TIMEOUT_S = float(os.getenv("AUDIT_NARRATOR_TIMEOUT_S", "25"))
+except (TypeError, ValueError):
+    _AUDIT_NARRATOR_TIMEOUT_S = 25.0
 
 
 def _audit_figure_json(audit) -> Optional[dict]:
@@ -126,7 +135,8 @@ async def analyze(
     logger.debug("Analyze Request: user=%s, chat=%s, source=%s, provider=%s",
                  authenticated_user, chat_id, data_source_id, provider)
     
-    session_data = get_user_data(authenticated_user, chat_id)
+    # Descifrar/unpicklear la sesión puede tardar; no debe bloquear el event loop.
+    session_data = await asyncio.to_thread(get_user_data, authenticated_user, chat_id)
     logger.debug("Session Data found: %s", session_data is not None)
     
     # Verificar si la fuente solicitada está en el pool actual
@@ -149,7 +159,11 @@ async def analyze(
         # Reconstruir el pool desde DB+nube (post-reinicio del contenedor);
         # incluye la autocarga de la fuente solicitada si está registrada.
         from src.utils.common import ensure_user_session
-        session_data = ensure_user_session(authenticated_user, db, chat_id)
+        # Reconstruir el pool descarga/descifra/parsea archivos; se hace fuera
+        # del event loop para que /live siga respondiendo.
+        session_data = await asyncio.to_thread(
+            ensure_user_session, authenticated_user, db, chat_id
+        )
         
         if not session_data:
             logger.warning("No session data found or loaded for user (source=%s).", data_source_id)
@@ -207,7 +221,10 @@ async def analyze(
 
             audit = None
             try:
-                audit = build_audit(
+                # build_audit recorre el DataFrame con pandas (CPU). Se ejecuta
+                # fuera del event loop para no bloquear los health checks.
+                audit = await asyncio.to_thread(
+                    build_audit,
                     session_data.get("data"),
                     primary_source_name=audit_primary_name,
                     source_name=source_name,
@@ -220,13 +237,22 @@ async def analyze(
 
             if audit_requested and audit is not None:
                 narrator_provider, narrator_key = _narrator_credentials(provider, api_key, mistral_key)
-                narrative, narrative_mode, fallback_reason = generate_audit_narrative(
-                    query,
-                    audit,
-                    api_key=narrator_key,
-                    provider=narrator_provider,
-                    temperature=user_temp,
-                )
+                try:
+                    narrative, narrative_mode, fallback_reason = await asyncio.wait_for(
+                        asyncio.to_thread(
+                            generate_audit_narrative,
+                            query,
+                            audit,
+                            api_key=narrator_key,
+                            provider=narrator_provider,
+                            temperature=user_temp,
+                        ),
+                        timeout=max(1.0, _AUDIT_NARRATOR_TIMEOUT_S),
+                    )
+                except asyncio.TimeoutError:
+                    narrative = str(audit.get("analysis") or "Auditoría completada.")
+                    narrative_mode = "deterministic"
+                    fallback_reason = "timeout_narrador"
                 if fallback_reason:
                     logger.info("Auditoría Fase 2 usó narrativa determinista: %s", fallback_reason)
 

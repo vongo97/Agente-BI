@@ -139,6 +139,12 @@ try:
 except Exception as e:
     logger.error("No se pudo completar init_db al iniciar: %s", e)
 
+@app.get("/live")
+async def live():
+    """Health check ligero para Render: no toca DB ni almacenamiento."""
+    return {"status": "ok"}
+
+
 @app.get("/")
 @app.get("/health")
 async def root():

@@ -148,9 +148,10 @@ class TestSessionRebuildAfterRestart(unittest.TestCase):
         self.assertEqual(len(df), 2)
         self.assertIn(1, session["sources"])
 
+    @patch('src.utils.common.save_user_data')
     @patch('src.utils.common.load_source_to_session')
-    def test_ensure_user_session_reconstruye_pool_completo(self, mock_load):
-        def fake_load(user_id, source, chat_id=None):
+    def test_ensure_user_session_reconstruye_pool_completo(self, mock_load, mock_save):
+        def fake_load(user_id, source, chat_id=None, persist=True):
             key = f"{user_id}_active"
             data_store[key] = {"type": "file", "data": {"persist_test_file": pd.DataFrame({"a": [1]})}, "sources": [source.id]}
             return True
@@ -165,6 +166,9 @@ class TestSessionRebuildAfterRestart(unittest.TestCase):
         self.assertIsNotNone(session)
         self.assertIn("persist_test_file", session["data"])
         mock_load.assert_called_once()
+        # La reconstrucción no debe guardar una vez por fuente: solo al final.
+        self.assertFalse(mock_load.call_args.kwargs.get("persist", True))
+        mock_save.assert_called_once()
 
     def test_ensure_user_session_sin_fuentes_devuelve_lo_hay(self):
         mock_db = MagicMock()

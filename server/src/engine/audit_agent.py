@@ -25,7 +25,7 @@ _DIGIT_RE = re.compile(r"\d")
 
 _EXPLICIT_INTENT_RE = re.compile(
     r"\b(auditoria|audita|auditar|audit|hallazgos?|diagnostico verificado|"
-    r"perdidas? ocultas?|que esta oculto)\b"
+    r"perdidas? ocultas?|que esta oculto|anomalias?|outliers?)\b"
 )
 _QUESTION_RE = re.compile(
     r"\b(cual|cuales|que|quien|quienes|donde|por que|como|cuanto|"

@@ -245,6 +245,7 @@ def get_user_data(user_id: str, chat_id: Optional[int] = None):
             return data
     
     # 2. Intentar desde archivo (persistencia)
+    needs_resave = False
     try:
         session_file = get_session_file(user_id)
         if os.path.exists(session_file):
@@ -265,10 +266,15 @@ def get_user_data(user_id: str, chat_id: Optional[int] = None):
                     raise ValueError("Sesión cifrada corrupta o manipulada")
                 logger.warning("Migrando sesión heredada sin cifrar (%s) a formato cifrado.", session_file)
                 stored_data = pickle.loads(raw)
+                needs_resave = True
             if isinstance(stored_data, pd.DataFrame):
                 stored_data = {"type": "file", "data": {"dataset_1": stored_data}, "sources": []}
-            # Re-persistir en formato cifrado si venía de archivo plano heredado
-            save_user_data(user_id, stored_data)
+                needs_resave = True
+            # Re-persistir SOLO si hubo migración. Antes se volvía a serializar,
+            # cifrar y subir la sesión completa en cada lectura desde disco:
+            # con varias tablas eso duplica la RAM y bloquea el request.
+            if needs_resave:
+                save_user_data(user_id, stored_data)
             data_store[session_key] = stored_data
             return stored_data
     except Exception as e:
@@ -366,8 +372,15 @@ def resolve_source_path(source) -> Optional[str]:
     return None
 
 
-def load_source_to_session(user_id: str, source, chat_id: Optional[int] = None) -> bool:
-    """Carga una fuente de datos específica al contexto de memoria (Chat o Activo) de forma aditiva."""
+def load_source_to_session(
+    user_id: str, source, chat_id: Optional[int] = None, persist: bool = True
+) -> bool:
+    """Carga una fuente de datos específica al contexto de memoria (Chat o Activo) de forma aditiva.
+
+    ``persist=False`` evita re-serializar y re-subir la sesión completa en cada
+    fuente. ``ensure_user_session`` lo usa para reconstruir el pool tras un
+    reinicio y guarda una sola vez al final.
+    """
     session_key = get_session_key(user_id, chat_id)
     try:
         # 1. Obtener sesión actual para no perder lo que ya estaba
@@ -376,6 +389,10 @@ def load_source_to_session(user_id: str, source, chat_id: Optional[int] = None) 
             session_data = {"type": source.type, "data": {}, "sources": []}
         
         if source.type == 'file':
+            safe_name = "".join([c if c.isalnum() else "_" for c in source.name.split('.')[0]])
+            # Si ya está cargada, no volver a descargar, descifrar y parsear.
+            if source.id in session_data.get("sources", []) and safe_name in session_data.get("data", {}):
+                return True
             # La nube es la fuente de verdad: resuelve la clave de bucket y
             # descarga a la caché local si el archivo no está en el contenedor.
             local_path = resolve_source_path(source)
@@ -397,14 +414,14 @@ def load_source_to_session(user_id: str, source, chat_id: Optional[int] = None) 
                     df = load_file_data(local_path)
                 
                 # Nombre seguro para la tabla
-                safe_name = "".join([c if c.isalnum() else "_" for c in source.name.split('.')[0]])
                 session_data["data"][safe_name] = df
                 
                 if source.id not in session_data["sources"]:
                     session_data["sources"].append(source.id)
                 
                 data_store[session_key] = session_data
-                save_user_data(user_id, session_data)
+                if persist:
+                    save_user_data(user_id, session_data)
                 return True
         elif source.type == 'sql':
             from src.connectors.data_connectors import get_sql_engine, get_db_schema
@@ -413,18 +430,22 @@ def load_source_to_session(user_id: str, source, chat_id: Optional[int] = None) 
             schema = get_db_schema(engine)
             session_data = {"type": "sql", "data": engine, "schema": schema, "source_id": source.id}
             data_store[session_key] = session_data
-            save_user_data(user_id, session_data)
+            if persist:
+                save_user_data(user_id, session_data)
             return True
         elif source.type == 'gsheets':
+            sheet_key = f"gsheet_{source.id}"
+            if source.id in session_data.get("sources", []) and sheet_key in session_data.get("data", {}):
+                return True
             from src.connectors.data_connectors import load_gsheets_data
             df = load_gsheets_data(source.url)
             if df is not None:
-                sheet_key = f"gsheet_{source.id}"
                 session_data["data"][sheet_key] = df
                 if source.id not in session_data["sources"]:
                     session_data["sources"].append(source.id)
                 data_store[session_key] = session_data
-                save_user_data(user_id, session_data)
+                if persist:
+                    save_user_data(user_id, session_data)
                 return True
     except Exception as e:
         logger.error(f"Error en load_source_to_session ({session_key}): {e}")
@@ -454,11 +475,18 @@ def ensure_user_session(user_id: str, db, chat_id: Optional[int] = None):
         "Reconstruyendo sesión desde DB+nube para %s (%d fuente(s)).",
         mask_email(user_id), len(sources),
     )
+    loaded_any = False
     for source in sources:
         if source.type in ("file", "gsheets"):
-            load_source_to_session(user_id, source, chat_id)
+            # No persistir por cada fuente: con varias tablas, cada guardado
+            # vuelve a serializar/cifrar/subir todo el pool y dispara la RAM.
+            if load_source_to_session(user_id, source, chat_id, persist=False):
+                loaded_any = True
         # type == "sql" no se reconstruye automáticamente: crear engines para
         # todas las conexiones en cada arranque sería costoso y puede fallar
         # si la URL cifrada ya no es válida. El usuario puede reconectar.
 
-    return get_user_data(user_id, chat_id)
+    rebuilt = get_user_data(user_id, chat_id)
+    if loaded_any and rebuilt:
+        save_user_data(user_id, rebuilt)
+    return rebuilt

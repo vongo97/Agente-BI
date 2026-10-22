@@ -73,6 +73,7 @@ class TestAuditIntent:
         assert is_audit_query("Haz una auditoría de los márgenes")
         assert is_audit_query("Audita los descuentos")
         assert is_audit_query("Dame los hallazgos verificados")
+        assert is_audit_query("Detectar anomalías")
 
     def test_fact_questions_route_to_audit(self):
         assert is_audit_query("¿Qué región tiene peor margen?")

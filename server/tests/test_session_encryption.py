@@ -80,6 +80,18 @@ class SessionEncryptionTest(unittest.TestCase):
         self.assertEqual(list(df.columns), ["columna_secreta"])
         self.assertEqual(df["columna_secreta"].tolist(), [1, 2, 3])
 
+    def test_leer_sesion_cifrada_no_la_vuelve_a_guardar(self):
+        """Leer una sesión ya cifrada no debe re-serializar/subir todo el pool."""
+        user = "user@example.com"
+        self._write(user)
+        common.data_store.clear()
+
+        with patch.object(common, "save_user_data") as mock_save:
+            recovered = common.get_user_data(user)
+
+        self.assertIsNotNone(recovered)
+        mock_save.assert_not_called()
+
 
 class DataRouterNoPlaintextTest(unittest.TestCase):
     """Guardia estatica: si alguien vuelve a escribir en claro, el test falla."""
