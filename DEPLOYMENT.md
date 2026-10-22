@@ -53,6 +53,11 @@ público.
 | `ALLOWED_ORIGINS` | Ya viene en `render.yaml` | El navegador bloquea con "Failed to fetch" |
 | `ENVIRONMENT` | `production` (viene en `render.yaml`) | Nunca uses `development` en Render: activa el bypass de auth |
 | `AUDIT_AGENT_ENABLED` | `true` (activo por defecto desde Fase 2; `false` lo desactiva) | `/analyze` no enruta preguntas de auditoría a hechos verificados |
+| `AUDIT_NARRATOR_TIMEOUT_S` | `25` (opcional) | Si el LLM tarda más, la auditoría responde con la narrativa determinista, que ya trae las cifras verificadas |
+
+> **Health check:** Render debe usar `GET /live` (barato, sin DB ni almacenamiento).
+> `GET /health` sigue existiendo para diagnóstico y puede tardar si la DB/almacenamiento
+> están lentos; no conviene usarlo como sonda de vida.
 
 ### Frontend `agente-bi-client-5nx4`
 
@@ -73,7 +78,7 @@ Redirect URI en Google Cloud Console:
 
 | Síntoma | Causa habitual | Dónde mirar |
 |---|---|---|
-| `Failed to fetch` en el navegador | Origen no está en `ALLOWED_ORIGINS`, o el servicio free estaba dormido (primer request da 502 sin headers CORS) | Pre-flight: `curl -X OPTIONS https://agente-bi-server-7nav-zifr.onrender.com/api/v1/upload -H "Origin: https://<frontend>" -H "Access-Control-Request-Method: POST"` |
+| `Failed to fetch` en el navegador | Origen no está en `ALLOWED_ORIGINS`, el servicio free estaba dormido, o el backend se reinició porque el health check quedó bloqueado durante un análisis (P-56) | Pre-flight: `curl -X OPTIONS https://agente-bi-server-7nav-zifr.onrender.com/api/v1/upload -H "Origin: https://<frontend>" -H "Access-Control-Request-Method: POST"`; estado: `GET /live` y `GET /health` |
 | `401 Token de sesión inválido` | `NEXTAUTH_SECRET` ≠ `AUTH_SECRET`, o cookie vieja de otro despliegue | Logs: línea `Token inválido: ...` |
 | `401 Se requiere token…` | Petición sin cabecera `Authorization` (frontend sin sesión) | Sesión del usuario |
 | `403 Usuario no autorizado` / `Acceso denegado: AUTHORIZED_EMAILS…` | Correo fuera de la lista blanca, o lista vacía | Logs: `AUTH_REJECTED motivo=...` |

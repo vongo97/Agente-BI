@@ -81,7 +81,8 @@ registrado aquí incluye:
 | **P-51** | Sandbox | La allowlist de imports no incluye `time`; pandas/numpy lo importan en runtime y **todo análisis falla** con `ImportError: Librería 'time' bloqueada por seguridad` | ✅ CERRADO | `server/src/engine/executor.py:283-294,457-468,762-769` · `tests/test_sandbox_imports.py` |
 | **P-52** | Sandbox | La lista AST de atributos prohibidos incluye `rename`; bloquea `DataFrame.rename()` legítimo y hace fallar análisis con pandas | ✅ CERRADO | `server/src/engine/executor.py:153-166` · `tests/test_sandbox_imports.py::TestSandboxRename` |
 | **P-54** | IA/BI | La narrativa del análisis no tiene verificación numérica: el LLM puede inventar cifras o mezclar profit neto, pérdida bruta, líneas y órdenes | 🟡 PARCIAL (Fase 1 + Fase 2 opt-in) | `insight_auditor.py` · `audit_agent.py` · `analysis.py` · `InsightCards.tsx` · `tests/test_insight_auditor.py` · `tests/test_audit_agent.py` · `tests/test_analysis_audit.py` · auditoría real del superstore 27 hechos |
-| **P-55** | Infra/API | El frontend de Render apunta al backend `-zifr`, pero su CORS no incluye ese origen; además hay dos backends (`-7nav` SQLite y `-zifr` Postgres) y `render.yaml` describe el SQLite | ABIERTO | `render.yaml:7,33-34,56` · `server/main.py:38-58` · `client/next.config.ts:10-30` · CORS real 2026-10-21 |
+| **P-55** | Infra/API | El frontend de Render apunta al backend `-zifr`, pero su CORS no incluye ese origen; además hay dos backends (`-7nav` SQLite y `-zifr` Postgres) y `render.yaml` describe el SQLite | 🟡 PARCIAL (upload funciona según el usuario; falta `persisted:true` y retirar `-7nav`) | `render.yaml:7,33-34,56` · `server/main.py:38-58` · `client/next.config.ts:10-30` · CORS real 2026-10-21 |
+| **P-56** | Infra/IA | `/analyze` es `async` pero ejecuta llamadas LLM síncronas y re-guarda la sesión completa en el event loop; bloquea `/health`, Render reinicia el servicio y el navegador muestra `Failed to fetch` | 🟡 PARCIAL (corregido en código; falta verificar en producción) | `server/src/engine/bi_analyst.py:334-500` · `server/src/routers/analysis.py` · `server/src/utils/common.py:234-320` · `server/main.py` · `render.yaml` |
 | **P-43** | API | `except Exception` de los endpoints de simulación se traga los `HTTPException` accionables → todo error se ve como 500 "Error interno" | ✅ CERRADO | `simulation.py` (4 endpoints) · `dashboard.py` (auto_dashboard) · `exports.py` (chart, pptx) · `tests/test_http_exception_passthrough*.py` |
 
 ### 🟡 MEDIOS
@@ -504,6 +505,56 @@ respuestas HTTP deliberadas. Primero `except HTTPException: raise`.
 
 ---
 
+### P-56 · `/analyze` bloquea el event loop y provoca reinicios en Render
+
+| Campo | Valor |
+|---|---|
+| **Severidad** | ALTO |
+| **Estado** | 🟡 PARCIAL (corregido en código; pendiente de evidencia en producción) |
+| **Verificado** | 🔍 Código + reproducción local del bloqueo + tests; producción solo mostró 502 transitorio |
+| **Archivos** | `server/src/engine/bi_analyst.py:334-500` · `server/src/routers/analysis.py` · `server/src/utils/common.py:234-320` · `server/main.py` · `render.yaml` |
+
+**Qué pasaba.** El endpoint `POST /api/v1/analyze` está declarado `async`, pero dentro llamaba de forma síncrona a
+`generate_ai_content()` (SDK de Gemini / `requests` de Groq/Mistral). Esa llamada puede tardar 30-90 s y bloquea el
+event loop de Uvicorn: mientras tanto `/` y `/health` no pueden responder. Render usa `/` como health check; al no
+recibir respuesta a tiempo reinicia el servicio. El navegador ve la conexión cortada como
+`Error interno: Failed to fetch` justo después de preguntar. El síntoma observado encaja: `/health` devolvió **502**
+y, menos de un minuto después, **200** sin haber desplegado nada.
+
+Además, `get_user_data()` volvía a serializar, cifrar y subir a Supabase **toda** la sesión en cada lectura desde
+disco, y `ensure_user_session()` lo hacía una vez por fuente. Con varias tablas eso multiplica la RAM y el tiempo de
+bloqueo, y puede terminar en OOM (512 MB en Render free).
+
+**Corrección (2026-10-21).**
+- Las llamadas a Planner, Executor, validador Gemini, fallback y Strategist se ejecutan con
+  `await asyncio.to_thread(...)`; los `time.sleep(3)` de Groq pasan a `await asyncio.sleep(3)`.
+- `build_audit` y el narrador de auditoría también salen del event loop. El narrador tiene un presupuesto de **25 s**
+  (`AUDIT_NARRATOR_TIMEOUT_S`); si el proveedor tarda, se devuelve la narrativa determinista ya calculada.
+- `get_user_data()` solo re-guarda la sesión cuando migra un archivo heredado; `ensure_user_session()` reconstruye con
+  `persist=False` y guarda **una sola vez** al final. `load_source_to_session()` no vuelve a descargar/parsear una
+  fuente que ya está en memoria.
+- Se añadió `GET /live` (sin DB ni almacenamiento) y `render.yaml` lo usa como `healthCheckPath`.
+- La UI distingue un error de red de una anomalía: ya no muestra la tarjeta "Anomalía detectada" con
+  `Failed to fetch`, y ofrece un mensaje de reintento.
+
+**Evidencia local.**
+- `pytest tests/test_analysis_nonblocking.py -q` → **1 passed**. El test mide que el event loop sigue avanzando
+  mientras las cuatro llamadas simuladas duermen 0.12 s en hilos distintos.
+- `pytest tests/test_audit_agent.py tests/test_storage_persistence.py tests/test_session_encryption.py tests/test_analysis.py tests/test_analysis_audit.py tests/test_analysis_nonblocking.py -q` → **44 passed**.
+- `pytest tests -q` → **236 passed, 4 failed**: los 3 fallos preexistentes de P-41 y
+  `test_storage_diagnostics.py::test_clave_nueva_sb_secret_crea_cliente` (clave local inválida, no relacionado).
+- `npx tsc --noEmit` limpio; `npx vitest run` → **38 passed**; `npm run build` → OK.
+
+**Pendiente de cierre.** Desplegar y comprobar en producción: `GET /live` → 200; `/health` sigue 200 mientras un
+análisis largo está en curso; una pregunta general y "Detectar anomalías" completan sin 502 ni `Failed to fetch`.
+Sin esa evidencia no se marca CERRADO.
+
+**Regla anti-repetición.** Ningún endpoint `async` puede llamar directamente a SDKs/`requests` síncronos ni
+serializar sesiones completas. Las operaciones lentas van a `asyncio.to_thread` o a un worker; el health check debe
+ser barato y no depender de la DB.
+
+---
+
 ### P-54 · Narrativa sin verificación numérica
 
 | Campo | Valor |
@@ -554,6 +605,7 @@ al flujo normal en lugar de romper `/analyze`.
 - **Fase 2:** `pytest tests/test_audit_agent.py tests/test_analysis_audit.py tests/test_http_exception_passthrough_static.py -q` → **22 passed**. Cubre intención positiva/negativa, JSON válido, cifra literal rechazada, IDs desconocidos, citas fuera de la selección, fallback sin clave/JSON inválido/error del proveedor y dataset no auditable que vuelve al flujo normal. Suite completa: `pytest tests -q` → **232 passed, 3 failed** (solo los fallos preexistentes de P-41: `test_exports.py` PDF/PPTX y `test_simulation.py`).
 - **Fase 2 HTTP local:** `POST /api/v1/analyze` con `data_source_id=18`, sin API key y flag activo → **HTTP 200**, `narrative_mode=llm`, **27 hechos** y figura. Tres preguntas ("audita márgenes y descuentos", "qué región tiene peor margen", "clientes con más pérdidas") seleccionaron IDs relevantes (`KPI-03/DISC-01/DISC-02/DISC-03/DISC-04/DISC-06/LOSS-02/SEG-02`, `REG-01..04`, `CUST-01/CUST-02/LOSS-02/LOSS-04`); el texto introductorio no contiene cifras y cada valor aparece junto a su título/definición. La consulta "genera un gráfico de ventas por región" **no** se enrutó a auditoría.
 - **Fase 2 activa por defecto (2026-10-21):** `audit_agent_enabled()` devuelve `true` si la variable no está definida; `false` la desactiva. Tests de flag: `pytest tests/test_audit_agent.py tests/test_analysis_audit.py -q` → **23 passed**. Suite completa: **235 passed, 3 failed** (solo P-41 preexistente). El backend desplegado en `-zifr` publica `features.audit_agent=true`. Las preguntas generales de `/analyze` siguen fuera del alcance verificado.
+- **Ruta de anomalías (2026-10-21):** "Detectar anomalías" y "outliers" se añadieron a `_EXPLICIT_INTENT_RE`; la acción rápida deja de usar el flujo LLM largo y pasa por los hechos deterministas. Test: `pytest tests/test_audit_agent.py -q` → incluye `is_audit_query("Detectar anomalías")`.
 
 **Criterio de cierre.**
 - `tests/test_insight_auditor.py`: dataset sintético con valores conocidos (líneas vs órdenes, descuento, región,
@@ -574,7 +626,7 @@ definición explícita. Si el dato no existe, se dice "no medible"; nunca se rel
 | Campo | Valor |
 |---|---|
 | **Severidad** | ALTO |
-| **Estado** | 🟡 PARCIAL (CORS y token resueltos; falta confirmar upload persistido y retirar el backend SQLite) |
+| **Estado** | 🟡 PARCIAL (CORS y token resueltos; el usuario confirma upload en producción, falta capturar `persisted:true` y retirar el backend SQLite) |
 | **Verificado** | 🧪 Con comandos contra producción (2026-10-21) |
 | **Archivos** | `render.yaml:7,33-34,56` · `server/main.py:38-58` · `client/next.config.ts:10-30` · `client/src/components/Sidebar.tsx:59-62` |
 
@@ -606,6 +658,10 @@ Chunk del sidebar en producción
   -> contiene el efecto setApiAuthToken(session.accessToken)
 GET  https://agente-bi-server-7nav.onrender.com/health
   -> 200 database.dialect=sqlite persistent=false (legado, no usar)
+
+2026-10-21 (reporte del usuario):
+  -> La carga de documentos desde la UI de producción ya funciona.
+  -> No se capturó el cuerpo `persisted:true`; se mantiene como pendiente formal.
 ```
 
 **Pendiente de cierre.** Reintentar `/upload` desde `agente-bi-client-5nx4` con una sesión real y confirmar
