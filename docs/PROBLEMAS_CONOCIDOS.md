@@ -108,7 +108,7 @@ registrado aquí incluye:
 | **P-53** | IA | `safe_parse_validator_json` no limpia BOM/zero-width; un JSON válido del Validator se rechaza y se pierde su feedback | ✅ CERRADO | `server/src/engine/bi_analyst.py:216-252` · `tests/test_validator_json.py` |
 | **P-33** | Seguridad | `/connect-sql`: validación SSRF débil (DNS rebinding) y allowlist opcional | `security.py:108`, `data.py:313-326` |
 | **P-34** | Datos | La sesión se guarda por usuario (sin `chat_id`) → conversaciones se pisan | ✅ CERRADO | `server/src/utils/common.py` · `get_session_file` acepta `chat_id` para archivo aislado por conversación · `save_user_data` y `get_user_data` pasan `chat_id` · `server/tests/test_session_isolation.py` (5 passed) · Antigravity 2026-10-22 | **Nota:** `ensure_user_session` todavía reconstruye el pool con todas las fuentes del usuario al reiniciar; aislamiento completo de fuentes por chat requiere `chat_sources` asociación (pendiente) |
-| **P-35** | Memoria | `data_store` global en memoria sin límite ni TTL | `server/src/utils/common.py` |
+| **P-35** | Memoria | `data_store` global en memoria sin límite ni TTL | ✅ CERRADO | `server/src/utils/common.py` · `_BoundedStore` con max_entries=100 y ttl_seconds=3600 · LRU por inserción + expiración por tiempo · `server/tests/test_data_store_limits.py` (7 passed) · Antigravity 2026-10-22 |
 | **P-44** | Frontend | ✅ CERRADO — Sin cliente OAuth la UI redirigía a Google con `client_id=undefined` ("OAuth client was not found") en vez de avisar | `client/src/app/login/page.tsx` + `LoginForm.tsx` |
 | **P-45** | Frontend | Error de hidratación en la landing (atributos SSR ≠ cliente) al cargar | `client/src/app/page.tsx` · consola del navegador |
 | **P-47** | Dev/BD | 🟡 PARCIAL — `migrate_db.py` legado sigue sin cubrir el drift ni Windows; `init_db` ya inspecciona el esquema y migra cada columna en su propia transacción (el fallo de `is_encrypted` ya no bloquea `size_bytes`) | `server/src/database.py:204-280` · `tests/test_database_migrations.py` |
@@ -863,7 +863,21 @@ un duplicado.
 **Limitación restante:** `ensure_user_session` todavía reconstruye el pool con **todas** las `DataSource` del usuario al reiniciar el contenedor, no solo las del chat específico. El aislamiento completo de fuentes por chat requiere una tabla de asociación `chat_sources` o campo `data_source_ids` en `Chat` (pendiente, ver P-34 multi-fuente).
 
 **Regla:** cada conversación debe tener su propio archivo de sesión aislado para evitar que se pisasen mutuamente.
-**P-35** · `data_store` sin límite. *Cierre:* LRU/TTL o persistencia; test de crecimiento.
+**P-35** · `data_store` sin límite (CERRADO por Antigravity 2026-10-22). *Cierre:* LRU/TTL o persistencia; test de crecimiento.
+
+**Corrección aplicada.**
+- `_BoundedStore` en `server/src/utils/common.py` reemplaza `data_store = {}`:
+  - `max_entries=100`: máximo 100 entradas en memoria (evita OOM en Render free de 512 MB).
+  - `ttl_seconds=3600`: las entradas expiran después de 1 hora (libera sesiones abandonadas).
+  - LRU por inserción: cuando se excede `max_entries`, se elimina la más antigua.
+  - Expiración perezosa: las entradas se eliminan al acceder si expiraron.
+  - API compatible con `dict`: `__getitem__`, `__setitem__`, `__contains__`, `__delitem__`, `get`, `pop`, `clear`, `keys`, `values`, `items`, `__len__`.
+
+**Tests:** `server/tests/test_data_store_limits.py` (7 passed) — verifica límite de entradas, expiración por TTL, `clear()`, `pop()`, `len()` después de expiración, y que `data_store` es instancia de `_BoundedStore`.
+
+**Verificación:** 59 tests backend pasan en conjunto (test_upload_security, test_sql_mode_safety, test_sandbox_imports, test_security_encryption_key, test_session_isolation, test_data_store_limits).
+
+**Regla:** el almacenamiento en memoria siempre debe tener límite de tamaño y TTL para evitar OOM.
 **P-36** · Errores ocultos (`safe_error_message`, `except: pass`). *Cierre:* log con tipo+mensaje saneado y `request_id`; prohibido `except: pass`.
 **P-37** · `generate_auto_dashboard` stub. *Cierre:* implementar o devolver 501 explícito.
 **P-38** · `localStorage` sin validar y `any`. *Cierre:* validación de esquema y tipos reales.
