@@ -544,10 +544,12 @@ bloqueo, y puede terminar en OOM (512 MB en Render free).
 - `pytest tests -q` → **236 passed, 4 failed**: los 3 fallos preexistentes de P-41 y
   `test_storage_diagnostics.py::test_clave_nueva_sb_secret_crea_cliente` (clave local inválida, no relacionado).
 - `npx tsc --noEmit` limpio; `npx vitest run` → **38 passed**; `npm run build` → OK.
+- **Desplegado `main` 378be8b7 (2026-10-21 19:15 UTC):** `GET /live` → **200** (endpoint nuevo, confirma el deploy);
+  `GET /health` → **200**, `postgresql persistent=true`, `audit_agent=true`, `storage.connected=true`.
 
-**Pendiente de cierre.** Desplegar y comprobar en producción: `GET /live` → 200; `/health` sigue 200 mientras un
-análisis largo está en curso; una pregunta general y "Detectar anomalías" completan sin 502 ni `Failed to fetch`.
-Sin esa evidencia no se marca CERRADO.
+**Pendiente de cierre.** Una pregunta general y "Detectar anomalías" con sesión real deben completar sin 502 ni
+`Failed to fetch`; además `/health` debe seguir respondiendo mientras el análisis largo está en curso. Sin esa
+evidencia no se marca CERRADO.
 
 **Regla anti-repetición.** Ningún endpoint `async` puede llamar directamente a SDKs/`requests` síncronos ni
 serializar sesiones completas. Las operaciones lentas van a `asyncio.to_thread` o a un worker; el health check debe
