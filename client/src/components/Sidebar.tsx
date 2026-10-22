@@ -10,12 +10,12 @@ import { useState, useEffect, useCallback } from "react";
 import {
     uploadFile, connectSql, connectGoogleSheets,
     getHistory, getChatDetails,
-    removeSessionSource
+    removeSessionSource, runAudit
 } from "@/lib/api";
 import { setApiAuthToken } from "@/lib/api";
 import { useDashboard } from "@/context/DashboardContext";
 import { useToast } from "@/context/ToastContext";
-import { ChatSession, DataSource } from "@/types/shared";
+import { ChatSession, ChatMessage, DataSource } from "@/types/shared";
 import { ThemeToggle } from "./ThemeToggle";
 
 /* ── Navigation items ─────────────────────────────── */
@@ -98,12 +98,37 @@ export function Sidebar() {
         if (!e.target.files || e.target.files.length === 0) return;
         setUploading(true);
         const files = Array.from(e.target.files);
+        let firstSourceId: number | undefined;
         try {
             for (const file of files) {
                 const res = await uploadFile(file, userId) as { id: number; filename: string; columns: string[] };
                 addDataSource({ id: res.id, filename: res.filename, columns: res.columns, type: 'file' });
+                if (!firstSourceId) firstSourceId = res.id;
             }
             setView('chat');
+            // Auto-auditoría verificada (Opción A): tras subir CSV/Excel, se ejecuta
+            // la auditoría determinista sin LLM sobre el primer archivo y se muestra
+            // en el chat. SQL y Google Sheets se soportarán en fases posteriores;
+            // el endpoint /analyze/audit devuelve 400 controlado si no es tipo file.
+            if (firstSourceId !== undefined) {
+                try {
+                    const auditRes = await runAudit(undefined, firstSourceId);
+                    setMessages((prev) => [
+                        ...prev,
+                        {
+                            id: auditRes.message_id,
+                            role: 'assistant',
+                            content: auditRes.analysis || 'Auditoría completada.',
+                            fig: auditRes.figure,
+                            audit: auditRes.audit,
+                        } as ChatMessage,
+                    ]);
+                    if (!activeChatId && auditRes.chat_id) setActiveChatId(auditRes.chat_id);
+                } catch (auditErr) {
+                    const error = auditErr as Error;
+                    addToast("La auditoría automática no se pudo completar: " + (error.message || "Error desconocido"), "warning");
+                }
+            }
         } catch (err) {
             const error = err as Error;
             addToast("Error al subir archivos: " + (error.message || "Error desconocido"), "error");

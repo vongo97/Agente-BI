@@ -9,6 +9,7 @@ const api = vi.hoisted(() => ({
   connectSql: vi.fn(),
   connectGoogleSheets: vi.fn(),
   removeSessionSource: vi.fn(),
+  runAudit: vi.fn(),
   setApiAuthToken: vi.fn(),
 }));
 
@@ -81,5 +82,40 @@ describe('Sidebar data source scoping', () => {
     expect(dashboard.setDataSources).toHaveBeenCalledWith([
       { id: 3, filename: 'ventas.csv', columns: ['region', 'total'] },
     ]);
+  });
+
+  it('ejecuta auditoría automática tras subir el primer archivo', async () => {
+    api.uploadFile.mockResolvedValue({ id: 3, filename: 'ventas.csv', columns: ['region', 'total'] });
+    api.runAudit.mockResolvedValue({
+      chat_id: 7,
+      message_id: 11,
+      analysis: 'Auditoría automática completada.',
+      figure: null,
+      audit: {
+        insights: [],
+        profile: { rows: 100, columns: 3, column_names: ['region', 'total'], source_name: 'ventas.csv' },
+        definitions: [],
+        methodology: [],
+        source_name: 'ventas.csv',
+        generated_at: '2026-10-22T00:00:00Z',
+      },
+    });
+
+    render(<Sidebar />);
+
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+    expect(input).toBeDefined();
+    const file = new File(['a,b\n1,2'], 'ventas.csv', { type: 'text/csv' });
+    fireEvent.change(input, { target: { files: [file] } });
+
+    await waitFor(() => {
+      expect(api.runAudit).toHaveBeenCalledWith(undefined, 3);
+    });
+    expect(dashboard.setMessages).toHaveBeenCalledTimes(1);
+    const updater = dashboard.setMessages.mock.calls[0][0];
+    const result = typeof updater === 'function' ? updater([]) : updater;
+    expect(result).toEqual(expect.arrayContaining([
+      expect.objectContaining({ role: 'assistant', audit: expect.any(Object) }),
+    ]));
   });
 });
