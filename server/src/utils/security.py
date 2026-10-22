@@ -106,6 +106,15 @@ def encrypt_file(source_path: str, dest_path: str) -> bool:
         return False
 
 
+def encrypt_bytes(data: bytes) -> bytes:
+    """Cifra bytes en memoria con Fernet y retorna los bytes cifrados.
+
+    Nunca escribe el contenido en claro en disco. Útil para subir archivos
+    directamente cifrados sin pasar por un temporal legible.
+    """
+    return cipher_suite.encrypt(data)
+
+
 def validate_external_url_host(url: str) -> None:
     """Valida que la URL (ej. conexión SQLAlchemy) no apunte a hosts internos/privados.
 

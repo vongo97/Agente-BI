@@ -1,6 +1,4 @@
 import os
-import shutil
-import tempfile
 import pandas as pd
 import json
 import hashlib
@@ -10,7 +8,7 @@ from typing import Optional, List
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Depends, Request
 from sqlalchemy.orm import Session
 from src.database import get_db, DataSource, UserConfig
-from src.connectors.data_connectors import load_file_data, load_gsheets_data, get_sql_engine, get_db_schema
+from src.connectors.data_connectors import load_gsheets_data, get_sql_engine, get_db_schema
 from src.utils.common import check_authorization, get_user_data, get_session_file, get_session_key, data_store, DATA_SOURCES_DIR, get_authenticated_user, save_user_data, ensure_user_session
 from src.services.storage_service import upload_bytes, delete_object, is_cloud_key
 from src.engine.bi_analyst import ai_data_cleaner
@@ -107,33 +105,24 @@ async def upload_file(request: Request, file: UploadFile = File(...), db: Sessio
         safe_user = hashlib.md5(authenticated_user.encode()).hexdigest()
         permanent_name = f"{safe_user}_{int(datetime.utcnow().timestamp())}_{clean_name}"
         permanent_path = os.path.join(DATA_SOURCES_DIR, permanent_name)
-        temp_path = permanent_path + ".tmp"
 
-        # 2. Guardar temporalmente en texto plano para parsear
+        # ── LEER ARCHIVO EN MEMORIA (nunca texto plano en disco) ──
         file.file.seek(0)
-        with open(temp_path, "wb") as buffer:
-            shutil.copyfileobj(file.file, buffer)
+        raw_bytes = file.file.read()
 
-        # 3. Procesar datos desde el temporal (en claro)
-        from src.connectors.data_connectors import ArchivoInvalido
+        # ── ZIP-BOMB TEMPRANO: validar estructura desde bytes en memoria ──
         _MAX_CELLS = 1_000_000
-
-        # --- Rechazo temprano para Excel gigantes ---
-        # El limite de celdas se aplicaba DESPUES de parsear el libro entero con
-        # openpyxl: un xlsx de 11 MB / 2M celdas mataba al worker por OOM en el plan
-        # free antes de llegar al 400. Aqui se leen solo las dimensiones de las
-        # hojas (read_only, sin cargar datos) y se rechaza de entrada cuando sobra.
         if ext in (".xlsx", ".xlsm", ".xls"):
             try:
                 from openpyxl import load_workbook
-                wb = load_workbook(temp_path, read_only=True, data_only=True)
+                import io as _io
+                wb = load_workbook(_io.BytesIO(raw_bytes), read_only=True, data_only=True)
                 try:
                     for ws in wb.worksheets:
                         try:
-                            dims = ws.calculate_dimension()
                             max_row = ws.max_row or 0
                             max_col = ws.max_column or 0
-                            if dims and max_row and max_col and (max_row * max_col) > _MAX_CELLS:
+                            if max_row and max_col and (max_row * max_col) > _MAX_CELLS:
                                 raise HTTPException(
                                     status_code=400,
                                     detail=(
@@ -148,78 +137,100 @@ async def upload_file(request: Request, file: UploadFile = File(...), db: Sessio
             except HTTPException:
                 raise
             except Exception:
-                # Si el libro ni siquiera se puede inspeccionar, load_file_data lanzará
-                # el ArchivoInvalido correspondiente: no duplicar el diagnóstico aquí.
+                # Si el libro ni siquiera se puede inspeccionar desde memoria,
+                # load_file_data_from_bytes lanzará el ArchivoInvalido correspondiente.
                 pass
+        elif ext == ".csv":
+            # Conteo rápido de líneas desde bytes en memoria (rechazo temprano de archivos gigantes)
+            line_count = raw_bytes.count(b"\n") + (1 if raw_bytes and not raw_bytes.endswith(b"\n") else 0)
+            # Límite generoso: 1M líneas ≈ 1M celdas como mínimo; si supera 10M, rechazar antes de parsear
+            if line_count > 10_000_000:
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        f"El archivo CSV tiene {line_count:,} líneas (máximo 10,000,000). "
+                        f"Reduce su tamaño e inténtalo de nuevo."
+                    ),
+                )
 
+        # ── PARSEAR DESDE BYTES EN MEMORIA (sin tocar disco) ──
+        from src.connectors.data_connectors import ArchivoInvalido, load_file_data_from_bytes
         try:
-            df = load_file_data(temp_path)
+            df = load_file_data_from_bytes(raw_bytes, clean_name)
         except ArchivoInvalido as inv:
-            # Archivo vacío, solo encabezados o ilegible: es un problema del archivo
-            # del usuario, no del servidor. 400 con el motivo exacto.
-            try:
-                os.remove(temp_path)
-            except Exception:
-                pass
             logger.info("UPLOAD_REJECTED motivo=archivo_invalido file=%s user=%s", clean_name, authenticated_user)
             raise HTTPException(status_code=400, detail=str(inv))
         except HTTPException:
             raise
         except Exception:
-            # Cualquier sorpresa del parser O TENER .db renombrado a .csv: nunca un 500
-            # genérico. El usuario recibe un motivo accionable.
-            try:
-                os.remove(temp_path)
-            except Exception:
-                pass
             logger.exception("Fallo no controlado parseando %s", clean_name)
             raise HTTPException(
                 status_code=400,
                 detail="No pudimos leer el archivo. Verifica que sea un CSV o Excel válido (no está corrupto ni es otro formato con la extensión cambiada).",
             )
-        # Protección contra zip-bombs / hojas masivas (mismo límite que Google Sheets)
+
+        # Protección contra hojas masivas (mismo límite que Google Sheets)
         if int(df.size) > _MAX_CELLS:
-            try: os.remove(temp_path)
-            except Exception: pass
             raise HTTPException(
                 status_code=400,
                 detail=f"El archivo supera el límite de {_MAX_CELLS:,} celdas. Reduce su tamaño e inténtalo de nuevo."
             )
         safe_filename = "".join([c if c.isalnum() else "_" for c in clean_name.split('.')[0]])
 
-        # 4. Cifrar el archivo permanente y eliminar el temporal
-        from src.utils.security import encrypt_file
-        encrypt_ok = encrypt_file(temp_path, permanent_path)
+        # ── CIFRAR EN MEMORIA Y ESCRIBIR DIRECTO AL DESTINO FINAL ──
+        # Nunca se escribe el archivo en claro en disco: los bytes cifrados
+        # van directo al archivo permanente y a la nube.
         try:
-            os.remove(temp_path)
-        except Exception:
-            pass
-
-        if not encrypt_ok:
-            # Si falló el cifrado, ABORTAR la subida: nunca persistir datos del
-            # cliente en texto plano.
-            logger.error("Cifrado de archivo falló para %s — subida abortada.", permanent_name)
-            try:
-                if os.path.exists(temp_path): os.remove(temp_path)
-                if os.path.exists(permanent_path): os.remove(permanent_path)
-            except Exception:
-                pass
+            encrypted_bytes = encrypt_bytes(raw_bytes)
+        except Exception as e:
+            logger.error("Cifrado de archivo falló para %s (tipo=%s) — subida abortada.", permanent_name, type(e).__name__)
             raise HTTPException(
                 status_code=500,
                 detail="Error interno de seguridad al procesar el archivo. Inténtalo de nuevo más tarde."
             )
 
-        # 5. PERSISTIR EN LA NUBE PRIMERO (fuente de verdad). El disco del
-        #    contenedor es efímero en Render: si la nube no está disponible se
-        #    aborta la subida en lugar de fabricar una fuente que se pierde
-        #    en el próximo reinicio.
+        # Escribir archivo cifrado directamente (sin .tmp en claro intermedio)
+        try:
+            with open(permanent_path, 'wb') as f:
+                f.write(encrypted_bytes)
+        except Exception as e:
+            logger.error("No se pudo escribir el archivo cifrado %s (tipo=%s)", permanent_name, type(e).__name__)
+            try:
+                if os.path.exists(permanent_path): os.remove(permanent_path)
+            except Exception:
+                pass
+            raise HTTPException(
+                status_code=500,
+                detail="Error interno al guardar el archivo cifrado. Inténtalo de nuevo más tarde."
+            )
+
+        # ── PERSISTIR EN LA NUBE PRIMERO (fuente de verdad) ──
+        # Se sube desde los bytes cifrados en memoria, sin leer de disco.
         cloud_key = f"data_sources/{safe_user}/{permanent_name}"
         cloud_ok = False
         try:
-            with open(permanent_path, 'rb') as f:
-                cloud_ok = upload_bytes(cloud_key, f.read())
+            cloud_ok = upload_bytes(cloud_key, encrypted_bytes)
         except Exception:
-            logger.warning("Lectura del archivo cifrado falló para %s", permanent_name)
+            logger.warning("Subida a la nube falló para %s", permanent_name)
+
+        if not cloud_ok:
+            try:
+                if os.path.exists(permanent_path): os.remove(permanent_path)
+            except Exception:
+                pass
+            logger.error(
+                "UPLOAD_ABORTED motivo=nube_no_disponible file=%s user=%s "
+                "(revisar SUPABASE_URL/SUPABASE_SERVICE_ROLE_KEY y bucket 'bi_storage').",
+                clean_name, authenticated_user
+            )
+            raise HTTPException(
+                status_code=503,
+                detail=(
+                    "No pudimos persistir tu archivo en el almacenamiento en la nube, "
+                    "así que NO fue guardado (se perdería en el próximo reinicio). "
+                    "Revisa la configuración de Supabase del backend e inténtalo de nuevo."
+                )
+            )
 
         if not cloud_ok:
             try:
