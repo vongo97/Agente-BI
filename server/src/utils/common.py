@@ -15,8 +15,99 @@ import jwt
 # Configuración de Logs
 logger = logging.getLogger(__name__)
 
-# Almacenamiento temporal de datos
-data_store = {}
+# Almacenamiento temporal de datos con límite de tamaño y TTL (P-35)
+class _BoundedStore:
+    """Diccionario con límite máximo de entradas y TTL por entrada.
+
+    Cuando se excede max_entries, se elimina la entrada más antigua (por
+    tiempo de inserción). Cuando una entrada excede ttl_seconds, se considera
+    expirada y se elimina al acceder.
+    """
+
+    def __init__(self, max_entries: int = 100, ttl_seconds: int = 3600):
+        self._max_entries = max_entries
+        self._ttl_seconds = ttl_seconds
+        self._data: dict = {}
+        self._timestamps: dict = {}  # clave -> timestamp de inserción
+
+    def __getitem__(self, key):
+        self._expire_if_needed(key)
+        if key not in self._data:
+            raise KeyError(key)
+        return self._data[key]
+
+    def __setitem__(self, key, value):
+        self._evict_if_needed()
+        self._data[key] = value
+        self._timestamps[key] = time.time()
+
+    def __contains__(self, key):
+        self._expire_if_needed(key)
+        return key in self._data
+
+    def __delitem__(self, key):
+        self._data.pop(key, None)
+        self._timestamps.pop(key, None)
+
+    def get(self, key, default=None):
+        try:
+            return self[key]
+        except KeyError:
+            return default
+
+    def pop(self, key, default=None):
+        self._expire_if_needed(key)
+        self._timestamps.pop(key, None)
+        return self._data.pop(key, default)
+
+    def clear(self):
+        self._data.clear()
+        self._timestamps.clear()
+
+    def keys(self):
+        self._expire_all()
+        return self._data.keys()
+
+    def values(self):
+        self._expire_all()
+        return self._data.values()
+
+    def items(self):
+        self._expire_all()
+        return self._data.items()
+
+    def __len__(self):
+        self._expire_all()
+        return len(self._data)
+
+    def _expire_if_needed(self, key):
+        if key in self._timestamps:
+            elapsed = time.time() - self._timestamps[key]
+            if elapsed > self._ttl_seconds:
+                self._data.pop(key, None)
+                self._timestamps.pop(key, None)
+
+    def _expire_all(self):
+        expired = [
+            k for k, ts in self._timestamps.items()
+            if time.time() - ts > self._ttl_seconds
+        ]
+        for k in expired:
+            self._data.pop(k, None)
+            self._timestamps.pop(k, None)
+
+    def _evict_if_needed(self):
+        if len(self._data) >= self._max_entries:
+            # Eliminar la entrada más antigua por tiempo de inserción
+            oldest_key = min(self._timestamps, key=self._timestamps.get)
+            self._data.pop(oldest_key, None)
+            self._timestamps.pop(oldest_key, None)
+
+
+# Almacenamiento temporal de datos con límite y TTL (P-35)
+# max_entries=100 evita OOM en Render free (512 MB); ttl_seconds=3600 (1 h)
+# libera entradas de sesiones abandonadas.
+data_store = _BoundedStore(max_entries=100, ttl_seconds=3600)
 
 # ContextVar para almacenar el request actual de forma segura para hilos/corutinas
 request_var: ContextVar[Optional[Request]] = ContextVar("request", default=None)
