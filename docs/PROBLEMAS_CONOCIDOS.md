@@ -72,7 +72,7 @@ registrado aquí incluye:
 | **P-08** | Frontend | Capa de red sin timeout, `AbortController`, retry ni reacci�n a 401/403 | ? CERRADO | `client/src/lib/api.ts` � `securedFetch` con AbortController (30 s), retry exponencial (2 reintentos), 401/403 ? signOut + redirect /login � `client/src/tests/ApiNetwork.test.ts` (6 passed) |
 | **P-09** | Frontend | Autosync guarda valores por defecto antes de cargar la config → puede sobrescribir ajustes del usuario | ABIERTO | `client/src/context/DashboardContext.tsx:138-211,216-246` |
 | **P-10** | Cifrado | `ENCRYPTION_KEY` inválida genera clave efímera; `encrypt/decrypt` aceptan texto plano | ✅ CERRADO | `server/src/utils/security.py` · fail-closed en producción sin clave · clave determinista en dev · `encrypt_key` lanza `ValueError` en vez de texto plano · `decrypt_key` rechaza no-Fernet · `tests/test_security_encryption_key.py` (10 passed) · Antigravity 2026-10-22 |
-| **P-11** | Uploads | Original escrito en claro en `.tmp` antes de cifrar; sin mitigación de zip-bomb | ABIERTO | `server/src/routers/data.py:110-192` |
+| **P-11** | Uploads | Original escrito en claro en `.tmp` antes de cifrar; sin mitigación de zip-bomb | ✅ CERRADO | `server/src/routers/data.py` · `server/src/utils/security.py` · `encrypt_bytes` cifra en memoria sin `.tmp` en claro · zip-bomb temprano desde bytes (Excel dimensiones + CSV líneas) · `server/tests/test_upload_security.py` (7 passed) · Antigravity 2026-10-22 |
 | **P-12** | API | `str(e)` de excepciones internas persistido y devuelto al cliente | ABIERTO | `server/src/routers/simulation.py:139,458,461` |
 | **P-13** | UI/BI | KPIs inventados presentados como análisis real (`38.4 + n*1.2`, `96.5%`) | ✅ CERRADO | `client/src/components/DashboardView.tsx:73-131` · métricas reales derivadas de datos (visualizaciones activas, filtros, fuentes) · Antigravity 2026-10-22 |
 | **P-14** | UI/BI | El modelo mostrado en el selector no es el que usa el backend | ABIERTO | `ProviderKeysPanel.tsx:43-54,130` · `DashboardContext.tsx:146-167` |
@@ -394,13 +394,19 @@ texto plano; test de arranque sin clave → excepción.
 
 ---
 
-### P-11 · Upload: `.tmp` en claro y zip-bomb
-**Archivo:** `server/src/routers/data.py:110-192`.
-Se escribe el original a `permanent_path + ".tmp"` sin cifrar antes de `encrypt_file`; los límites
-(25 MB / 1M celdas) se comprueban **después** de abrir el Excel/zip; sin ratio de compresión.
+### P-11 · Upload: `.tmp` en claro y zip-bomb (CERRADO por Antigravity 2026-10-22)
+**Archivo:** `server/src/routers/data.py` · `server/src/utils/security.py`.
 
-**Cierre:** cifrado en streaming (sin `.tmp` en claro) y límites de expansión antes de parsear;
-test con zip-bomb y con archivo que excede cuota.
+Se escribía el original a `permanent_path + ".tmp"` sin cifrar antes de `encrypt_file`; los límites
+(25 MB / 1M celdas) se comprobaban **después** de abrir el Excel/zip; sin ratio de compresión.
+
+**Corrección aplicada.**
+- `encrypt_bytes(data: bytes) -> bytes` en `security.py`: cifra bytes en memoria con Fernet, nunca escribe texto plano en disco.
+- `upload_file` lee el archivo a `raw_bytes` en memoria, valida zip-bomb temprano (dimensiones de Excel con `read_only` desde `BytesIO`; conteo de líneas de CSV desde bytes), parsea con `load_file_data_from_bytes` (sin disco), cifra con `encrypt_bytes` y escribe directo al archivo permanente cifrado.
+- La subida a la nube (`upload_bytes`) se hace desde los bytes cifrados en memoria, sin leer de disco.
+- Tests: `server/tests/test_upload_security.py` (7 passed) — roundtrip cifrado, nonce aleatorio, disco solo tiene cifrado, zip-bomb por celdas, parseo CSV desde bytes.
+
+**Verificación:** `pytest server/tests/test_upload_security.py` → 7 passed; conjunto con test_sql_mode_safety, test_sandbox_imports, test_security_encryption_key → 47 passed.
 
 **Regla:** nunca escribas datos de usuario en claro, ni siquiera "un momento".
 
