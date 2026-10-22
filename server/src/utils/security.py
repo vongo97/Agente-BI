@@ -10,28 +10,27 @@ load_dotenv()
 logger = logging.getLogger(__name__)
 
 # Obtener la llave de cifrado del .env
+def _is_development_environment() -> bool:
+    is_render = os.getenv("RENDER", "").lower() in ("true", "1")
+    if is_render:
+        return False
+    env = os.getenv("ENVIRONMENT", "production").lower()
+    return env in ("development", "dev", "local", "test")
+
 ENCRYPTION_KEY = os.getenv("ENCRYPTION_KEY")
 
 if not ENCRYPTION_KEY:
-    # Generar una temporal si no existe para evitar crash, pero loggear advertencia crítica
-    msg = (
-        "\n"
-        "========================================================================\n"
-        "🚨 ADVERTENCIA CRÍTICA DE PERSISTENCIA Y SEGURIDAD 🚨\n"
-        "La variable de entorno 'ENCRYPTION_KEY' no está configurada en el archivo .env.\n"
-        "Se ha generado una llave temporal aleatoria para evitar que el servidor se caiga.\n"
-        "\n"
-        "👉 IMPACTO: Cada vez que el servidor se reinicie (ej. hibernación de Render/despliegues),\n"
-        "   esta llave temporal CAMBIARÁ. Todas las API Keys guardadas en la base de datos\n"
-        "   cifradas anteriormente se volverán INSERVIBLES y los usuarios recibirán errores.\n"
-        "\n"
-        "👉 SOLUCIÓN: Genera una llave estática ejecutando:\n"
-        "   python -c \"from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())\"\n"
-        "   Y agrégala a tu .env o al Dashboard de Render como ENCRYPTION_KEY=<valor>\n"
-        "========================================================================\n"
+    if not _is_development_environment():
+        raise RuntimeError(
+            "CRITICAL SECURITY ERROR: 'ENCRYPTION_KEY' no está configurada en entorno de producción. "
+            "El servidor no puede arrancar sin clave de cifrado persistente. "
+            "Genera una clave con: python -c \"from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())\""
+        )
+    logger.warning(
+        "ENCRYPTION_KEY no configurada en entorno de desarrollo. "
+        "Usando clave determinista de desarrollo local para evitar corrupción entre reinicios."
     )
-    logger.warning(msg)
-    ENCRYPTION_KEY = Fernet.generate_key().decode()
+    ENCRYPTION_KEY = base64.urlsafe_b64encode(hashlib.sha256(b"vektra-bi-dev-local-key").digest()).decode()
 
 # Si la variable existe pero NO es una clave Fernet válida, el import de este
 # módulo reventaba y tumbaba TODO el backend (no solo el cifrado). En su lugar se
@@ -65,14 +64,16 @@ def encrypt_key(api_key: str) -> str:
         return encrypted_text.decode()
     except Exception as e:
         logger.error("Error al cifrar clave (tipo=%s)", type(e).__name__)
-        return api_key
+        raise ValueError("Error al cifrar clave: no se permite persistir claves en texto plano.")
 
 def decrypt_key(encrypted_key: str) -> str:
     """Descifra una API Key para usarla en el motor de IA."""
     if not encrypted_key: return None
     try:
         # Solo intentar descifrar si tiene formato de Fernet
-        if not encrypted_key.startswith("gAAAA"): return encrypted_key
+        if not encrypted_key.startswith("gAAAA"):
+            logger.warning("Intento de descifrar una clave que no tiene formato Fernet (gAAAA).")
+            return None
         
         decrypted_text = cipher_suite.decrypt(encrypted_key.encode())
         return decrypted_text.decode()

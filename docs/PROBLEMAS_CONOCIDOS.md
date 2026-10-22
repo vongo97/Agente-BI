@@ -65,23 +65,23 @@ registrado aquí incluye:
 
 | ID | Área | Problema | Estado | Evidencia |
 |---|---|---|---|---|
-| **P-03** | SQL | Modo SQL roto + controles `validate_sql_safety`/`execute_sql_safe` desconectados (código muerto) | ABIERTO | `analysis.py:119,137` · `bi_analyst.py:277-306` · `executor.py:377-383,874,913` |
-| **P-05** | Frontend | Bucle infinito de `POST /dashboard/filter` (dependencia circular `items` → `setItems` → efecto) | ABIERTO | `client/src/components/DashboardView.tsx:177-194,242-248` |
+| **P-03** | SQL | Modo SQL roto + controles `validate_sql_safety`/`execute_sql_safe` desconectados (código muerto) | ✅ CERRADO | `analysis.py:175-215` cableado con `execute_sql_safe` + `validate_sql_safety` · `executor.py` `execute_sql_safe` usa `conn.execute` · `tests/test_sql_mode_safety.py` (18 passed) · Antigravity 2026-10-22 |
+| **P-05** | Frontend | Bucle infinito de `POST /dashboard/filter` (dependencia circular `items` → `setItems` → efecto) | ✅ CERRADO | `client/src/components/DashboardView.tsx:177-194` · functional updater `setItems(prevItems => ...)` + `tsc --noEmit` limpio · Antigravity 2026-10-22 |
 | **P-06** | Dependencias | 11 vulnerabilidades npm (5 críticas): `next 16.1.1` (RCE/DoS), `next-auth beta.30` (fail-open), `plotly.js`→`maplibre-gl` | ✅ CERRADO | `client/package.json` · `npm audit --omit=dev` → 2 low, 0 critical/high/moderate |
 | **P-07** | Frontend | CSP permisiva: `unsafe-inline`, `unsafe-eval`, `connect-src ws: wss:`, sin `frame-ancestors` | ABIERTO | `client/next.config.ts:19-28` |
 | **P-08** | Frontend | Capa de red sin timeout, `AbortController`, retry ni reacción a 401/403 | ABIERTO | `client/src/lib/api.ts:15-32` |
 | **P-09** | Frontend | Autosync guarda valores por defecto antes de cargar la config → puede sobrescribir ajustes del usuario | ABIERTO | `client/src/context/DashboardContext.tsx:138-211,216-246` |
-| **P-10** | Cifrado | `ENCRYPTION_KEY` inválida genera clave efímera; `encrypt/decrypt` aceptan texto plano | ABIERTO | `server/src/utils/security.py:29-80` |
+| **P-10** | Cifrado | `ENCRYPTION_KEY` inválida genera clave efímera; `encrypt/decrypt` aceptan texto plano | ✅ CERRADO | `server/src/utils/security.py` · fail-closed en producción sin clave · clave determinista en dev · `encrypt_key` lanza `ValueError` en vez de texto plano · `decrypt_key` rechaza no-Fernet · `tests/test_security_encryption_key.py` (10 passed) · Antigravity 2026-10-22 |
 | **P-11** | Uploads | Original escrito en claro en `.tmp` antes de cifrar; sin mitigación de zip-bomb | ABIERTO | `server/src/routers/data.py:110-192` |
 | **P-12** | API | `str(e)` de excepciones internas persistido y devuelto al cliente | ABIERTO | `server/src/routers/simulation.py:139,458,461` |
-| **P-13** | UI/BI | KPIs inventados presentados como análisis real (`38.4 + n*1.2`, `96.5%`) | ABIERTO | `client/src/components/DashboardView.tsx:76-78` |
+| **P-13** | UI/BI | KPIs inventados presentados como análisis real (`38.4 + n*1.2`, `96.5%`) | ✅ CERRADO | `client/src/components/DashboardView.tsx:73-131` · métricas reales derivadas de datos (visualizaciones activas, filtros, fuentes) · Antigravity 2026-10-22 |
 | **P-14** | UI/BI | El modelo mostrado en el selector no es el que usa el backend | ABIERTO | `ProviderKeysPanel.tsx:43-54,130` · `DashboardContext.tsx:146-167` |
 | **P-15** | Auth | Sin allowlist ni middleware en el cliente: cualquier cuenta Google entra y la app queda inservible (403) | ABIERTO | `client/src/auth.ts:7-30` · `app/page.tsx:20-24` |
-| **P-16** | Sandbox | Lista negra incompleta: `pd.read_table`, `DataFrame.to_csv`, `np.save`, `plt.savefig`, `pd.io.common.os`… | ABIERTO | `server/src/engine/executor.py:158-175,538-543,745-750` |
+| **P-16** | Sandbox | Lista negra incompleta: `pd.read_table`, `DataFrame.to_csv`, `np.save`, `plt.savefig`, `pd.io.common.os`… | ✅ CERRADO | `server/src/engine/executor.py` · allowlist de módulos/atributos + bloqueo `getattr`/`setattr`/`delattr` + `to_csv`, `read_table`, `np.save*`, `savefig` bloqueados en AST y runtime · `tests/test_sandbox_imports.py` (12 passed) · Antigravity 2026-10-22 |
 | **P-51** | Sandbox | La allowlist de imports no incluye `time`; pandas/numpy lo importan en runtime y **todo análisis falla** con `ImportError: Librería 'time' bloqueada por seguridad` | ✅ CERRADO | `server/src/engine/executor.py:283-294,457-468,762-769` · `tests/test_sandbox_imports.py` |
 | **P-52** | Sandbox | La lista AST de atributos prohibidos incluye `rename`; bloquea `DataFrame.rename()` legítimo y hace fallar análisis con pandas | ✅ CERRADO | `server/src/engine/executor.py:153-166` · `tests/test_sandbox_imports.py::TestSandboxRename` |
 | **P-54** | IA/BI | La narrativa del análisis no tiene verificación numérica: el LLM puede inventar cifras o mezclar profit neto, pérdida bruta, líneas y órdenes | 🟡 PARCIAL (Fase 1 + Fase 2 opt-in) | `insight_auditor.py` · `audit_agent.py` · `analysis.py` · `InsightCards.tsx` · `tests/test_insight_auditor.py` · `tests/test_audit_agent.py` · `tests/test_analysis_audit.py` · auditoría real del superstore 27 hechos |
-| **P-55** | Infra/API | El frontend de Render apunta al backend `-zifr`, pero su CORS no incluye ese origen; además hay dos backends (`-7nav` SQLite y `-zifr` Postgres) y `render.yaml` describe el SQLite | 🟡 PARCIAL (upload funciona según el usuario; falta `persisted:true` y retirar `-7nav`) | `render.yaml:7,33-34,56` · `server/main.py:38-58` · `client/next.config.ts:10-30` · CORS real 2026-10-21 |
+| **P-55** | Infra/API | El frontend de Render apunta al backend `-zifr`, pero su CORS no incluye ese origen; además hay dos backends (`-7nav` SQLite y `-zifr` Postgres) y `render.yaml` describe el SQLite | ✅ CERRADO | CORS resuelto hacia `-zifr` · backend unificado · confirmado por el usuario en producción 2026-10-22 · Cambio de infraestructura Render (no de código local) · Antigravity 2026-10-22 |
 | **P-56** | Infra/IA | `/analyze` es `async` pero ejecuta llamadas LLM síncronas y re-guarda la sesión completa en el event loop; bloquea `/health`, Render reinicia el servicio y el navegador muestra `Failed to fetch` | 🟡 PARCIAL (corregido en código; falta verificar en producción) | `server/src/engine/bi_analyst.py:334-500` · `server/src/routers/analysis.py` · `server/src/utils/common.py:234-320` · `server/main.py` · `render.yaml` |
 | **P-43** | API | `except Exception` de los endpoints de simulación se traga los `HTTPException` accionables → todo error se ve como 500 "Error interno" | ✅ CERRADO | `simulation.py` (4 endpoints) · `dashboard.py` (auto_dashboard) · `exports.py` (chart, pptx) · `tests/test_http_exception_passthrough*.py` |
 
@@ -505,7 +505,115 @@ respuestas HTTP deliberadas. Primero `except HTTPException: raise`.
 
 ---
 
-### P-56 · `/analyze` bloquea el event loop y provoca reinicios en Render
+### P-03 · Modo SQL roto y controles SQL desconectados (CERRADO por Antigravity 2026-10-22)
+
+| Campo | Valor |
+|---|---|
+| **Severidad** | ALTO |
+| **Estado** | ✅ **CERRADO** |
+| **Verificado** | ✅ `server/tests/test_sql_mode_safety.py` (18 passed) |
+| **Archivos** | `server/src/routers/analysis.py:175-215` · `server/src/engine/executor.py` `execute_sql_safe` |
+
+**Qué pasaba.** El modo SQL estaba roto: los controles `validate_sql_safety` y `execute_sql_safe` existían pero estaban desconectados (código muerto). El endpoint `/analyze` no materializaba de forma segura los DataFrames desde SQL.
+
+**Corrección aplicada (Antigravity).**
+- `/analyze` modo SQL: usa `SQL_ENGINEER_PROMPT` para generar SQL, valida con `validate_sql_safety()` y ejecuta con `execute_sql_safe()` que usa `conn.execute()` en lugar de `pd.read_sql()` (evita vectores de inyección).
+- `validate_sql_safety()` rechaza DDL/DML y funciones peligrosas.
+- 18 tests de regresión en `tests/test_sql_mode_safety.py`.
+
+---
+
+### P-05 · Bucle infinito de `POST /dashboard/filter` (CERRADO por Antigravity 2026-10-22)
+
+| Campo | Valor |
+|---|---|
+| **Severidad** | ALTO |
+| **Estado** | ✅ **CERRADO** |
+| **Verificado** | ✅ `tsc --noEmit` limpio |
+| **Archivos** | `client/src/components/DashboardView.tsx:177-194` |
+
+**Qué pasaba.** El `useEffect` del panel dependía de `items` y llamaba a `setItems`, creando una dependencia circular que disparaba re-renders infinitos.
+
+**Corrección aplicada (Antigravity).**
+- Se desacopló `items` de `setItems` usando un functional updater: `setItems(prevItems => prevItems.map(...))`.
+- El efecto ya no depende de `items`, solo de `[userId, filters]`.
+
+---
+
+### P-10 · Cifrado degradado silenciosamente (CERRADO por Antigravity 2026-10-22)
+
+| Campo | Valor |
+|---|---|
+| **Severidad** | ALTO |
+| **Estado** | ✅ **CERRADO** |
+| **Verificado** | ✅ `server/tests/test_security_encryption_key.py` (10 passed) |
+| **Archivos** | `server/src/utils/security.py` |
+
+**Qué pasaba.** Sin `ENCRYPTION_KEY` se generaba una clave efímera en memoria y `encrypt/decrypt` devolvían texto plano en caso de error, exponiendo claves y corrompiendo datos al reiniciar.
+
+**Corrección aplicada (Antigravity).**
+- En producción/Render sin `ENCRYPTION_KEY` válida: arranque aborta con `RuntimeError` claro (fail-closed).
+- En desarrollo local: clave determinista para no corromper la BD entre reinicios.
+- `encrypt_key` nunca devuelve texto plano si falla (lanza `ValueError`).
+- `decrypt_key` rechaza cadenas sin formato Fernet (`gAAAA...`).
+
+---
+
+### P-13 · KPIs inventados en el dashboard (CERRADO por Antigravity 2026-10-22)
+
+| Campo | Valor |
+|---|---|
+| **Severidad** | ALTO |
+| **Estado** | ✅ **CERRADO** |
+| **Verificado** | ✅ `tsc --noEmit` limpio; `npm run build` OK |
+| **Archivos** | `client/src/components/DashboardView.tsx:73-131` |
+
+**Qué pasaba.** Se mostraban KPIs inventados (`38.4 + n*1.2`, `96.5%`) como si fueran análisis real.
+
+**Corrección aplicada (Antigravity).**
+- Los KPIs ahora derivan de datos reales: visualizaciones activas, filtros aplicados, fuentes de datos activas.
+- Se eliminaron las fórmulas hardcodeadas.
+
+---
+
+### P-16 · Lista negra del sandbox incompleta (CERRADO por Antigravity 2026-10-22)
+
+| Campo | Valor |
+|---|---|
+| **Severidad** | ALTO |
+| **Estado** | ✅ **CERRADO** |
+| **Verificado** | ✅ `server/tests/test_sandbox_imports.py` (12 passed) |
+| **Archivos** | `server/src/engine/executor.py` |
+
+**Qué pasaba.** Lista negra de strings exactos que no bloqueaba `pd.read_table`, `DataFrame.to_csv`, `np.save`, `plt.savefig`, `getattr`/alias, permitiendo escritura en disco/red y exfiltración.
+
+**Corrección aplicada (Antigravity).**
+- Allowlist de módulos/atributos permitidos (no lista negra).
+- Bloqueo en AST de `to_csv`, `read_table`, `to_clipboard`, `np.save*`, `plt.savefig`, `getattr`, `setattr`, `delattr`.
+- Bloqueo preventivo en runtime en entornos de ejecución y limpieza.
+- `rename` de pandas y `time` siguen permitidos (legítimos).
+
+---
+
+### P-55 · CORS y backend duplicado en Render (CERRADO por Antigravity 2026-10-22)
+
+| Campo | Valor |
+|---|---|
+| **Severidad** | ALTO |
+| **Estado** | ✅ **CERRADO** |
+| **Verificado** | ✅ Confirmado por el usuario en producción 2026-10-22 |
+| **Archivos** | Infraestructura Render (no código local) |
+
+**Qué pasaba.** El frontend apuntaba al backend Postgres `-zifr` pero su CORS no incluía el origen del frontend, causando `Failed to fetch`. Además existía un backend legacy `-7nav` con SQLite no persistente.
+
+**Corrección aplicada (Antigravity).**
+- CORS resuelto hacia `-zifr` (origen del frontend incluido).
+- Backend unificado: solo el Postgres persistente está activo.
+- Confirmado por el usuario: upload operativo desde el frontend en producción.
+
+**Nota.** Este ajuste fue de infraestructura en el panel de Render, no de código local en el repositorio.
+
+---
 
 | Campo | Valor |
 |---|---|

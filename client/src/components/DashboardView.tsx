@@ -73,21 +73,21 @@ export function DashboardView() {
         const hasData = items.length > 0;
         if (!hasData) return null;
 
-        const saturationIndex = items.length > 0 ? (38.4 + (items.length * 1.2)).toFixed(1) + "%" : "0.0%";
-        const topNiche = items.some(item => item.content.toLowerCase().includes("vent") || item.content.toLowerCase().includes("sale")) ? "Retail / Ventas" : "Optimización Op.";
-        const confidenceScore = items.length > 0 ? "96.5%" : "0.0%";
+        const activeVisualizations = items.length;
+        const activeFiltersCount = Object.keys(filters).length;
+        const activeDataSourcesCount = Array.from(new Set(items.map(item => item.chat_title || String(item.id)))).length;
 
         return (
             <div className="grid grid-cols-1 md:grid-cols-3 gap-5 animate-in fade-in slide-in-from-top-4 duration-500">
                 {/* Saturation Card */}
                 <div className="relative overflow-hidden bg-[var(--bi-surface-0)]/60 backdrop-blur-md border border-[var(--bi-border)] rounded-xl p-5 hover:border-[var(--bi-blue-border)] hover:bg-[var(--bi-surface-0)] transition-all group shadow-sm flex flex-col justify-between h-32">
                     <div className="z-10">
-                        <span className="text-[10px] font-bold text-[var(--bi-text-3)] uppercase tracking-widest">Saturación Global</span>
-                        <h4 className="text-2xl font-black text-[var(--bi-text-1)] mt-2 tracking-tight transition-transform group-hover:translate-x-1 duration-200">{saturationIndex}</h4>
+                        <span className="text-[10px] font-bold text-[var(--bi-text-3)] uppercase tracking-widest">Visualizaciones Activas</span>
+                        <h4 className="text-2xl font-black text-[var(--bi-text-1)] mt-2 tracking-tight transition-transform group-hover:translate-x-1 duration-200">{activeVisualizations} paneles</h4>
                     </div>
                     <div className="mt-3 flex items-center gap-1.5 z-10">
                         <span className="w-1.5 h-1.5 rounded-full bg-[var(--bi-teal)] animate-pulse"></span>
-                        <span className="text-[10px] text-[var(--bi-text-3)] font-medium">Bajo umbral de alerta</span>
+                        <span className="text-[10px] text-[var(--bi-text-3)] font-medium">Métricas sincronizadas en tablero</span>
                     </div>
                     {/* Sparkline SVG */}
                     <div className="absolute bottom-0 left-0 right-0 h-10 pointer-events-none opacity-20 group-hover:opacity-40 transition-all duration-300">
@@ -107,11 +107,11 @@ export function DashboardView() {
                 {/* Top Niche Card */}
                 <div className="relative overflow-hidden bg-[var(--bi-surface-0)]/60 backdrop-blur-md border border-[var(--bi-border)] rounded-xl p-5 hover:border-[var(--bi-blue-border)] hover:bg-[var(--bi-surface-0)] transition-all group shadow-sm flex flex-col justify-between h-32">
                     <div className="z-10">
-                        <span className="text-[10px] font-bold text-[var(--bi-text-3)] uppercase tracking-widest">Top Nicho Detectado</span>
-                        <h4 className="text-xl font-bold text-[var(--bi-teal)] mt-2 tracking-tight transition-transform group-hover:translate-x-1 duration-200 truncate">{topNiche}</h4>
+                        <span className="text-[10px] font-bold text-[var(--bi-text-3)] uppercase tracking-widest">Filtros Aplicados</span>
+                        <h4 className="text-xl font-bold text-[var(--bi-teal)] mt-2 tracking-tight transition-transform group-hover:translate-x-1 duration-200 truncate">{activeFiltersCount > 0 ? `${activeFiltersCount} activo(s)` : "Sin filtros"}</h4>
                     </div>
                     <div className="mt-3 flex items-center gap-1.5 z-10">
-                        <span className="text-[10px] text-[var(--bi-text-3)] font-medium">Máxima concentración detectada</span>
+                        <span className="text-[10px] text-[var(--bi-text-3)] font-medium">Filtrado analítico en tiempo real</span>
                     </div>
                     {/* Sparkline SVG */}
                     <div className="absolute bottom-0 left-0 right-0 h-10 pointer-events-none opacity-20 group-hover:opacity-40 transition-all duration-300">
@@ -131,12 +131,12 @@ export function DashboardView() {
                 {/* Confidence Card */}
                 <div className="relative overflow-hidden bg-[var(--bi-surface-0)]/60 backdrop-blur-md border border-[var(--bi-border)] rounded-xl p-5 hover:border-[var(--bi-blue-border)] hover:bg-[var(--bi-surface-0)] transition-all group shadow-sm flex flex-col justify-between h-32">
                     <div className="z-10">
-                        <span className="text-[10px] font-bold text-[var(--bi-text-3)] uppercase tracking-widest">Confianza del Análisis</span>
-                        <h4 className="text-2xl font-black text-[var(--bi-text-1)] mt-2 tracking-tight transition-transform group-hover:translate-x-1 duration-200">{confidenceScore}</h4>
+                        <span className="text-[10px] font-bold text-[var(--bi-text-3)] uppercase tracking-widest">Cobertura de Fuentes</span>
+                        <h4 className="text-2xl font-black text-[var(--bi-text-1)] mt-2 tracking-tight transition-transform group-hover:translate-x-1 duration-200">{activeDataSourcesCount} fuente(s)</h4>
                     </div>
                     <div className="mt-3 flex items-center gap-1.5 z-10">
                         <span className="w-1.5 h-1.5 rounded-full bg-[var(--bi-green)]"></span>
-                        <span className="text-[10px] text-[var(--bi-text-3)] font-medium">Frontera de datos íntegra</span>
+                        <span className="text-[10px] text-[var(--bi-text-3)] font-medium">Datos calculados del origen</span>
                     </div>
                     {/* Sparkline SVG */}
                     <div className="absolute bottom-0 left-0 right-0 h-10 pointer-events-none opacity-20 group-hover:opacity-40 transition-all duration-300">
@@ -178,20 +178,19 @@ export function DashboardView() {
         setIsFiltering(true);
         try {
             const data = await filterDashboard(userId, filters);
-            if (data.status === "success") {
-                // Actualizar solo las figuras de los ítems existentes
-                const updatedItems = items.map(item => {
-                    const update = (data.updated_items as DashboardItem[]).find((ui) => ui.id === item.id);
+            if (data.status === "success" && Array.isArray(data.updated_items)) {
+                const updatedItemsList = data.updated_items as DashboardItem[];
+                setItems(prevItems => prevItems.map(item => {
+                    const update = updatedItemsList.find((ui) => ui.id === item.id);
                     return update ? { ...item, fig: update.fig } : item;
-                });
-                setItems(updatedItems);
+                }));
             }
         } catch (error) {
             console.error("Error applying filters:", error);
         } finally {
             setIsFiltering(false);
         }
-    }, [userId, filters, items]);
+    }, [userId, filters]);
 
     const fetchDashboard = useCallback(async () => {
         setLoading(true);

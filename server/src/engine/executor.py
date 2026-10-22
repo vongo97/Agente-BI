@@ -154,11 +154,12 @@ def validate_code_safety(code):
         '__globals__', '__subclasses__', '__mro__', '__builtins__', 
         '__qualname__', '__module__', '__dict__', 'func_globals', 
         'func_code', 'gi_frame', 'gi_code',
-        # Deuda de auditoría: bloquear I/O de disco/red desde el sandbox
+        # Deuda de auditoría P-16: bloquear I/O de disco/red y persistencia desde el sandbox
         'read_csv', 'read_excel', 'read_json', 'read_parquet', 'read_pickle',
         'read_feather', 'read_hdf', 'read_html', 'read_xml', 'read_clipboard',
-        'read_sql', 'read_sql_query', 'read_sql_table',
-        'to_pickle', 'to_excel', 'to_feather', 'to_hdf', 'to_parquet', 'to_sql',
+        'read_table', 'read_sql', 'read_sql_query', 'read_sql_table',
+        'to_csv', 'to_pickle', 'to_excel', 'to_feather', 'to_hdf', 'to_parquet', 'to_sql',
+        'to_clipboard', 'save', 'savez', 'savez_compressed', 'savetxt', 'savefig',
         'open', 'getenv', 'environ', 'system', 'popen', 'listdir', 'walk',
         # `rename` NO se bloquea: DataFrame.rename/Series.rename son operaciones
         # legítimas de pandas. `os.rename` sigue inaccesible porque `os` está
@@ -169,7 +170,8 @@ def validate_code_safety(code):
     }
     
     forbidden_calls = {
-        'eval', 'exec', 'open', 'breakpoint', 'input', 'help'
+        'eval', 'exec', 'open', 'breakpoint', 'input', 'help',
+        'getattr', 'setattr', 'delattr'
     }
 
     # Módulos prohibidos (complemento del runtime restricted_import):
@@ -540,12 +542,15 @@ def _blocked_io(*_a, **_k):
     raise PermissionError("Operación de I/O bloqueada en el sandbox de análisis.")
 for _fn in ("read_csv", "read_excel", "read_json", "read_parquet", "read_pickle",
             "read_feather", "read_hdf", "read_html", "read_xml", "read_clipboard",
-            "read_sql", "read_sql_query", "read_sql_table", "ExcelFile", "ExcelWriter"):
+            "read_table", "read_sql", "read_sql_query", "read_sql_table", "ExcelFile", "ExcelWriter"):
     if hasattr(pd, _fn):
         setattr(pd, _fn, _blocked_io)
-for _w in ("to_pickle", "to_excel", "to_feather", "to_hdf", "to_parquet", "to_sql"):
+for _w in ("to_csv", "to_pickle", "to_excel", "to_feather", "to_hdf", "to_parquet", "to_sql", "to_clipboard"):
     if hasattr(pd.DataFrame, _w):
         setattr(pd.DataFrame, _w, _blocked_io)
+for _np_fn in ("save", "savez", "savez_compressed", "savetxt"):
+    if hasattr(np, _np_fn):
+        setattr(np, _np_fn, _blocked_io)
 try:
     import io as _io_mod
     _io_mod.open = _blocked_io
@@ -747,12 +752,15 @@ def _blocked_io(*_a, **_k):
     raise PermissionError("Operación de I/O bloqueada en el sandbox de limpieza.")
 for _fn in ("read_csv", "read_excel", "read_json", "read_parquet", "read_pickle",
             "read_feather", "read_hdf", "read_html", "read_xml", "read_clipboard",
-            "read_sql", "read_sql_query", "read_sql_table", "ExcelFile", "ExcelWriter"):
+            "read_table", "read_sql", "read_sql_query", "read_sql_table", "ExcelFile", "ExcelWriter"):
     if hasattr(pd, _fn):
         setattr(pd, _fn, _blocked_io)
-for _w in ("to_pickle", "to_excel", "to_feather", "to_hdf", "to_parquet", "to_sql"):
+for _w in ("to_csv", "to_pickle", "to_excel", "to_feather", "to_hdf", "to_parquet", "to_sql", "to_clipboard"):
     if hasattr(pd.DataFrame, _w):
         setattr(pd.DataFrame, _w, _blocked_io)
+for _np_fn in ("save", "savez", "savez_compressed", "savetxt"):
+    if hasattr(np, _np_fn):
+        setattr(np, _np_fn, _blocked_io)
 try:
     import io as _io_mod
     _io_mod.open = _blocked_io
@@ -920,7 +928,8 @@ def execute_sql_safe(engine, raw_sql_response):
     try:
         validate_sql_safety(clean_sql)
         with engine.connect() as conn:
-            df_result = pd.read_sql(text(clean_sql), conn)
+            result = conn.execute(text(clean_sql))
+            df_result = pd.DataFrame(result.fetchall(), columns=list(result.keys()))
         return f"Resultados ({len(df_result)} filas):\n{df_result.to_string()}", df_result, clean_sql
     except Exception as e:
         return f"### ⚠️ Error SQL\n{e}", None, None

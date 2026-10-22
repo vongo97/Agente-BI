@@ -15,6 +15,9 @@ from src.engine.audit_agent import (
     is_audit_query,
 )
 from src.engine.insight_auditor import AUDIT_MARKER, AuditError, build_audit
+from src.engine.executor import execute_sql_safe, validate_sql_safety
+from src.engine.prompts import SQL_ENGINEER_PROMPT
+from src.engine.providers import generate_ai_content
 from src.utils.common import check_authorization, get_user_data, get_authenticated_user, ensure_user_session
 from src.utils.security import decrypt_key
 
@@ -172,7 +175,42 @@ async def analyze(
     try:
         # Determinar el tipo de dato y la variable
         data_type = session_data["type"]
-        data_var = "dfs" if data_type == "file" else "engine"
+
+        # --- MODO SQL: Materialización Segura previa al análisis (P-03) ---
+        if data_type == "sql":
+            engine = session_data["data"]
+            schema = session_data.get("schema") or ""
+
+            if not api_key and not mistral_key:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Se requiere una clave de API configurada para analizar bases de datos SQL."
+                )
+
+            sql_key = mistral_key if provider == "mistral" else api_key
+            sql_provider = provider if provider != "hybrid" else "gemini"
+
+            sql_prompt = SQL_ENGINEER_PROMPT.format(context_str=schema, query=query)
+            raw_sql_response = await asyncio.to_thread(
+                generate_ai_content,
+                sql_prompt,
+                sql_key,
+                sql_provider,
+                temperature=0.0
+            )
+
+            execution_msg, df_result, clean_sql = execute_sql_safe(engine, raw_sql_response)
+            if df_result is None or df_result.empty:
+                error_response = execution_msg or "La consulta SQL no produjo resultados o fue rechazada por seguridad."
+                new_msg = Message(chat_id=chat_id, role="assistant", content=error_response)
+                db.add(new_msg); db.commit()
+                return {"analysis": error_response, "chat_id": chat_id, "message_id": new_msg.id}
+
+            data_to_analyze = df_result
+            data_var = "df"
+        else:
+            data_to_analyze = session_data["data"]
+            data_var = "dfs" if isinstance(data_to_analyze, dict) else "df"
 
         # Determinar el nombre de la fuente primaria para el aislamiento de contexto
         primary_source_name = None
@@ -182,7 +220,7 @@ async def analyze(
                 primary_source_name = "".join([c if c.isalnum() else "_" for c in source_obj.name.split('.')[0]])
         
         # --- FILTRO DE CALIDAD ---
-        is_valid, reason = validate_data_quality(session_data["data"])
+        is_valid, reason = validate_data_quality(data_to_analyze)
         if not is_valid:
             content = f"### ⚠️ Lo sentimos, archivo no compatible\n{reason}\n\n**Sugerencia:** Por favor, asegúrate de subir un archivo con datos estructurados (filas y columnas) que contenga al menos una columna de números (métricas)."
             new_msg = Message(chat_id=chat_id, role="assistant", content=content)
@@ -225,7 +263,7 @@ async def analyze(
                 # fuera del event loop para no bloquear los health checks.
                 audit = await asyncio.to_thread(
                     build_audit,
-                    session_data.get("data"),
+                    data_to_analyze,
                     primary_source_name=audit_primary_name,
                     source_name=source_name,
                 )
@@ -299,10 +337,10 @@ async def analyze(
 
         # 1. Obtener análisis, gráfico y código de la IA
         output_text, fig, raw_response = await analyze_data(
-            session_data["data"], 
+            data_to_analyze, 
             query, 
             api_key, 
-            mode=data_type, 
+            mode="file", 
             provider=provider, 
             mistral_key=mistral_key,
             primary_source_name=primary_source_name,
