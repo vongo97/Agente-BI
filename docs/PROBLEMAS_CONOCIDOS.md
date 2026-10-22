@@ -69,7 +69,7 @@ registrado aquí incluye:
 | **P-05** | Frontend | Bucle infinito de `POST /dashboard/filter` (dependencia circular `items` → `setItems` → efecto) | ✅ CERRADO | `client/src/components/DashboardView.tsx:177-194` · functional updater `setItems(prevItems => ...)` + `tsc --noEmit` limpio · Antigravity 2026-10-22 |
 | **P-06** | Dependencias | 11 vulnerabilidades npm (5 críticas): `next 16.1.1` (RCE/DoS), `next-auth beta.30` (fail-open), `plotly.js`→`maplibre-gl` | ✅ CERRADO | `client/package.json` · `npm audit --omit=dev` → 2 low, 0 critical/high/moderate |
 | **P-07** | Frontend | CSP permisiva: `unsafe-inline`, `unsafe-eval`, `connect-src ws: wss:`, sin `frame-ancestors` | ABIERTO | `client/next.config.ts:19-28` |
-| **P-08** | Frontend | Capa de red sin timeout, `AbortController`, retry ni reacción a 401/403 | ABIERTO | `client/src/lib/api.ts:15-32` |
+| **P-08** | Frontend | Capa de red sin timeout, `AbortController`, retry ni reacci�n a 401/403 | ? CERRADO | `client/src/lib/api.ts` � `securedFetch` con AbortController (30 s), retry exponencial (2 reintentos), 401/403 ? signOut + redirect /login � `client/src/tests/ApiNetwork.test.ts` (6 passed) |
 | **P-09** | Frontend | Autosync guarda valores por defecto antes de cargar la config → puede sobrescribir ajustes del usuario | ABIERTO | `client/src/context/DashboardContext.tsx:138-211,216-246` |
 | **P-10** | Cifrado | `ENCRYPTION_KEY` inválida genera clave efímera; `encrypt/decrypt` aceptan texto plano | ✅ CERRADO | `server/src/utils/security.py` · fail-closed en producción sin clave · clave determinista en dev · `encrypt_key` lanza `ValueError` en vez de texto plano · `decrypt_key` rechaza no-Fernet · `tests/test_security_encryption_key.py` (10 passed) · Antigravity 2026-10-22 |
 | **P-11** | Uploads | Original escrito en claro en `.tmp` antes de cifrar; sin mitigación de zip-bomb | ABIERTO | `server/src/routers/data.py:110-192` |
@@ -357,8 +357,13 @@ sin `frame-ancestors`, `base-uri` ni `form-action`. Cualquier script inline inye
 Sin `AbortController`, sin timeout, sin retry/backoff. Un LLM lento cuelga la UI indefinidamente;
 un token caducado produce fallos silenciosos repetidos.
 
-**Cierre:** timeout configurable (p. ej. 120 s, mayor en análisis), cancelación al desmontar,
-401 → re-login, 403 → mensaje claro + sign-out. Tests del wrapper.
+**Corrección aplicada (P-08, rama fix/P-08-network-timeout-retry).**
+- `securedFetch` usa `AbortController` con timeout de 30 s por intento.
+- Reintento exponencial: hasta 2 reintentos (backoff 1 s, 2 s) solo en errores de red/timeout.
+- 401/403: `signOut({ callbackUrl: '/login' })` y lanza `AuthError` sin reintentar.
+- Tests: `client/src/tests/ApiNetwork.test.ts` (6 passed) cubren éxito, reintento, fallback de red, 401 y 403.
+
+**Verificación:** `tsc --noEmit` limpio, `vitest run` → 47 passed, `npm run build` → OK.
 
 **Regla:** toda llamada de red del cliente pasa por `securedFetch`; prohibido `fetch` directo.
 
@@ -907,3 +912,4 @@ borrar la fila y los archivos generados.
 2. **`GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET`** no están en `client/.env.local` → la UI local no
    se puede usar más allá del login.
 3. `ENCRYPTION_KEY`, `AUTH_SECRET` y `DATABASE_URL`: presentes y operativos en el `.env` local.
+

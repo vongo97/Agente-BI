@@ -1,4 +1,5 @@
 ﻿import type { AnalyzeResponse, AuditResponse } from "@/types/shared";
+import { signOut } from "next-auth/react";
 
 // Normaliza la URL base del backend: quita barras finales y evita duplicar
 // "/api/v1" si la variable de entorno ya lo incluye (error frecuente al
@@ -14,15 +15,91 @@ export function setApiAuthToken(token: string | null) {
   apiAuthToken = token;
 }
 
-async function securedFetch(url: string, options: RequestInit = {}): Promise<Response> {
+// ── Configuración de red (P-08) ─────────────────────────────────────────────
+const FETCH_TIMEOUT_MS = 30000;   // 30 s por intento
+const MAX_RETRIES = 2;            // máximo 2 reintentos (3 intentos totales)
+const RETRY_BASE_MS = 1000;       // backoff base: 1 s, 2 s, …
+
+class AuthError extends Error {
+  readonly status: number;
+  readonly isAuthError = true;
+  constructor(message: string, status: number) {
+    super(message);
+    this.status = status;
+    this.name = "AuthError";
+  }
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Ejecuta fetch con timeout y reintentos exponenciales.
+ * - Timeout: aborta la petición tras FETCH_TIMEOUT_MS.
+ * - Reintento: solo en errores de red o timeout (no en 4xx/5xx de aplicación).
+ * - 401/403: cierra la sesión de NextAuth y redirige a /login.
+ * Expuesto para pruebas de red (P-08).
+ */
+export async function securedFetch(url: string, options: RequestInit = {}): Promise<Response> {
   const headers = options.headers ? { ...options.headers } as Record<string, string> : {};
   if (apiAuthToken) {
     headers["Authorization"] = `Bearer ${apiAuthToken}`;
   }
-  return fetch(url, {
-    ...options,
-    headers,
-  });
+
+  let lastError: unknown;
+
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+
+    try {
+      const response = await fetch(url, {
+        ...options,
+        headers,
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeoutId);
+
+      // 401/403: sesión expirada o sin autorización → cerrar sesión y redirigir.
+      if (response.status === 401 || response.status === 403) {
+        await signOut({ callbackUrl: "/login" });
+        throw new AuthError(
+          `Sesión expirada o sin autorización (${response.status}). Inicia sesión de nuevo.`,
+          response.status
+        );
+      }
+
+      return response;
+    } catch (err) {
+      clearTimeout(timeoutId);
+      lastError = err;
+
+      // No reintentar errores de autenticación: ya se gestionaron arriba.
+      if (err instanceof AuthError) throw err;
+
+      // Timeout de red: reintentar con backoff si quedan intentos.
+      if (err instanceof DOMException && err.name === "AbortError") {
+        if (attempt < MAX_RETRIES) {
+          await sleep((attempt + 1) * RETRY_BASE_MS);
+          continue;
+        }
+        throw new Error(
+          "Tiempo de espera agotado al conectar con el servidor. Inténtalo de nuevo más tarde."
+        );
+      }
+
+      // Otros errores de red (DNS, caída del servidor, etc.): reintentar con backoff.
+      if (attempt < MAX_RETRIES) {
+        await sleep((attempt + 1) * RETRY_BASE_MS);
+        continue;
+      }
+      throw err;
+    }
+  }
+
+  throw lastError;
 }
 
 async function handleResponse(response: Response) {
