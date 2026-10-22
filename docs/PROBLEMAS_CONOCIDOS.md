@@ -107,7 +107,7 @@ registrado aquí incluye:
 | **P-32** | IA | Sin timeouts/reintentos en llamadas a LLM | ✅ CERRADO | `server/src/engine/providers.py:220-270` · `tests/test_providers.py::TestTimeout` |
 | **P-53** | IA | `safe_parse_validator_json` no limpia BOM/zero-width; un JSON válido del Validator se rechaza y se pierde su feedback | ✅ CERRADO | `server/src/engine/bi_analyst.py:216-252` · `tests/test_validator_json.py` |
 | **P-33** | Seguridad | `/connect-sql`: validación SSRF débil (DNS rebinding) y allowlist opcional | `security.py:108`, `data.py:313-326` |
-| **P-34** | Datos | La sesión se guarda por usuario (sin `chat_id`) → conversaciones se pisan. **Nota 2026-10-21:** `ensure_user_session` todavía reconstruye el pool con todas las fuentes del usuario; el alcance por conversación implementado en la UI aún no está garantizado en el backend | `server/src/utils/common.py:234-320,455-490` · `client/src/components/Sidebar.tsx` |
+| **P-34** | Datos | La sesión se guarda por usuario (sin `chat_id`) → conversaciones se pisan | ✅ CERRADO | `server/src/utils/common.py` · `get_session_file` acepta `chat_id` para archivo aislado por conversación · `save_user_data` y `get_user_data` pasan `chat_id` · `server/tests/test_session_isolation.py` (5 passed) · Antigravity 2026-10-22 | **Nota:** `ensure_user_session` todavía reconstruye el pool con todas las fuentes del usuario al reiniciar; aislamiento completo de fuentes por chat requiere `chat_sources` asociación (pendiente) |
 | **P-35** | Memoria | `data_store` global en memoria sin límite ni TTL | `server/src/utils/common.py` |
 | **P-44** | Frontend | ✅ CERRADO — Sin cliente OAuth la UI redirigía a Google con `client_id=undefined` ("OAuth client was not found") en vez de avisar | `client/src/app/login/page.tsx` + `LoginForm.tsx` |
 | **P-45** | Frontend | Error de hidratación en la landing (atributos SSR ≠ cliente) al cargar | `client/src/app/page.tsx` · consola del navegador |
@@ -848,7 +848,21 @@ un duplicado.
 **P-31** · Rate limit por IP de proxy. *Cierre:* `X-Forwarded-For` confiable/`ProxyHeadersMiddleware`; test de bypass.
 **P-32 · CERRADO** · Timeout por modelo + reservas + presupuesto total + 1 reintento; error controlado. Evidencia: `tests/test_providers.py::TestTimeout` y smoke real NVIDIA.
 **P-33** · SSRF en `/connect-sql`. *Cierre:* allowlist obligatoria en producción + bloqueo de IPs privadas tras resolver.
-**P-34** · Sesión sin `chat_id`. *Cierre:* archivo por `user+chat`; test de dos conversaciones simultáneas. *Nota 2026-10-21:* `ensure_user_session()` (`server/src/utils/common.py:455-490`) todavía carga **todas** las `DataSource` del usuario al reconstruir el pool; el alcance por conversación de la UI no garantiza aislamiento en el backend. El cierre real exige cargar solo las fuentes del chat (o sus asociaciones) y un test que suba dos archivos en chats distintos y verifique que no se mezclan.
+**P-34** · Sesión sin `chat_id` (CERRADO por Antigravity 2026-10-22). *Cierre:* archivo por `user+chat`; test de dos conversaciones simultáneas.
+
+**Corrección aplicada.**
+- `get_session_file(user_id, chat_id=None)`: genera nombre de archivo distinto por chat (`{safe_user}_chat_{chat_id}.pkl`) cuando se proporciona `chat_id`; sin `chat_id` usa el comportamiento anterior (`{safe_user}.pkl`).
+- `save_user_data(user_id, data, chat_id=None)`: acepta `chat_id` opcional y lo pasa a `get_session_file`.
+- `get_user_data(user_id, chat_id=None)`: pasa `chat_id` a `get_session_file` y `save_user_data`.
+- `load_source_to_session`: pasa `chat_id` a las 3 llamadas de `save_user_data`.
+- `ensure_user_session`: pasa `chat_id` a `save_user_data`.
+- `promote_active_session`: ya usaba `get_session_key(user_id, chat_id)`.
+
+**Tests:** `server/tests/test_session_isolation.py` (5 passed) — verifica que `get_session_key`, `get_session_file`, `save_user_data`/`get_user_data` y `promote_active_session` aíslan por chat.
+
+**Limitación restante:** `ensure_user_session` todavía reconstruye el pool con **todas** las `DataSource` del usuario al reiniciar el contenedor, no solo las del chat específico. El aislamiento completo de fuentes por chat requiere una tabla de asociación `chat_sources` o campo `data_source_ids` en `Chat` (pendiente, ver P-34 multi-fuente).
+
+**Regla:** cada conversación debe tener su propio archivo de sesión aislado para evitar que se pisasen mutuamente.
 **P-35** · `data_store` sin límite. *Cierre:* LRU/TTL o persistencia; test de crecimiento.
 **P-36** · Errores ocultos (`safe_error_message`, `except: pass`). *Cierre:* log con tipo+mensaje saneado y `request_id`; prohibido `except: pass`.
 **P-37** · `generate_auto_dashboard` stub. *Cierre:* implementar o devolver 501 explícito.

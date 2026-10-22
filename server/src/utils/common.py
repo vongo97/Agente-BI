@@ -215,10 +215,12 @@ def check_authorization(email: str):
     )
     raise HTTPException(status_code=403, detail="Usuario no autorizado")
 
-def get_session_file(user_id: str, source_id: Optional[int] = None):
+def get_session_file(user_id: str, chat_id: Optional[int] = None, source_id: Optional[int] = None):
     safe_user = hashlib.md5(user_id.encode()).hexdigest()
     if source_id:
         file_path = os.path.join(SESSIONS_DIR, f"{safe_user}_{source_id}.pkl")
+    elif chat_id:
+        file_path = os.path.join(SESSIONS_DIR, f"{safe_user}_chat_{chat_id}.pkl")
     else:
         file_path = os.path.join(SESSIONS_DIR, f"{safe_user}.pkl")
     
@@ -247,7 +249,7 @@ def get_user_data(user_id: str, chat_id: Optional[int] = None):
     # 2. Intentar desde archivo (persistencia)
     needs_resave = False
     try:
-        session_file = get_session_file(user_id)
+        session_file = get_session_file(user_id, chat_id=chat_id)
         if os.path.exists(session_file):
             import pickle
             from src.utils.security import cipher_suite
@@ -274,11 +276,11 @@ def get_user_data(user_id: str, chat_id: Optional[int] = None):
             # cifrar y subir la sesión completa en cada lectura desde disco:
             # con varias tablas eso duplica la RAM y bloquea el request.
             if needs_resave:
-                save_user_data(user_id, stored_data)
+                save_user_data(user_id, stored_data, chat_id=chat_id)
             data_store[session_key] = stored_data
             return stored_data
     except Exception as e:
-        logger.error("Error cargando sesión persistente para %s: %s", mask_email(user_id), e)
+        logger.error("Error cargando sesión persistente para %s (chat_id=%s): %s", mask_email(user_id), chat_id, e)
     
     # 3. FALLBACK: Heredar de sesión activa
     if chat_id:
@@ -290,30 +292,30 @@ def get_user_data(user_id: str, chat_id: Optional[int] = None):
             
     return None
 
-def save_user_data(user_id: str, data: dict):
+def save_user_data(user_id: str, data: dict, chat_id: Optional[int] = None):
     """Guarda los datos de la sesión en disco (cifrada) y en la nube."""
     if data is None: return
     try:
         import pickle
         from src.utils.security import cipher_suite
-        session_file = get_session_file(user_id)
+        session_file = get_session_file(user_id, chat_id=chat_id)
         # Serializar y cifrar antes de escribir a disco
         raw = pickle.dumps(data)
         encrypted = cipher_suite.encrypt(raw)
         with open(session_file, 'wb') as f:
             f.write(encrypted)
-        logger.info("Sesión cifrada y persistida en disco para %s", mask_email(user_id))
+        logger.info("Sesión cifrada y persistida en disco para %s (chat_id=%s)", mask_email(user_id), chat_id)
         
         # Sincronización en la Nube
         try:
             remote_path = f"sessions/{os.path.basename(session_file)}"
             upload_file_to_cloud(session_file, remote_path)
-            logger.info("Sesión persistida en la nube para %s", mask_email(user_id))
+            logger.info("Sesión persistida en la nube para %s (chat_id=%s)", mask_email(user_id), chat_id)
         except Exception as upload_err:
-            logger.error("Error al subir sesión a la nube para %s: %s", mask_email(user_id), upload_err)
+            logger.error("Error al subir sesión a la nube para %s (chat_id=%s): %s", mask_email(user_id), chat_id, upload_err)
             
     except Exception as e:
-        logger.error("Error al persistir sesión para %s: %s", mask_email(user_id), e)
+        logger.error("Error al persistir sesión para %s (chat_id=%s): %s", mask_email(user_id), chat_id, e)
 
 def promote_active_session(user_id: str, chat_id: int):
     """Vincula los datos de la sesión activa a un chat específico recién creado."""
@@ -421,7 +423,7 @@ def load_source_to_session(
                 
                 data_store[session_key] = session_data
                 if persist:
-                    save_user_data(user_id, session_data)
+                    save_user_data(user_id, session_data, chat_id=chat_id)
                 return True
         elif source.type == 'sql':
             from src.connectors.data_connectors import get_sql_engine, get_db_schema
@@ -431,7 +433,7 @@ def load_source_to_session(
             session_data = {"type": "sql", "data": engine, "schema": schema, "source_id": source.id}
             data_store[session_key] = session_data
             if persist:
-                save_user_data(user_id, session_data)
+                save_user_data(user_id, session_data, chat_id=chat_id)
             return True
         elif source.type == 'gsheets':
             sheet_key = f"gsheet_{source.id}"
@@ -445,7 +447,7 @@ def load_source_to_session(
                     session_data["sources"].append(source.id)
                 data_store[session_key] = session_data
                 if persist:
-                    save_user_data(user_id, session_data)
+                    save_user_data(user_id, session_data, chat_id=chat_id)
                 return True
     except Exception as e:
         logger.error(f"Error en load_source_to_session ({session_key}): {e}")
@@ -488,5 +490,5 @@ def ensure_user_session(user_id: str, db, chat_id: Optional[int] = None):
 
     rebuilt = get_user_data(user_id, chat_id)
     if loaded_any and rebuilt:
-        save_user_data(user_id, rebuilt)
+        save_user_data(user_id, rebuilt, chat_id=chat_id)
     return rebuilt
