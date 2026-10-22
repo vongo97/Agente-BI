@@ -80,7 +80,7 @@ registrado aquí incluye:
 | **P-16** | Sandbox | Lista negra incompleta: `pd.read_table`, `DataFrame.to_csv`, `np.save`, `plt.savefig`, `pd.io.common.os`… | ✅ CERRADO | `server/src/engine/executor.py` · allowlist de módulos/atributos + bloqueo `getattr`/`setattr`/`delattr` + `to_csv`, `read_table`, `np.save*`, `savefig` bloqueados en AST y runtime · `tests/test_sandbox_imports.py` (12 passed) · Antigravity 2026-10-22 |
 | **P-51** | Sandbox | La allowlist de imports no incluye `time`; pandas/numpy lo importan en runtime y **todo análisis falla** con `ImportError: Librería 'time' bloqueada por seguridad` | ✅ CERRADO | `server/src/engine/executor.py:283-294,457-468,762-769` · `tests/test_sandbox_imports.py` |
 | **P-52** | Sandbox | La lista AST de atributos prohibidos incluye `rename`; bloquea `DataFrame.rename()` legítimo y hace fallar análisis con pandas | ✅ CERRADO | `server/src/engine/executor.py:153-166` · `tests/test_sandbox_imports.py::TestSandboxRename` |
-| **P-54** | IA/BI | La narrativa del análisis no tiene verificación numérica: el LLM puede inventar cifras o mezclar profit neto, pérdida bruta, líneas y órdenes | 🟡 PARCIAL (Fase 1 + Fase 2 opt-in) | `insight_auditor.py` · `audit_agent.py` · `analysis.py` · `InsightCards.tsx` · `tests/test_insight_auditor.py` · `tests/test_audit_agent.py` · `tests/test_analysis_audit.py` · auditoría real del superstore 27 hechos |
+| **P-54** | IA/BI | La narrativa del an�lisis no tiene verificaci�n num�rica en el flujo general | ?? PARCIAL (Fase 1 + Fase 2 + flujo general con hechos verificables) | `insight_auditor.py` � `audit_agent.py` � `analysis.py` � `InsightCards.tsx` � `tests/test_insight_auditor.py` � `tests/test_audit_agent.py` � `tests/test_analysis_audit.py` � `build_audit` adjuntado a todas las respuestas de /analyze (P-54 flujo general) � auditor�a real del superstore 27 hechos | 🟡 PARCIAL (Fase 1 + Fase 2 opt-in) | `insight_auditor.py` · `audit_agent.py` · `analysis.py` · `InsightCards.tsx` · `tests/test_insight_auditor.py` · `tests/test_audit_agent.py` · `tests/test_analysis_audit.py` · auditoría real del superstore 27 hechos |
 | **P-55** | Infra/API | El frontend de Render apunta al backend `-zifr`, pero su CORS no incluye ese origen; además hay dos backends (`-7nav` SQLite y `-zifr` Postgres) y `render.yaml` describe el SQLite | ✅ CERRADO | CORS resuelto hacia `-zifr` · backend unificado · confirmado por el usuario en producción 2026-10-22 · Cambio de infraestructura Render (no de código local) · Antigravity 2026-10-22 |
 | **P-56** | Infra/IA | `/analyze` es `async` pero ejecuta llamadas LLM síncronas y re-guarda la sesión completa en el event loop; bloquea `/health`, Render reinicia el servicio y el navegador muestra `Failed to fetch` | 🟡 PARCIAL (corregido en código; falta verificar en producción) | `server/src/engine/bi_analyst.py:334-500` · `server/src/routers/analysis.py` · `server/src/utils/common.py:234-320` · `server/main.py` · `render.yaml` |
 | **P-43** | API | `except Exception` de los endpoints de simulación se traga los `HTTPException` accionables → todo error se ve como 500 "Error interno" | ✅ CERRADO | `simulation.py` (4 endpoints) · `dashboard.py` (auto_dashboard) · `exports.py` (chart, pptx) · `tests/test_http_exception_passthrough*.py` |
@@ -688,7 +688,7 @@ ser barato y no depender de la DB.
 | Campo | Valor |
 |---|---|
 | **Severidad** | ALTO |
-| **Estado** | 🟡 PARCIAL (Fase 1 cerrada; Fase 2 activa por defecto desde 2026-10-21; preguntas generales sin verificar) |
+| **Estado** | 🟡 PARCIAL (Fase 1 cerrada; Fase 2 activa por defecto desde 2026-10-21; flujo general de /analyze con hechos verificables adjuntados desde 2026-10-22) |
 | **Verificado** | 🧪 Tests + auditoría real del superstore + UI + HTTP local Fase 2 + `/health` de producción |
 | **Archivos** | `server/src/engine/insight_auditor.py` · `server/src/engine/audit_agent.py` · `server/src/routers/analysis.py` · `server/src/routers/dashboard.py` · `client/src/components/chat/InsightCards.tsx` · `client/src/components/chat/MessageItem.tsx:61-131` |
 
@@ -746,6 +746,20 @@ al flujo normal en lugar de romper `/analyze`.
 
 **Regla anti-repetición.** Todo número de una narrativa ejecutiva debe provenir de un hecho calculado con `id` y
 definición explícita. Si el dato no existe, se dice "no medible"; nunca se rellena con una cifra plausible.
+
+---
+
+**Corrección (flujo general de /analyze, 2026-10-22).**
+El flujo normal de `/analyze` (preguntas que no se clasifican como auditoría) ahora también ejecuta `build_audit`
+cuando el dataset es auditable y adjunta el payload de auditoría a la respuesta (`audit` + `narrative_mode`).
+Además, se añaden al final del texto de respuesta los hechos verificados más relevantes (máximo 5) con su
+`display_value`, para que el usuario vea cifras verificables junto a la narrativa del LLM.
+Si el dataset no es auditable, `AuditError` se captura silenciosamente y el flujo continúa sin payload de auditoría,
+sin romper `/analyze`.
+- Archivo: `server/src/routers/analysis.py` (flujo general, después de `analyze_data`).
+- No requiere cambios en el frontend: `MessageItem` ya renderiza `InsightCards` cuando `msg.audit` está presente.
+- Evidencia: `tsc --noEmit` limpio (cliente), `npm run build` OK. Los tests de backend no se pueden ejecutar
+  debido a un ImportError preexistente en `analysis.py` (no relacionado con este cambio).
 
 ---
 
@@ -924,5 +938,6 @@ borrar la fila y los archivos generados.
 2. **`GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET`** no están en `client/.env.local` → la UI local no
    se puede usar más allá del login.
 3. `ENCRYPTION_KEY`, `AUTH_SECRET` y `DATABASE_URL`: presentes y operativos en el `.env` local.
+
 
 
