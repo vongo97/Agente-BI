@@ -113,9 +113,13 @@ export function Chat() {
             if (!activeChatId && res.chat_id) setActiveChatId(res.chat_id);
         } catch (error) {
             const err = error as Error;
-            setMessages(prev => [...prev, { 
-                role: 'assistant', 
-                content: `⚠️ Error interno: ${err.message || "Fallo en el procesamiento."}` 
+            const isNetworkError = err.name === "TypeError" ||
+                /failed to fetch|networkerror|load failed|connection reset/i.test(err.message || "");
+            setMessages(prev => [...prev, {
+                role: 'assistant',
+                content: isNetworkError
+                    ? "### No se pudo conectar con el servidor\n\nEl servicio puede estar reiniciándose. Espera unos segundos y vuelve a intentarlo. Si el problema continúa, revisa el estado del backend."
+                    : `### No se pudo completar el análisis\n\n${err.message || "Fallo en el procesamiento."}`,
             }]);
         } finally {
             setLoading(false);

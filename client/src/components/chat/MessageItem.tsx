@@ -58,10 +58,14 @@ const getCTAs = (content: string) => {
 const isAnomaly = (content: string) =>
     content.includes("⚠️") || content.includes("Auditor de Datos");
 
+const isError = (content: string) =>
+    /Error interno|No se pudo conectar|No se pudo completar el análisis/i.test(content);
+
 export function MessageItem({ msg, userId, handleExportPng, handlePin, handleSendAsQuery }: MessageItemProps) {
     const isUser = msg.role === "user";
     const isAssistant = msg.role === "assistant";
-    const anomaly = isAssistant && !msg.audit && isAnomaly(msg.content);
+    const errorMessage = isAssistant && isError(msg.content);
+    const anomaly = isAssistant && !msg.audit && !errorMessage && isAnomaly(msg.content);
 
     return (
         <div className={`flex gap-3 animate-in slide-in-from-bottom-2 duration-300 ${isUser ? "justify-end" : "items-start"}`}>
@@ -113,7 +117,7 @@ export function MessageItem({ msg, userId, handleExportPng, handlePin, handleSen
                         </ReactMarkdown>
                     </div>
 
-                    {isAssistant && !msg.audit && handleSendAsQuery && (
+                    {isAssistant && !msg.audit && !errorMessage && handleSendAsQuery && (
                         <div className="flex flex-wrap gap-2 mt-3 pt-3 border-t border-[var(--bi-border)]">
                             {getCTAs(msg.content).map((cta, idx) => (
                                 <button
