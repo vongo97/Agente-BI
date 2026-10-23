@@ -469,6 +469,15 @@ def resolve_keys(provider: str, api_key: Optional[str], mistral_key: Optional[st
     return api_key, mistral_key, None
 
 
+def generate_ai_content(prompt: str, key: str, provider: str, temperature: float = 0.0, **kwargs) -> str:
+    """Wrapper alrededor de chat() para compatibilidad con analysis.py.
+
+    El orden de parámetros es (prompt, key, provider, temperature) para
+    coincidir con las llamadas existentes en analysis.py.
+    """
+    return chat(provider=provider, key=key, prompt=prompt, temperature=temperature, **kwargs)
+
+
 def chat(provider: str, key: str, prompt: str, temperature: float = 0.7,
          system_instruction: Optional[str] = None, timeout: int = 90,
          model_override: Optional[str] = None, max_tokens: int = 4096) -> str:
