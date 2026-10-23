@@ -121,7 +121,7 @@ registrado aquí incluye:
 | ID | Área | Problema | Evidencia |
 |---|---|---|---|
 | **P-36** | Debug | `safe_error_message()` oculta el error real en logs; `except: pass` disperso | `logging_config.py`, `analysis.py:278` |
-| **P-37** | C�digo | `generate_auto_dashboard` es un stub con TODO | ? CERRADO | `server/src/engine/bi_analyst.py:634-690` � implementa m�tricas reales (filas, columnas, resumen num�rico) y gr�fico determinista con plotly � Antigravity 2026-10-22 |
+| **P-37** | C�digo | `generate_auto_dashboard` es un stub con TODO | ? CERRADO | `server/src/engine/bi_analyst.py:634-690` � implementa m�tricas reales (filas, columnas, resumen num�rico) y gr�fico determinista con plotly � Antigravity 2026-10-22 |
 | **P-38** | UI | Layout de dashboard desde `localStorage` sin validar; `any` en simulación | `DashboardView.tsx:222-229`, `useForceLayout.ts:13` |
 | **P-39** | UI | Estado `pending` se etiqueta como "Fallo" | `SimHistory.tsx:42` |
 | **P-40** | UI | Texto de 8-10 px y sidebar fija (`w-80`) en móvil | `SimHistory.tsx:12` y varios |
@@ -846,7 +846,15 @@ un duplicado.
 **P-23** · Código muerto (~1.500 líneas frontend + módulos backend). *Cierre:* eliminar o registrar como `ACEPTADO`.
 **P-24** · Tokens Tailwind inexistentes. *Cierre:* usar `--color-bi-*` reales; revisión visual del paso de configuración.
 **P-25** · A11y modal/toasts. *Cierre:* `role="dialog"`, `aria-modal`, ESC, focus trap, `aria-live`.
-**P-26** · "Guardar Cambios" no-op. *Cierre:* botón ejecuta el guardado real o se elimina.
+**P-26** · "Guardar Cambios" no-op (CERRADO por Antigravity 2026-10-22). *Cierre:* botón ejecuta el guardado real.
+
+**Corrección aplicada.**
+- `client/src/components/SettingsView.tsx`: `handleSave` ahora llama a `setUserConfig(userId, ...)` para persistir temperatura, sensibilidad de anomalías, estrategia Magic Clean, formato de moneda/fecha, color de marca, nombre de organización, pie de página, orientación PDF, anexar tabla de datos y tema de gráficos.
+- También llama a `saveProviderModels(providerModels)` para persistir la selección de modelos por proveedor.
+- Se agregó `userId` al desestructurado de `useDashboard()` y `setUserConfig`/`saveProviderModels` a las importaciones desde `@/lib/api`.
+- El botón ahora muestra estados `saving` → `success`/`error` según el resultado real de la API.
+
+**Verificación:** `tsc --noEmit` limpio, `vitest run` → 64 passed, `npm run build` → OK.
 **P-27 · CERRADO** · Fuentes guardadas no renderizadas. *Causa:* el primer `fetchSources` corría antes de que NextAuth cargara el token; la petición iba sin `Authorization` y en local caía en el usuario de pruebas (lista vacía), en producción daba 401. *Corrección original:* el token se configura antes del fetch, no se consulta mientras `status === "loading"` y las fuentes guardadas pasan a ser las activas si no hay ninguna. *Evolución 2026-10-21:* por decisión de producto **se retiró la precarga global**; una sesión nueva arranca sin fuentes y el historial restaura la fuente del chat al abrirlo. *Evidencia:* `client/src/tests/Sidebar.test.tsx` (no llama a `getDataSources` al montar; `loadChat` restaura la fuente) + `npx vitest run` → 40 passed + `npm run build` OK. *Cierre:* la lista de la conversación se pinta desde su fuente vinculada, no desde todas las fuentes del usuario.
 **P-28** · Tests frontend no ejecutables. *Cierre:* `npm test` verde en CI.
 **P-29** · Sugerencias de chat en bucle/dataset inconsistente. *Cierre:* efecto sin `suggestions.length`; misma fuente que el análisis; cancelación.
@@ -885,7 +893,7 @@ un duplicado.
 
 **Regla:** el almacenamiento en memoria siempre debe tener límite de tamaño y TTL para evitar OOM.
 **P-36** · Errores ocultos (`safe_error_message`, `except: pass`). *Cierre:* log con tipo+mensaje saneado y `request_id`; prohibido `except: pass`.
-**P-37** � `generate_auto_dashboard` stub (CERRADO por Antigravity 2026-10-22). *Cierre:* implementar o devolver 501 expl�cito.
+**P-37** � `generate_auto_dashboard` stub (CERRADO por Antigravity 2026-10-22). *Cierre:* implementar o devolver 501 expl�cito.
 **P-38** · `localStorage` sin validar y `any`. *Cierre:* validación de esquema y tipos reales.
 **P-39** · `pending` = "Fallo". *Cierre:* mapear estados correctamente.
 **P-40** · Tipografía 8-10 px y sidebar fija. *Cierre:* mínimo 12 px y responsive.
@@ -994,6 +1002,7 @@ borrar la fila y los archivos generados.
 2. **`GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET`** no están en `client/.env.local` → la UI local no
    se puede usar más allá del login.
 3. `ENCRYPTION_KEY`, `AUTH_SECRET` y `DATABASE_URL`: presentes y operativos en el `.env` local.
+
 
 
 
