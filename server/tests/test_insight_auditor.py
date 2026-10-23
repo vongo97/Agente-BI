@@ -288,6 +288,33 @@ class TestGenericFactsWithoutSales:
         assert not any("Mediana de 'departamento'" in title for title in titles)
         assert not any("Composición por 'departamento'" in title for title in titles)
 
+    def test_quality_does_not_list_retail_absences(self):
+        """P-59 (feedback usuario): en datasets no retail, 'no se detectó
+        ventas/profit/descuento' no es un problema de calidad; es ruido."""
+        audit = build_audit(make_gov_df(), source_name="casos.csv")
+        quality = " ".join(audit["profile"]["quality"])
+        narrative = audit["analysis"]
+
+        assert "columna de ventas" not in quality
+        assert "columna de profit" not in quality
+        assert "columna de descuento" not in quality
+        assert "identificador de orden" not in quality
+        assert "columna de ventas" not in narrative
+
+    def test_partial_retail_still_reports_missing_columns(self):
+        """Con contexto retail (ventas sin profit), la ausencia SÍ es
+        información de calidad relevante."""
+        df = pd.DataFrame(
+            {
+                "fecha": ["2021-01-05", "2021-02-05", "2021-03-05", "2021-04-05"],
+                "sales": [100.0, 120.0, 90.0, 110.0],
+            }
+        )
+        audit = build_audit(df, source_name="ventas.csv")
+        quality = " ".join(audit["profile"]["quality"])
+        assert "columna de profit" in quality
+        assert "columna de descuento" in quality
+
     def test_retail_dataset_keeps_retail_definitions_and_facts(self):
         """Regresión: con ventas+profit no cambian los hechos ni el
         vocabulario (los tests de descuento ya cubren los valores)."""

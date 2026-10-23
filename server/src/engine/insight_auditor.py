@@ -415,6 +415,11 @@ def _prepare_frame(
         work[target] = parsed
 
     order_column = roles.get("order_id")
+    # P-59: las ausencias de ventas/profit/descuento/orden solo se reportan
+    # como calidad cuando hay contexto retail (alguna métrica de negocio
+    # presente). En datasets de otro dominio listarlas es ruido: el dataset
+    # no "falla" por no ser de ventas.
+    has_retail_context = bool(roles.get("sales") or roles.get("profit"))
     if order_column:
         work["__order"] = work[order_column]
         orders = int(work["__order"].nunique(dropna=True))
@@ -422,15 +427,16 @@ def _prepare_frame(
             quality.append("La columna de orden no contiene identificadores utilizables; se ignora.")
             roles["order_id"] = None
             work.drop(columns=["__order"], inplace=True)
-    else:
+    elif has_retail_context:
         quality.append("No se detectó identificador de orden; no se calculan métricas por orden.")
 
-    if not roles.get("sales"):
-        quality.append("No se detectó una columna de ventas; no se calculan ingresos ni márgenes.")
-    if not roles.get("profit"):
-        quality.append("No se detectó una columna de profit; no se calculan márgenes ni pérdidas.")
-    if not roles.get("discount"):
-        quality.append("No se detectó una columna de descuento; no se puede medir fuga por descuento.")
+    if has_retail_context:
+        if not roles.get("sales"):
+            quality.append("No se detectó una columna de ventas; no se calculan ingresos ni márgenes.")
+        if not roles.get("profit"):
+            quality.append("No se detectó una columna de profit; no se calculan márgenes ni pérdidas.")
+        if not roles.get("discount"):
+            quality.append("No se detectó una columna de descuento; no se puede medir fuga por descuento.")
 
     missing_share = float(work.drop(columns=["__row"], errors="ignore").isna().mean().mean())
     if missing_share > 0.02:

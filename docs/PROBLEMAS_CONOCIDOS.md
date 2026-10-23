@@ -1125,6 +1125,7 @@ tiene columnas explotables (fecha, categoría, métrica numérica).
 - Datasets reales: COVID de datos.gov.co produce 5 hechos verificados (mes pico 2020-08 con 8,597 registros y 17.2%, composición BOGOTA 27.3% / ANTIOQUIA 14.8% / VALLE 8.3% por `departamento_nom`, edad promedio 40.44 / mediana 38.00); INE 11178 y 74999 producen composición por sexo y promedio/mediana de la tasa de paro; BCE produce promedio EUR/USD 1.18; NYC 311 y Chicago producen mes pico + composición legible y **ningún** hecho falso (sin promedios de `council_district`, `unique_key`, `departamento` ni de etiquetas como 'De 25 a 29 años').
 - Regresión retail intacta: el dataset de descuentos sigue produciendo KPI-01..03, DISC, LOSS y REG con las definiciones completas de retail.
 - Sin ventas ni profit las definiciones y el 'Qué haría' son neutrales; sin vocabulario de rentabilidad.
+- Segunda iteración (feedback usuario 2026-10-23): en datasets sin contexto retail, la sección **Calidad del dataset** ya no lista ausencias de ventas/profit/descuento/orden (no es un defecto del archivo que no sea de ventas). Esas notas solo aparecen cuando hay ventas o profit y falta otra pieza. `pytest tests/test_insight_auditor.py -q` → 20 passed; suite completa → 284 passed, 3 xfailed.
 
 **Criterio de cierre.**
 - Dataset sin ventas/profit pero con fecha+categoría+numérico produce ≥3 hechos genéricos con valores
