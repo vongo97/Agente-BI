@@ -162,7 +162,7 @@ export function SettingsView() {
                                             >
                                                 <p className="text-xs font-bold text-[var(--bi-text-1)] mb-1 uppercase tracking-tight flex items-center gap-2">
                                                     {p.label}
-                                                    {p.free_tier && <span className="text-[8px] px-1 py-0.5 rounded border border-[var(--bi-green-border)] text-[var(--bi-green)]">GRATIS</span>}
+                                                    {p.free_tier && <span className="text-[10px] px-1 py-0.5 rounded border border-[var(--bi-green-border)] text-[var(--bi-green)]">GRATIS</span>}
                                                 </p>
                                                 <p className="text-[10px] text-[var(--bi-text-3)] font-medium leading-normal">{DESC[p.id] ?? "Modelo de IA"}</p>
                                                 <p className="text-[9px] text-[var(--bi-text-2)] mt-1">

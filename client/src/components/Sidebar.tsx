@@ -185,7 +185,7 @@ export function Sidebar() {
 
             <aside className={`
                 fixed lg:relative inset-y-0 left-0 z-50
-                w-60 flex flex-col h-screen overflow-hidden
+                w-56 md:w-60 flex flex-col h-screen overflow-hidden
                 bg-[var(--bi-surface-0)] border-r border-[var(--bi-border)]
                 transition-transform duration-300 ease-in-out
                 ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}

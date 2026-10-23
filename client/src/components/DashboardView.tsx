@@ -481,7 +481,7 @@ export function DashboardView() {
                                                         <GripVertical className="w-4 h-4" />
                                                     </div>
                                                     <div className="overflow-hidden">
-                                                        <p className="text-[8px] text-[var(--bi-text-3)] font-bold uppercase tracking-widest truncate">{cleanTitle(item.chat_title)}</p>
+                                                        <p className="text-[12px] text-[var(--bi-text-3)] font-bold uppercase tracking-widest truncate">{cleanTitle(item.chat_title)}</p>
                                                         <p className="text-[11px] font-semibold text-[var(--bi-text-2)] truncate">{cleanTitle(item.content)}</p>
                                                     </div>
                                                 </div>
