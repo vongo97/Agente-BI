@@ -1089,3 +1089,41 @@ del usuario de pruebas en `test_analysis.py` para eliminar el fallo dependiente 
 **Regla anti-repetición.** Toda variable usada fuera de una rama condicional se inicializa antes de la rama; los
 tests de integración de `/analyze` deben cubrir el flujo general, no solo el de auditoría.
 
+---
+
+### P-59 · La auditoría verificada solo habla idioma retail aunque el dataset sea de otro dominio
+
+| Campo | Valor |
+|---|---|
+| **Severidad** | MEDIO |
+| **Estado** | 🔴 ABIERTO (registrado 2026-10-23 antes de corregir) |
+| **Verificado** | 🧪 Reproducción en producción con `colombia_covid_50k.csv` (datos.gov.co) |
+| **Archivos** | `server/src/engine/insight_auditor.py` · `server/src/routers/analysis.py` · `client/src/components/chat/InsightCards.tsx` |
+
+**Qué pasa.** Con un dataset sin columnas de ventas/profit (p. ej. casos COVID de datos.gov.co), la auditoría
+honestamente no inventa cifras (0 hechos), pero todo el envoltorio sigue siendo de retail: muestra las
+definiciones de "Profit neto", "Pérdida bruta", "Margen", "Descuento", "Umbral de descuento", y el "Qué haría"
+sugiere "definir una métrica de rentabilidad" para un dataset epidemiológico. El usuario lo resume bien:
+"está orientado a ventas, no a los datos que ve".
+
+**Impacto.** La garantía anti-alucinación se cumple, pero la experiencia es ruidosa e irrelevante para datasets
+gubernamentales/científicos/operativos, y el usuario no recibe ningún hallazgo útil pese a que el dataset sí
+tiene columnas explotables (fecha, categoría, métrica numérica).
+
+**Corrección propuesta (adaptativa, no por dominio).**
+- Cuando no hay ventas ni profit, calcular hechos genéricos verificables de las columnas disponibles:
+  periodo con más registros (y participación), registros del primer vs último año, composición top-3 de una
+  columna categórica, y promedio/mediana de la primera columna métrica no-id. Todos con id, definición,
+  evidencia y cálculo determinista con pandas.
+- Mostrar solo las definiciones aplicables (sin vocabulario retail cuando nada retail fue calculado).
+- Narrativa y "Qué haría" en términos neutrales: qué representa cada fila y su métrica de negocio, sin
+  asumir rentabilidad.
+- No se especializa por dominio (salud, crimen, forex): los hechos genéricos aplican a cualquier tabla.
+
+**Criterio de cierre.**
+- Dataset sin ventas/profit pero con fecha+categoría+numérico produce ≥3 hechos genéricos con valores
+  iguales al cálculo manual con pandas.
+- Las definiciones mostradas no incluyen términos retail cuando no se calculó nada retail.
+- Regresión: el superstore sigue produciendo los mismos 27 hechos y las definiciones completas.
+- `pytest tests -q` en verde.
+

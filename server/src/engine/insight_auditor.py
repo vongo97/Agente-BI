@@ -142,6 +142,37 @@ DEFINITIONS = [
     },
 ]
 
+# Definiciones mostradas cuando no se calculó nada de retail (sin ventas ni
+# profit). El vocabulario de margen/descuento no aplica y solo confunde a
+# datasets gubernamentales, científicos u operativos (P-59).
+GENERIC_DEFINITIONS = [
+    {
+        "term": "Línea",
+        "definition": "Una fila del dataset. Sin identificador de transacción, cada fila es una observación independiente.",
+    },
+    {
+        "term": "Periodo pico",
+        "definition": "Año-mes con mayor número de registros. La participación se calcula sobre el total de fechas válidas.",
+    },
+    {
+        "term": "Composición",
+        "definition": "Top 3 valores de una columna categórica, ordenados por número de registros. El porcentaje es su participación sobre el total.",
+    },
+    {
+        "term": "Promedio y mediana",
+        "definition": "Estadísticos de la columna métrica indicada, calculados solo con valores numéricos no vacíos.",
+    },
+    {
+        "term": "Columna métrica",
+        "definition": "Primera columna numérica detectada que no parece un identificador ni un código.",
+    },
+    {
+        "term": "No medible",
+        "definition": "Si falta la columna requerida, el hallazgo se omite. No se estima ni se inventa una cifra.",
+    },
+]
+
+
 
 def _norm_name(value: Any) -> str:
     text = unicodedata.normalize("NFKD", str(value))
@@ -1269,6 +1300,281 @@ def _time_facts(
     return result
 
 
+def _looks_categoric(series: pd.Series) -> bool:
+    """Filtros que debe pasar cualquier columna usada para composición."""
+    if pd.api.types.is_numeric_dtype(series):
+        return False
+    valid = series.dropna()
+    if valid.empty or not (2 <= valid.nunique() <= 50):
+        return False
+    if float(valid.astype(str).str.len().mean()) > 60:
+        return False
+    if float(valid.astype(str).str.match(r"^\d+([.\-/]\d+)*$").mean()) > 0.8:
+        return False
+    return True
+
+
+def _is_identifier_like(normalized: str) -> bool:
+    """True si el nombre normalizado parece id/código/coordenada/periodo."""
+    if normalized == "id" or normalized.endswith("_id") or normalized.startswith("id_"):
+        return True
+    if "codigo" in normalized or "code" in normalized or normalized.endswith("cod"):
+        return True
+    if "key" in normalized or "uuid" in normalized or "hash" in normalized:
+        return True
+    if any(token in normalized for token in ("coord", "latitude", "longitude", "_lat", "_lon", "zip", "postal")):
+        return True
+    return False
+
+
+def _is_time_dimension(normalized: str) -> bool:
+    """Columnas de dimensión temporal: no son métricas aunque sean numéricas
+    (año, trimestre). Un 'promedio de periodo' no significa nada."""
+    return any(
+        token in normalized
+        for token in (
+            "periodo", "period", "year", "anio", "ano", "mes", "month",
+            "trimestre", "quarter", "fecha", "date", "dia", "day", "semana", "week",
+        )
+    )
+
+
+def _pick_categoric_column(work: pd.DataFrame, roles: dict[str, Optional[str]]) -> Optional[str]:
+    """Columna categórica para composición: primero los roles conocidos
+    (región, categoría, cliente, producto) y después cualquier columna de
+    texto con cardinalidad razonable. Los roles también deben pasar los
+    filtros: un 'departamento' numérico o un código de país no son categorías
+    legibles para el usuario."""
+    for role in ("region", "category", "customer", "product"):
+        column = roles.get(role)
+        if column and column in work.columns:
+            normalized = _norm_name(column)
+            if not _is_identifier_like(normalized) and _looks_categoric(work[column]):
+                return str(column)
+    excluded = {
+        roles.get(role_name)
+        for role_name in ("order_id", "date", "ship_date", "sales", "profit", "discount")
+    }
+    excluded.discard(None)
+    for column in work.columns:
+        if column.startswith("__") or column in excluded:
+            continue
+        normalized = _norm_name(column)
+        if _is_identifier_like(normalized) or _is_time_dimension(normalized):
+            continue
+        if _looks_categoric(work[column]):
+            return str(column)
+    return None
+
+
+# Tokens que indican una columna de MEDIDA real. Si ninguna columna numérica
+# encaja, no se publican promedios/medianas: un hecho falso es peor que
+# ninguno (P-59).
+METRIC_TOKENS = (
+    "valor", "value", "total", "monto", "importe", "precio", "price", "costo",
+    "cost", "tarifa", "tasa", "rate", "cantidad", "count", "conteo", "casos",
+    "unidades", "units", "qty", "quantity", "edad", "ventas", "venta",
+    "revenue", "ingresos", "ingreso", "profit", "beneficio", "utilidad",
+    "ganancia", "salario", "sueldo", "poblacion", "population", "muertes",
+    "deaths", "hospitalizaciones", "temperatura", "precipitacion", "defunciones",
+)
+
+
+def _pick_metric_column(work: pd.DataFrame, roles: dict[str, Optional[str]]) -> Optional[str]:
+    """Columna numérica utilizable como métrica, con reglas conservadoras:
+    - El nombre debe parecer una medida (lista blanca METRIC_TOKENS).
+    - Se excluyen columnas con rol semántico detectado (códigos de región o
+      categoría suelen ser numéricos y su promedio no significa nada).
+    - Columnas de texto solo si >90% de los valores encajan en un patrón
+      numérico estricto (evita extraer dígitos de etiquetas como
+      'De 25 a 29 años').
+    """
+    excluded = {
+        roles.get(role_name)
+        for role_name in ("order_id", "date", "ship_date", "sales", "profit", "discount")
+    }
+    excluded.discard(None)
+    semantic_columns = {
+        roles.get(role_name)
+        for role_name in ("region", "category", "subcategory", "customer", "product")
+    }
+    semantic_columns.discard(None)
+    for column in work.columns:
+        if column.startswith("__") or column in excluded or column in semantic_columns:
+            continue
+        normalized = _norm_name(column)
+        if _is_identifier_like(normalized) or _is_time_dimension(normalized):
+            continue
+        if not any(token in normalized for token in METRIC_TOKENS):
+            continue
+        series = work[column]
+        valid: Optional[pd.Series] = None
+        if pd.api.types.is_numeric_dtype(series):
+            valid = pd.to_numeric(series, errors="coerce").dropna()
+        else:
+            raw = series.dropna().astype(str).str.strip()
+            if len(raw) and float(raw.str.match(r"^-?\d+([.,]\d+)?$").mean()) > 0.9:
+                valid = _to_numeric(series).dropna()
+        if valid is None or len(valid) < 2 or valid.nunique() <= 1:
+            continue
+        if len(valid) < 0.5 * len(series) and len(valid) < 10:
+            continue
+        return str(column)
+    return None
+
+
+def _generic_facts(
+    work: pd.DataFrame,
+    roles: dict[str, Optional[str]],
+    profile: dict[str, Any],
+) -> list[AuditFact]:
+    """Hechos verificables para datasets sin ventas ni profit (P-59).
+
+    No especializa por dominio: calcula composición, actividad temporal y
+    estadísticos de las columnas disponibles. Cada cifra es determinista con
+    pandas y lleva id, definición y evidencia.
+    """
+    facts: list[AuditFact] = []
+    rows = int(profile.get("rows") or len(work))
+
+    if "__date" in work:
+        dates = work["__date"].dropna()
+        if len(dates):
+            month_counts = dates.dt.to_period("M").value_counts().sort_index()
+            peak_month = month_counts.idxmax()
+            peak_n = int(month_counts.max())
+            _add_fact(
+                facts,
+                fact_id="TIME-G01",
+                title="Mes con más registros",
+                value=float(peak_n),
+                display_value=f"{peak_month} ({_fmt_count(peak_n)} registros, {_fmt_pct(peak_n / len(dates))})",
+                unit="registros",
+                category="actividad",
+                severity="info",
+                direction="neutral",
+                definition=(
+                    "Año-mes con mayor número de registros. La participación se calcula "
+                    f"sobre las {_fmt_count(len(dates))} fechas válidas."
+                ),
+                evidence=f"value_counts por año-mes sobre '{roles.get('date')}'",
+                sample_size=len(dates),
+            )
+            year_counts = dates.dt.year.value_counts().sort_index()
+            if len(year_counts) >= 2:
+                first_year, last_year = int(year_counts.index[0]), int(year_counts.index[-1])
+                first_n, last_n = int(year_counts.iloc[0]), int(year_counts.iloc[-1])
+                growth = (last_n - first_n) / first_n if first_n else None
+                display = (
+                    f"{first_year}: {_fmt_count(first_n)} → {last_year}: {_fmt_count(last_n)}"
+                    + (f" ({_fmt_signed_pct(growth)})" if growth is not None else "")
+                )
+                _add_fact(
+                    facts,
+                    fact_id="TIME-G02",
+                    title="Registros del primer vs último año",
+                    value=float(growth) if growth is not None else 0.0,
+                    display_value=display,
+                    unit="%",
+                    category="actividad",
+                    severity="info",
+                    direction="neutral",
+                    definition=(
+                        "Comparación solo entre el primer y el último año con datos; "
+                        "no se afirma una tendencia intermedia sin calcularla."
+                    ),
+                    evidence=f"count por año sobre '{roles.get('date')}'",
+                    sample_size=len(dates),
+                )
+
+    categoric_column = _pick_categoric_column(work, roles)
+    if categoric_column:
+        counts = work[categoric_column].dropna().astype(str).value_counts()
+        total = int(counts.sum())
+        top3 = counts.head(3)
+        display = ", ".join(f"{name} {_fmt_pct(int(n) / total)}" for name, n in top3.items())
+        _add_fact(
+            facts,
+            fact_id="CAT-G01",
+            title=f"Composición por '{categoric_column}'",
+            value=float(int(top3.iloc[0]) / total),
+            display_value=display,
+            unit="%",
+            category="composición",
+            severity="info",
+            direction="neutral",
+            definition=(
+                f"Top 3 valores de '{categoric_column}' por número de registros; el porcentaje es su "
+                f"participación sobre {_fmt_count(total)} filas con valor."
+            ),
+            evidence=f"value_counts de '{categoric_column}'",
+            sample_size=total,
+        )
+
+    metric_column = _pick_metric_column(work, roles)
+    if metric_column:
+        column_data = work[metric_column]
+        if pd.api.types.is_numeric_dtype(column_data):
+            valid = pd.to_numeric(column_data, errors="coerce").dropna()
+        else:
+            valid = _to_numeric(column_data).dropna()
+        if len(valid):
+            _add_fact(
+                facts,
+                fact_id="MET-G01",
+                title=f"Promedio de '{metric_column}'",
+                value=float(valid.mean()),
+                display_value=_fmt_number(float(valid.mean())),
+                unit=str(work[metric_column].name or metric_column),
+                category="perfil",
+                severity="info",
+                direction="neutral",
+                definition=(
+                    f"Media aritmética de '{metric_column}' calculada con las "
+                    f"{_fmt_count(len(valid))} filas con valor numérico."
+                ),
+                evidence=f"mean de '{metric_column}'",
+                sample_size=len(valid),
+            )
+            _add_fact(
+                facts,
+                fact_id="MET-G02",
+                title=f"Mediana de '{metric_column}'",
+                value=float(valid.median()),
+                display_value=_fmt_number(float(valid.median())),
+                unit=str(work[metric_column].name or metric_column),
+                category="perfil",
+                severity="info",
+                direction="neutral",
+                definition=(
+                    f"Valor central de '{metric_column}': la mitad de las filas está por debajo "
+                    "y la otra mitad por encima. Menos sensible a valores extremos que el promedio."
+                ),
+                evidence=f"median de '{metric_column}'",
+                sample_size=len(valid),
+            )
+
+    if not facts:
+        _add_fact(
+            facts,
+            fact_id="GEN-01",
+            title="Registros verificados",
+            value=float(rows),
+            display_value=f"{_fmt_count(rows)} filas sin columnas explotables para hallazgos",
+            unit="filas",
+            category="perfil",
+            severity="info",
+            direction="neutral",
+            definition=(
+                "El dataset solo permite verificar su tamaño: no hay fechas, categorías ni "
+                "columnas numéricas utilizables. No se estima ningún otro hallazgo."
+            ),
+            evidence="len() del dataset tras limpieza",
+            sample_size=rows,
+        )
+    return facts
+
+
 def _render_narrative(
     facts: list[AuditFact],
     profile: dict[str, Any],
@@ -1303,6 +1609,11 @@ def _render_narrative(
     negative_orders = by_id.get("LOSS-04")
 
     lines.append("### Diagnóstico")
+    generic_peak = by_id.get("TIME-G01")
+    generic_trend = by_id.get("TIME-G02")
+    generic_composition = by_id.get("CAT-G01")
+    generic_mean = by_id.get("MET-G01")
+    generic_median = by_id.get("MET-G02")
     if sales and profit:
         headline = f"El dataset registra **{sales.display_value}** en ventas y **{profit.display_value}** de profit"
         if margin:
@@ -1313,6 +1624,27 @@ def _render_narrative(
         lines.append(f"El dataset registra **{profit.display_value}** de profit, pero no hay una columna de ventas para calcular el margen.")
     elif sales:
         lines.append(f"El dataset registra **{sales.display_value}** en ventas, pero no hay una columna de profit para calcular rentabilidad.")
+    elif facts:
+        # P-59: hechos genéricos calculados de las columnas disponibles.
+        lines.append(
+            "El dataset no tiene columnas de ventas ni de profit. Los hallazgos verificables "
+            "se calculan con las columnas disponibles: composición, actividad en el tiempo y "
+            "estadísticos. No se estima ninguna métrica de negocio que el archivo no contenga."
+        )
+        if generic_peak:
+            lines.append(f"El periodo con más registros es **{generic_peak.display_value}**.")
+        if generic_trend:
+            lines.append(f"Al comparar el primer y el último año con datos: **{generic_trend.display_value}**.")
+        if generic_composition:
+            composition_label = generic_composition.title.split("'", 1)[-1].rstrip("'")
+            lines.append(
+                f"Por **{composition_label}**, los valores más frecuentes son: {generic_composition.display_value}."
+            )
+        if generic_mean and generic_median:
+            lines.append(
+                f"La columna métrica detectada tiene promedio **{generic_mean.display_value}** "
+                f"y mediana **{generic_median.display_value}**."
+            )
     else:
         lines.append("No se detectaron columnas de ventas ni de profit; la auditoría se limita al perfil y la calidad del dataset.")
 
@@ -1430,7 +1762,15 @@ def _render_narrative(
             "Monitorear el margen del último año contra el año anterior antes de extrapolar una tendencia."
         )
     if not actions:
-        actions.append("Definir una métrica de rentabilidad y un dueño antes de sacar conclusiones de negocio.")
+        if sales or profit:
+            actions.append("Definir una métrica de rentabilidad y un dueño antes de sacar conclusiones de negocio.")
+        else:
+            actions.append(
+                "Definir qué representa cada fila de este dataset y cuál es su métrica de negocio "
+                "(casos, eventos, tasas, costos…), con un dueño, antes de traducir composición y "
+                "actividad en decisiones. Las cifras de arriba están verificadas; las conclusiones "
+                "de negocio requieren esa definición."
+            )
     for index, action in enumerate(actions, start=1):
         lines.append(f"{index}. {action}")
 
@@ -1440,7 +1780,10 @@ def _render_narrative(
         "Auditoría determinista con pandas. No se ejecutó código generado por un LLM y no se necesitó una API key. "
         "Cada tarjeta tiene un `id`, una definición y la evidencia del cálculo."
     )
-    for definition in DEFINITIONS:
+    # P-59: sin ventas ni profit no se muestran las definiciones de retail;
+    # solo las que aplican a los hechos genéricos realmente calculados.
+    definitions = DEFINITIONS if (sales or profit) else GENERIC_DEFINITIONS
+    for definition in definitions:
         lines.append(f"- **{definition['term']}:** {definition['definition']}")
     if profile.get("quality"):
         lines.append("")
@@ -1629,8 +1972,11 @@ def build_audit(
         profile["source_name"] = detected_name
 
     if not roles.get("sales") and not roles.get("profit"):
-        # Sin métricas no se pueden fabricar hallazgos. Se devuelve un perfil
-        # honesto con la lista de columnas para que el usuario sepa qué falta.
+        # Sin ventas ni profit no se calcula nada de retail (P-59): en lugar de
+        # devolver solo perfil, se calculan hechos genéricos verificables de
+        # las columnas disponibles (composición, actividad temporal,
+        # estadísticos). Si no hay nada explotable, el perfil sigue siendo
+        # honesto sobre lo que falta.
         analysis = {
             "available": False,
             "threshold": None,
@@ -1647,14 +1993,14 @@ def build_audit(
             "top_loss": None,
             "years": None,
         }
-        facts: list[AuditFact] = []
+        facts: list[AuditFact] = _generic_facts(work, roles, profile)
         narrative = _render_narrative(facts, profile, analysis)
         return {
             "analysis": narrative,
             "figure": None,
             "insights": [asdict(fact) for fact in facts],
             "profile": profile,
-            "definitions": DEFINITIONS,
+            "definitions": GENERIC_DEFINITIONS,
             "methodology": _methodology(profile),
             "source_name": profile["source_name"],
             "generated_at": datetime.now(timezone.utc).isoformat(),

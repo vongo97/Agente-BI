@@ -185,6 +185,121 @@ class TestHonestLimits:
             build_audit(pd.DataFrame(), source_name="vacio.csv")
 
 
+def make_gov_df() -> pd.DataFrame:
+    """Dataset gubernamental tipo epidemiológico: fecha, categoría, métrica.
+    Sin ventas ni profit: debe producir hechos genéricos verificables (P-59)."""
+    rows = []
+    regions = ["Norte", "Sur", "Occidente"]
+    for month in range(1, 13):
+        for day in range(1, 4):
+            count = (month * day) % 7 + 1
+            for i in range(count):
+                rows.append(
+                    {
+                        "fecha_diagnostico": f"2021-{month:02d}-{day:02d}",
+                        "departamento_nom": regions[(month + i) % 3],
+                        "edad": 20 + ((month * 7 + i) % 60),
+                        "id_de_caso": len(rows) + 1,
+                    }
+                )
+    return pd.DataFrame(rows)
+
+
+class TestGenericFactsWithoutSales:
+    """P-59: sin ventas/profit la auditoría debe adaptarse a los datos,
+    calcular hechos genéricos verificables y no hablar idioma retail."""
+
+    def test_generic_facts_are_deterministic_and_verifiable(self):
+        df = make_gov_df()
+        audit = build_audit(df, source_name="casos.csv")
+        ids = {f["id"] for f in audit["insights"]}
+
+        assert "TIME-G01" in ids  # mes con más registros
+        assert "CAT-G01" in ids   # composición
+        assert "MET-G01" in ids   # promedio de edad
+        assert "MET-G02" in ids   # mediana de edad
+
+        peak = _fact(audit, "TIME-G01")
+        expected_peak = (
+            df["fecha_diagnostico"]
+            .pipe(pd.to_datetime)
+            .dt.to_period("M")
+            .value_counts()
+            .idxmax()
+        )
+        assert str(expected_peak) in peak["display_value"]
+
+        mean_fact = _fact(audit, "MET-G01")
+        assert mean_fact["value"] == pytest.approx(df["edad"].mean())
+        median_fact = _fact(audit, "MET-G02")
+        assert median_fact["value"] == pytest.approx(df["edad"].median())
+
+    def test_no_retail_vocabulary_when_nothing_retail_was_calculated(self):
+        audit = build_audit(make_gov_df(), source_name="casos.csv")
+        terms = {d["term"] for d in audit["definitions"]}
+        narrative = audit["analysis"]
+
+        assert "Profit neto" not in terms
+        assert "Pérdida bruta" not in terms
+        assert "Umbral de descuento" not in terms
+        assert "Profit neto" not in narrative
+        assert "rentabilidad" not in narrative
+        assert "métrica de negocio" in narrative  # acción neutral
+
+    def test_metric_is_not_fabricated_from_text_labels(self):
+        """'De 25 a 29 años' NO es un número: puede ser categoría de
+        composición, pero jamás una métrica promediable (P-59)."""
+        df = pd.DataFrame(
+            {
+                "fecha": ["2021-01-05", "2021-02-05", "2021-03-05", "2021-04-05"],
+                "grupos_de_edad": ["De 25 a 29 años", "De 30 a 34 años", "De 25 a 29 años", "De 60 a 64 años"],
+                "sexo": ["H", "M", "H", "M"],
+                "total": ["13,25", "20,5", "8,0", "31,4"],
+            }
+        )
+        audit = build_audit(df, source_name="ine.csv")
+        metric_titles = [
+            f["title"] for f in audit["insights"]
+            if f["id"].startswith("MET-")
+        ]
+        for title in metric_titles:
+            assert "grupos_de_edad" not in title
+        # La métrica es 'total' (decimal con coma) con el valor exacto.
+        mean_fact = _fact(audit, "MET-G01")
+        assert "'total'" in mean_fact["title"]
+        assert mean_fact["value"] == pytest.approx((13.25 + 20.5 + 8.0 + 31.4) / 4)
+        # Y la composición SÍ puede usar el grupo de edad como categoría.
+        composition = _fact(audit, "CAT-G01")
+        assert "grupos_de_edad" in composition["title"]
+
+    def test_numeric_codes_are_not_metrics(self):
+        """Un código numérico de departamento no se promedia; la composición
+        usa la columna legible ('departamento_nom')."""
+        df = pd.DataFrame(
+            {
+                "fecha": ["2021-01-05", "2021-02-05", "2021-03-05", "2021-04-05", "2021-05-05", "2021-06-05"],
+                "departamento": [5, 11, 17, 5, 11, 17],
+                "departamento_nom": ["Antioquia", "Bogotá", "Valle", "Antioquia", "Bogotá", "Valle"],
+            }
+        )
+        audit = build_audit(df, source_name="colombia.csv")
+        titles = [f["title"] for f in audit["insights"]]
+        assert not any("Promedio de 'departamento'" in title for title in titles)
+        assert not any("Mediana de 'departamento'" in title for title in titles)
+        assert not any("Composición por 'departamento'" in title for title in titles)
+
+    def test_retail_dataset_keeps_retail_definitions_and_facts(self):
+        """Regresión: con ventas+profit no cambian los hechos ni el
+        vocabulario (los tests de descuento ya cubren los valores)."""
+        audit = build_audit(make_discount_df(), source_name="descuentos.csv")
+        terms = {d["term"] for d in audit["definitions"]}
+        assert "Profit neto" in terms
+        assert "Umbral de descuento" in terms
+        assert _fact(audit, "KPI-01")["id"] == "KPI-01"
+        assert not any(f["id"] == "TIME-G01" for f in audit["insights"])
+
+
+
 class TestNarrativeAndFigure:
     def test_narrative_uses_calculated_values(self):
         audit = build_audit(make_discount_df(), source_name="descuentos.csv")
