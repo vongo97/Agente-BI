@@ -123,7 +123,7 @@ registrado aquí incluye:
 | **P-36** | Debug | `safe_error_message()` oculta el error real en logs; `except: pass` disperso | `logging_config.py`, `analysis.py:278` |
 | **P-37** | C�digo | `generate_auto_dashboard` es un stub con TODO | ? CERRADO | `server/src/engine/bi_analyst.py:634-690` � implementa m�tricas reales (filas, columnas, resumen num�rico) y gr�fico determinista con plotly � Antigravity 2026-10-22 |
 | **P-38** | UI | Layout de dashboard desde `localStorage` sin validar; `any` en simulación | `DashboardView.tsx:222-229`, `useForceLayout.ts:13` |
-| **P-39** | UI | Estado `pending` se etiqueta como "Fallo" | `SimHistory.tsx:42` |
+| **P-39** | UI | Estado `pending` se etiquetaba como "Fallo" en historial de simulaciones | ? CERRADO | `client/src/components/simulation/SimHistory.tsx:42` � mapeo correcto: completed?Listo, running?En Curso, pending?Pendiente � Antigravity 2026-10-22 |
 | **P-40** | UI | Texto de 8-10 px y sidebar fija (`w-80`) en móvil | `SimHistory.tsx:12` y varios |
 | **P-41** | Tests | 3 tests backend fallando (deuda de test, no regresión de producción; el de dashboard se corrigió el 2026-10-20) | ✅ CERRADO | `test_exports.py:82,112` (xfail justificado: mocking de generate_pdf_report/create_presentation) · `test_simulation.py:129` (xfail justificado: serialización de MagicMock en respuesta JSON) · `server/src/engine/providers.py` · `generate_ai_content` wrapper agregado para import en analysis.py · Antigravity 2026-10-22 |
 | **P-46** | API | `/data-sources` y `/sources` devuelven al cliente la `url` interna (clave de nube con el md5 del email o ruta del contenedor) | `server/src/routers/data.py:86-91` · runtime |
@@ -903,7 +903,14 @@ un duplicado.
 **Verificación:** `tsc --noEmit` limpio, `vitest run` → 64 passed, `npm run build` → OK.
 
 **Regla:** nunca confiar ciegamente en datos de `localStorage`; siempre validar esquema antes de aplicar. Evitar `any`; usar tipos específicos.
-**P-39** · `pending` = "Fallo". *Cierre:* mapear estados correctamente.
+**P-39** · `pending` = "Fallo" en historial de simulaciones (CERRADO por Antigravity 2026-10-22). *Cierre:* mapear estados correctamente.
+
+**Corrección aplicada.**
+- `client/src/components/simulation/SimHistory.tsx:42`: el estado `pending` se mostraba como "Fallo" debido a un ternario incompleto. Ahora se mapea correctamente: `completed` → "Listo", `running` → "En Curso", `pending` → "Pendiente", cualquier otro → "Desconocido".
+
+**Verificación:** `tsc --noEmit` limpio, `vitest run` → 64 passed, `npm run build` → OK.
+
+**Regla:** nunca mapear un estado desconocido a "Fallo"; usar el nombre real del estado o "Desconocido".
 **P-40** · Tipografía 8-10 px y sidebar fija. *Cierre:* mínimo 12 px y responsive.
 **P-41** · 3 tests backend fallando (`test_exports.py` PDF/PPTX y `test_simulation.py`; el test de dashboard se corrigió el 2026-10-20). (CERRADO por Antigravity 2026-10-22). *Cierre:* suite 100% verde con `xfail` justificado.
 
@@ -1010,6 +1017,7 @@ borrar la fila y los archivos generados.
 2. **`GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET`** no están en `client/.env.local` → la UI local no
    se puede usar más allá del login.
 3. `ENCRYPTION_KEY`, `AUTH_SECRET` y `DATABASE_URL`: presentes y operativos en el `.env` local.
+
 
 
 

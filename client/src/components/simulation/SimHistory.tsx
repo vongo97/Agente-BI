@@ -39,7 +39,7 @@ export function SimHistory({ simulations, activeSim, loadSim }: SimHistoryProps)
                                                 ? 'bg-[var(--module-simulation-accent-soft)] text-[var(--module-simulation-accent)] border-[var(--module-simulation-border)] animate-pulse'
                                                 : 'bg-[var(--bi-red-dim)] text-[var(--bi-red)] border-[var(--bi-red-border)]'
                                     }`}>
-                                        {sim.status === 'completed' ? 'Listo' : sim.status === 'running' ? 'En Curso' : 'Fallo'}
+                                        {sim.status === 'completed' ? 'Listo' : sim.status === 'running' ? 'En Curso' : sim.status === 'pending' ? 'Pendiente' : 'Desconocido'}
                                     </span>
                                     <span className="text-[9px] text-[var(--bi-text-3)] font-semibold">
                                         {new Date(sim.created_at).toLocaleDateString()}
