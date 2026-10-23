@@ -121,7 +121,7 @@ registrado aquí incluye:
 | ID | Área | Problema | Evidencia |
 |---|---|---|---|
 | **P-36** | Debug | `safe_error_message()` oculta el error real en logs; `except: pass` disperso | `logging_config.py`, `analysis.py:278` |
-| **P-37** | Código | `generate_auto_dashboard` es un stub con TODO | `server/src/engine/...` |
+| **P-37** | C�digo | `generate_auto_dashboard` es un stub con TODO | ? CERRADO | `server/src/engine/bi_analyst.py:634-690` � implementa m�tricas reales (filas, columnas, resumen num�rico) y gr�fico determinista con plotly � Antigravity 2026-10-22 |
 | **P-38** | UI | Layout de dashboard desde `localStorage` sin validar; `any` en simulación | `DashboardView.tsx:222-229`, `useForceLayout.ts:13` |
 | **P-39** | UI | Estado `pending` se etiqueta como "Fallo" | `SimHistory.tsx:42` |
 | **P-40** | UI | Texto de 8-10 px y sidebar fija (`w-80`) en móvil | `SimHistory.tsx:12` y varios |
@@ -885,7 +885,7 @@ un duplicado.
 
 **Regla:** el almacenamiento en memoria siempre debe tener límite de tamaño y TTL para evitar OOM.
 **P-36** · Errores ocultos (`safe_error_message`, `except: pass`). *Cierre:* log con tipo+mensaje saneado y `request_id`; prohibido `except: pass`.
-**P-37** · `generate_auto_dashboard` stub. *Cierre:* implementar o devolver 501 explícito.
+**P-37** � `generate_auto_dashboard` stub (CERRADO por Antigravity 2026-10-22). *Cierre:* implementar o devolver 501 expl�cito.
 **P-38** · `localStorage` sin validar y `any`. *Cierre:* validación de esquema y tipos reales.
 **P-39** · `pending` = "Fallo". *Cierre:* mapear estados correctamente.
 **P-40** · Tipografía 8-10 px y sidebar fija. *Cierre:* mínimo 12 px y responsive.
@@ -994,6 +994,8 @@ borrar la fila y los archivos generados.
 2. **`GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET`** no están en `client/.env.local` → la UI local no
    se puede usar más allá del login.
 3. `ENCRYPTION_KEY`, `AUTH_SECRET` y `DATABASE_URL`: presentes y operativos en el `.env` local.
+
+
 
 
 

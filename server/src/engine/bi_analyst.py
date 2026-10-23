@@ -632,5 +632,100 @@ def ai_data_cleaner(df, api_key, provider="gemini", mistral_key=None, strategy="
 
 async def execute_analysis(c, r, v): return await executor.execute_analysis(c, r, v)
 def generate_auto_dashboard(ds, ak, pr="gemini", mk=None):
-    # Simplificado para mantener flujo
-    return {"metrics": [], "charts": []}
+    """Genera un panel automático básico a partir de un DataFrame.
+
+    Calcula métricas clave (filas, columnas, resumen de columnas numéricas)
+    y genera un gráfico de barras de la primera columna categórica o un
+    histograma de la primera columna numérica.
+
+    No usa LLM: todo es cálculo determinista con pandas + plotly.
+    """
+    import numpy as np
+
+    if ds is None or not hasattr(ds, "columns"):
+        return {"metrics": [], "charts": []}
+
+    df = ds
+    n_rows = len(df)
+    n_cols = len(df.columns)
+    numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
+    categorical_cols = df.select_dtypes(exclude=[np.number]).columns.tolist()
+
+    # ── Métricas clave ──────────────────────────────────────────────
+    metrics = [
+        {"label": "Filas", "value": n_rows, "description": "Registros totales", "icon": "📊"},
+        {"label": "Columnas", "value": n_cols, "description": "Campos totales", "icon": "📋"},
+        {"label": "Columnas numéricas", "value": len(numeric_cols), "description": "Campos con valores numéricos", "icon": "🔢"},
+        {"label": "Columnas categóricas", "value": len(categorical_cols), "description": "Campos de texto o categorías", "icon": "🏷️"},
+    ]
+
+    # Añadir resumen de la primera columna numérica si existe
+    if numeric_cols:
+        col = numeric_cols[0]
+        col_data = df[col].dropna()
+        if len(col_data) > 0:
+            metrics.append({
+                "label": f"Promedio {col}",
+                "value": round(float(col_data.mean()), 2),
+                "description": f"Media aritmética de {col}",
+                "icon": "📈",
+            })
+            metrics.append({
+                "label": f"Máx. {col}",
+                "value": round(float(col_data.max()), 2),
+                "description": f"Valor máximo de {col}",
+                "icon": "🔺",
+            })
+
+    # ── Gráfico ─────────────────────────────────────────────────────
+    charts = []
+    try:
+        if categorical_cols and numeric_cols:
+            # Barras: primera categórica vs primera numérica (agrupada)
+            cat_col = categorical_cols[0]
+            num_col = numeric_cols[0]
+            agg = df.groupby(cat_col)[num_col].mean().reset_index()
+            fig = px.bar(
+                agg,
+                x=cat_col,
+                y=num_col,
+                title=f"{num_col} por {cat_col}",
+                labels={cat_col: cat_col, num_col: num_col},
+            )
+            charts.append({
+                "title": f"Análisis de {num_col} por {cat_col}",
+                "fig": json.loads(fig.to_json()),
+            })
+        elif numeric_cols:
+            # Histograma de la primera columna numérica
+            num_col = numeric_cols[0]
+            fig = px.histogram(
+                df,
+                x=num_col,
+                title=f"Distribución de {num_col}",
+                labels={num_col: num_col},
+            )
+            charts.append({
+                "title": f"Distribución de {num_col}",
+                "fig": json.loads(fig.to_json()),
+            })
+        elif categorical_cols:
+            # Conteo de la primera columna categórica
+            cat_col = categorical_cols[0]
+            vc = df[cat_col].value_counts().reset_index()
+            vc.columns = [cat_col, "count"]
+            fig = px.bar(
+                vc,
+                x=cat_col,
+                y="count",
+                title=f"Conteo de {cat_col}",
+                labels={cat_col: cat_col, "count": "Registros"},
+            )
+            charts.append({
+                "title": f"Conteo de {cat_col}",
+                "fig": json.loads(fig.to_json()),
+            })
+    except Exception as e:
+        logger.warning("No se pudo generar gráfico automático: %s", e)
+
+    return {"metrics": metrics, "charts": charts}
