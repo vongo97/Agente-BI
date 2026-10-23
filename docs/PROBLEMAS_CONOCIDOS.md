@@ -894,7 +894,15 @@ un duplicado.
 **Regla:** el almacenamiento en memoria siempre debe tener límite de tamaño y TTL para evitar OOM.
 **P-36** · Errores ocultos (`safe_error_message`, `except: pass`). *Cierre:* log con tipo+mensaje saneado y `request_id`; prohibido `except: pass`.
 **P-37** � `generate_auto_dashboard` stub (CERRADO por Antigravity 2026-10-22). *Cierre:* implementar o devolver 501 expl�cito.
-**P-38** · `localStorage` sin validar y `any`. *Cierre:* validación de esquema y tipos reales.
+**P-38** · `localStorage` sin validar y `any` en simulación (CERRADO por Antigravity 2026-10-22). *Cierre:* validación de esquema y tipos reales.
+
+**Corrección aplicada.**
+- `client/src/components/DashboardView.tsx`: `getSessionLayouts` ahora valida el esquema de los datos de `localStorage` antes de aplicarlos (`isValidLayout` verifica que cada item tenga `i`, `x`, `y`, `w`, `h` como números). Si el esquema es inválido, se ignora y se usa el layout por defecto.
+- `client/src/components/SimulationSandbox.tsx`: reemplazados `any[]` por tipos específicos (`OntologyNode`, `OntologyEdge`, `AgentConfig`) para `ontologyData` y `agentsData`.
+
+**Verificación:** `tsc --noEmit` limpio, `vitest run` → 64 passed, `npm run build` → OK.
+
+**Regla:** nunca confiar ciegamente en datos de `localStorage`; siempre validar esquema antes de aplicar. Evitar `any`; usar tipos específicos.
 **P-39** · `pending` = "Fallo". *Cierre:* mapear estados correctamente.
 **P-40** · Tipografía 8-10 px y sidebar fija. *Cierre:* mínimo 12 px y responsive.
 **P-41** · 3 tests backend fallando (`test_exports.py` PDF/PPTX y `test_simulation.py`; el test de dashboard se corrigió el 2026-10-20). (CERRADO por Antigravity 2026-10-22). *Cierre:* suite 100% verde con `xfail` justificado.
@@ -1002,6 +1010,7 @@ borrar la fila y los archivos generados.
 2. **`GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET`** no están en `client/.env.local` → la UI local no
    se puede usar más allá del login.
 3. `ENCRYPTION_KEY`, `AUTH_SECRET` y `DATABASE_URL`: presentes y operativos en el `.env` local.
+
 
 
 

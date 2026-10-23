@@ -45,9 +45,17 @@ export function SimulationSandbox() {
 
     // Flujo MiroFish: form -> ontology -> agents
     const [sandboxStep, setSandboxStep] = useState<'form' | 'ontology' | 'agents'>('form');
-    const [ontologyData, setOntologyData] = useState<{ nodes: any[]; edges: any[] }>({ nodes: [], edges: [] });
+
+    type OntologyNode = { id: string; label?: string; [key: string]: unknown };
+    type OntologyEdge = { source: string; target: string; [key: string]: unknown };
+    type OntologyData = { nodes: OntologyNode[]; edges: OntologyEdge[] };
+
+    // Tipo compatible con SimAgentConfig.Agent para evitar `any`
+    type AgentConfig = { name: string; role: string; description: string; personality: string };
+
+    const [ontologyData, setOntologyData] = useState<OntologyData>({ nodes: [], edges: [] });
     const [loadingOntology, setLoadingOntology] = useState(false);
-    const [agentsData, setAgentsData] = useState<any[]>([]);
+    const [agentsData, setAgentsData] = useState<AgentConfig[]>([]);
     const [generatingAgents, setGeneratingAgents] = useState(false);
 
     const handleDownloadPdf = async () => {
