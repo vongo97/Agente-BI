@@ -143,3 +143,34 @@ Para cada fallo manda:
 - **P-11 (cifrado en reposo):** revertido; re-implementar con tests **después** de confirmar la subida estable.
 - **Multi-archivo por chat:** limitado por `Chat.data_source_id` (FK única); restaurarlo requiere tabla `ChatSource`.
 - **P-54:** marcado PARCIAL en el registro hasta verificar en producción los puntos 2 y 3 de este manual.
+
+---
+
+## 11. Datasets gubernamentales reales (verificados 2026-10-23)
+
+Enlaces verificados con HTTP 200 y validados con el parser propio de la app (load_file_data_from_bytes):
+los 6 cargan y pasan el filtro de calidad. Copias locales en datasets_prueba/ (no se versionan en git).
+
+| Archivo | Fuente | Filas | Columnas clave | Peso |
+|---|---|---|---|---|
+| ine_tasa_paro_edad_11178.csv | INE España (tasa de paro por edad, brecha de género) | 204 | periodo, edad, total | 9 KB |
+| ine_tasa_paro_ccaa_74999.csv | INE España (paro por edad, sexo y CCAA) | 8,400 | periodo, CCAA, edad, total | 444 KB |
+| ecb_eur_usd_diario.csv | Banco Central Europeo (tipo de cambio EUR/USD diario) | 7,182 | fecha, obs_value | 1.4 MB |
+| colombia_covid_50k.csv | datos.gov.co (casos COVID, Colombia) | 50,000 | fecha, departamento, edad, estado | 10.8 MB |
+| 
+yc_311_20k.csv | NYC Open Data (servicios 311) | 20,000 | fecha, agency, complaint_type | 16.3 MB |
+| chicago_crimes_20k.csv | Chicago Data Portal (delitos) | 20,000 | fecha, primary_type, district, arrest | 5.6 MB |
+
+Enlaces de descarga directa (verificados):
+- INE España: https://www.ine.es/jaxiT3/files/t/csv_bdsc/11178.csv y https://www.ine.es/jaxiT3/files/t/csv_bdsc/74999.csv
+- BCE: https://data-api.ecb.europa.eu/service/data/EXR/D.USD.EUR.SP00.A?format=csvdata
+- Colombia: https://www.datos.gov.co/resource/gt2j-8ykr.csv?limit=50000
+- NYC: https://data.cityofnewyork.us/resource/erm2-nwe9.csv?limit=20000
+- Chicago: https://data.cityofchicago.org/resource/ijzp-q8t2.csv?limit=20000
+
+**Qué esperar con estos datasets:**
+- Analisis general, graficos y dashboard: funcionan igual que con el superstore (columnas de fecha, categorias y metricas presentes).
+- Auditoria verificada: devuelve **0 hechos** y perfil honesto de columnas disponibles, porque ninguno tiene columnas de ventas/profit. Esto es el comportamiento disenado (P-54): el auditor mide solo lo que existe y nunca inventa cifras.
+- El auditor detecta columnas por rol, en espanol o ingles: ventas, venta, ingresos, monto, importe, facturacion, sales, revenue, profit, descuento... Si un dataset gubernamental tiene una columna con alguno de esos nombres, si producira hechos verificados.
+- Esto NO es ajustar la app a un documento: es verificar que se adapta por columnas y que degrada con honestidad cuando faltan datos.
+
