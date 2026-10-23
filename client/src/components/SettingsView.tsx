@@ -14,6 +14,7 @@ export function SettingsView() {
         mistralKey, setMistralKey, 
         groqKey, setGroqKey, 
         aiProvider, setAiProvider, 
+        providerModels, setProviderModels,
         autoSuggestionsEnabled, setAutoSuggestionsEnabled, 
         setSidebarOpen,
         temperature, setTemperature,
@@ -150,6 +151,12 @@ export function SettingsView() {
                                                     {p.free_tier && <span className="text-[8px] px-1 py-0.5 rounded border border-[var(--bi-green-border)] text-[var(--bi-green)]">GRATIS</span>}
                                                 </p>
                                                 <p className="text-[10px] text-[var(--bi-text-3)] font-medium leading-normal">{DESC[p.id] ?? "Modelo de IA"}</p>
+                                                <p className="text-[9px] text-[var(--bi-text-2)] mt-1">
+                                                    Modelo:{" "}
+                                                    {providerModels[p.id] ?? (
+                                                        <span className="italic">por defecto del proveedor</span>
+                                                    )}
+                                                </p>
                                             </button>
                                         );
                                     })}

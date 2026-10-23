@@ -75,7 +75,7 @@ registrado aquí incluye:
 | **P-11** | Uploads | Original escrito en claro en `.tmp` antes de cifrar; sin mitigación de zip-bomb | ✅ CERRADO | `server/src/routers/data.py` · `server/src/utils/security.py` · `encrypt_bytes` cifra en memoria sin `.tmp` en claro · zip-bomb temprano desde bytes (Excel dimensiones + CSV líneas) · `server/tests/test_upload_security.py` (7 passed) · Antigravity 2026-10-22 |
 | **P-12** | API | `str(e)` de excepciones internas persistido y devuelto al cliente | ✅ CERRADO | `server/src/routers/simulation.py` · `str(e)` reemplazado por mensajes genéricos en 3 ubicaciones (líneas 139, 447, 453) · detalle solo en logs internos con `logger.exception` · Antigravity 2026-10-22 |
 | **P-13** | UI/BI | KPIs inventados presentados como análisis real (`38.4 + n*1.2`, `96.5%`) | ✅ CERRADO | `client/src/components/DashboardView.tsx:73-131` · métricas reales derivadas de datos (visualizaciones activas, filtros, fuentes) · Antigravity 2026-10-22 |
-| **P-14** | UI/BI | El modelo mostrado en el selector no es el que usa el backend | ABIERTO | `ProviderKeysPanel.tsx:43-54,130` · `DashboardContext.tsx:146-167` |
+| **P-14** | UI/BI | El modelo mostrado en el selector no es el que usa el backend | ? CERRADO | `client/src/components/SettingsView.tsx` � `client/src/context/DashboardContext.tsx` � `providerModels` cargado desde `getUserConfig` y mostrado junto al nombre del proveedor � Antigravity 2026-10-22 |
 | **P-15** | Auth | Sin allowlist ni middleware en el cliente: cualquier cuenta Google entra y la app queda inservible (403) | ? CERRADO | `client/src/lib/auth-allowlist.ts` � `client/src/app/page.tsx` � `isAuthorizedEmail()` lee NEXT_PUBLIC_AUTHORIZED_EMAILS � acceso denegado con mensaje claro � `client/src/tests/AuthAllowlist.test.ts` (4 passed) � Antigravity 2026-10-22 |
 | **P-16** | Sandbox | Lista negra incompleta: `pd.read_table`, `DataFrame.to_csv`, `np.save`, `plt.savefig`, `pd.io.common.os`… | ✅ CERRADO | `server/src/engine/executor.py` · allowlist de módulos/atributos + bloqueo `getattr`/`setattr`/`delattr` + `to_csv`, `read_table`, `np.save*`, `savefig` bloqueados en AST y runtime · `tests/test_sandbox_imports.py` (12 passed) · Antigravity 2026-10-22 |
 | **P-51** | Sandbox | La allowlist de imports no incluye `time`; pandas/numpy lo importan en runtime y **todo análisis falla** con `ImportError: Librería 'time' bloqueada por seguridad` | ✅ CERRADO | `server/src/engine/executor.py:283-294,457-468,762-769` · `tests/test_sandbox_imports.py` |
@@ -450,13 +450,19 @@ Se presentan como resultados de negocio.
 
 ---
 
-### P-14 · El selector de modelo miente
-**Archivos:** `ProviderKeysPanel.tsx:43-54,130` · `DashboardContext.tsx:146-167`.
-`provider_models` se guarda pero nunca se lee; `ensureModels` pone `models[0]` al enfocar.
+### P-14 · El selector de modelo miente (CERRADO por Antigravity 2026-10-22)
+**Archivos:** `client/src/components/SettingsView.tsx` · `client/src/context/DashboardContext.tsx`.
 
-**Cierre:** al cargar, el selector muestra el modelo persistido; test de recarga.
+`provider_models` se guarda pero nunca se leía en la UI; el selector mostraba solo el nombre del proveedor sin indicar qué modelo se usaría realmente.
 
-**Regla:** la UI nunca debe inferir el estado del servidor: lo lee.
+**Corrección aplicada.**
+- `client/src/context/DashboardContext.tsx`: agregado estado `providerModels` (tipo `Record<string, string>`) cargado desde `getUserConfig` (el backend devuelve `provider_models` en `/user-config`). Expuesto en el valor del contexto.
+- `client/src/components/SettingsView.tsx`: en el selector de proveedores, se muestra el modelo guardado en `providerModels[p.id]` si existe, o "por defecto del proveedor" si no hay uno específico. Así el usuario sabe exactamente qué modelo se usará al seleccionar un proveedor.
+- No requiere cambios en el backend: ya devuelve `provider_models` en `/user-config`.
+
+**Verificación:** `tsc --noEmit` limpio, `vitest run` → 64 passed, `npm run build` → OK.
+
+**Regla:** la UI nunca debe inferir el estado del servidor: lo lee y lo muestra.
 
 ---
 
@@ -988,6 +994,7 @@ borrar la fila y los archivos generados.
 2. **`GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET`** no están en `client/.env.local` → la UI local no
    se puede usar más allá del login.
 3. `ENCRYPTION_KEY`, `AUTH_SECRET` y `DATABASE_URL`: presentes y operativos en el `.env` local.
+
 
 
 
