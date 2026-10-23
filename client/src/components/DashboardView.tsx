@@ -15,6 +15,42 @@ import { DashboardSkeleton, ChartSkeleton } from "@/components/Skeletons";
 import "react-grid-layout/css/styles.css";
 import "react-resizable/css/styles.css";
 
+// Tipo para un item de layout de react-grid-layout (validación de localStorage)
+type LayoutGridItem = {
+    i: string;
+    x: number;
+    y: number;
+    w: number;
+    h: number;
+    minW?: number;
+    minH?: number;
+    maxW?: number;
+    maxH?: number;
+    static?: boolean;
+    isDraggable?: boolean;
+    isResizable?: boolean;
+    moved?: boolean;
+    [key: string]: unknown;
+};
+
+function isValidLayoutItem(item: unknown): item is LayoutGridItem {
+    if (!item || typeof item !== "object") return false;
+    const o = item as Record<string, unknown>;
+    return (
+        typeof o.i === "string" &&
+        typeof o.x === "number" &&
+        typeof o.y === "number" &&
+        typeof o.w === "number" &&
+        typeof o.h === "number"
+    );
+}
+
+function isValidLayout(data: unknown): data is Record<string, LayoutGridItem[]> {
+    if (!data || typeof data !== "object") return false;
+    const o = data as Record<string, unknown>;
+    return Object.values(o).every((v) => Array.isArray(v) && v.every(isValidLayoutItem));
+}
+
 const Plot = dynamic(() => import("react-plotly.js"), {
     ssr: false,
     loading: () => <ChartSkeleton type="bar" />
@@ -221,7 +257,12 @@ export function DashboardView() {
             const savedLayouts = localStorage.getItem(`dashboard_layout_${userId}`);
             if (savedLayouts) {
                 try {
-                    setLayouts(JSON.parse(savedLayouts));
+                    const parsed = JSON.parse(savedLayouts);
+                    if (isValidLayout(parsed)) {
+                        setLayouts(parsed);
+                    } else {
+                        console.warn("Layout de localStorage tiene esquema inválido, ignorando");
+                    }
                 } catch (e) {
                     console.error("Error parsing saved layouts", e);
                 }
