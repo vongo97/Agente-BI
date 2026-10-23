@@ -9,7 +9,7 @@ interface SimHistoryProps {
 
 export function SimHistory({ simulations, activeSim, loadSim }: SimHistoryProps) {
     return (
-        <div className="w-80 border-r border-[var(--bi-border)] flex flex-col bg-[var(--bi-surface-0)] flex-shrink-0">
+        <div className="w-72 md:w-80 border-r border-[var(--bi-border)] flex flex-col bg-[var(--bi-surface-0)] flex-shrink-0">
             <div className="p-6 border-b border-[var(--bi-border)]">
                 <h2 className="text-[10px] font-bold text-[var(--bi-text-3)] uppercase tracking-[0.25em] flex items-center gap-2">
                     <History className="w-4 h-4 text-[var(--module-simulation-accent)]" /> Historial de Ensayos
