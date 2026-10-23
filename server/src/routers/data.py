@@ -539,7 +539,7 @@ async def get_data_sources(request: Request, db: Session = Depends(get_db)):
     check_authorization(authenticated_user)
     try:
         sources = db.query(DataSource).filter(DataSource.user_id == authenticated_user).all()
-        return sources
+        return [_public_source_dict(s) for s in sources]
     except Exception as e:
         from src.utils.logging_config import safe_error_message
         logger.error("Error al listar data-sources: %s", safe_error_message(e))
@@ -621,7 +621,8 @@ async def list_data_sources(request: Request, db: Session = Depends(get_db)):
     authenticated_user = get_authenticated_user()
     check_authorization(authenticated_user)
     try:
-        return db.query(DataSource).filter(DataSource.user_id == authenticated_user).order_by(DataSource.created_at.desc()).all()
+        sources = db.query(DataSource).filter(DataSource.user_id == authenticated_user).order_by(DataSource.created_at.desc()).all()
+        return [_public_source_dict(s) for s in sources]
     except Exception as e:
         from src.utils.logging_config import safe_error_message
         logger.error("Error al obtener sources: %s", safe_error_message(e))
@@ -630,3 +631,20 @@ async def list_data_sources(request: Request, db: Session = Depends(get_db)):
 # NOTA DE SEGURIDAD: el endpoint global /sources/clear-force fue eliminado (auditoría 2026-02).
 # Borraba TODA la tabla data_sources sin filtro por usuario bajo ciertos entornos.
 # Para depuración local, usa el borrado por fuente existente (DELETE /sources/{id}).
+
+
+def _public_source_dict(source: DataSource) -> dict:
+    """Devuelve un diccionario con solo los campos seguros de una DataSource.
+
+    Nunca se expone la `url` interna (clave de nube con md5 del email o ruta
+    del contenedor) al cliente.
+    """
+    return {
+        "id": source.id,
+        "name": source.name,
+        "type": source.type,
+        "columns": source.columns,
+        "is_encrypted": source.is_encrypted,
+        "size_bytes": source.size_bytes,
+        "created_at": source.created_at.isoformat() if source.created_at else None,
+    }
