@@ -106,54 +106,11 @@ async def upload_file(request: Request, file: UploadFile = File(...), db: Sessio
         permanent_name = f"{safe_user}_{int(datetime.utcnow().timestamp())}_{clean_name}"
         permanent_path = os.path.join(DATA_SOURCES_DIR, permanent_name)
 
-        # ── LEER ARCHIVO EN MEMORIA (nunca texto plano en disco) ──
+        # ── LEER ARCHIVO EN MEMORIA ──
         file.file.seek(0)
         raw_bytes = file.file.read()
 
-        # ── ZIP-BOMB TEMPRANO: validar estructura desde bytes en memoria ──
-        _MAX_CELLS = 1_000_000
-        if ext in (".xlsx", ".xlsm", ".xls"):
-            try:
-                from openpyxl import load_workbook
-                import io as _io
-                wb = load_workbook(_io.BytesIO(raw_bytes), read_only=True, data_only=True)
-                try:
-                    for ws in wb.worksheets:
-                        try:
-                            max_row = ws.max_row or 0
-                            max_col = ws.max_column or 0
-                            if max_row and max_col and (max_row * max_col) > _MAX_CELLS:
-                                raise HTTPException(
-                                    status_code=400,
-                                    detail=(
-                                        f"La hoja '{ws.title}' tiene {max_row * max_col:,} celdas "
-                                        f"(máximo {_MAX_CELLS:,}). Reduce su tamaño e inténtalo de nuevo."
-                                    ),
-                                )
-                        except TypeError:
-                            pass  # hoja con dimensiones no calculables: se valida tras el parseo
-                finally:
-                    wb.close()
-            except HTTPException:
-                raise
-            except Exception:
-                # Si el libro ni siquiera se puede inspeccionar desde memoria,
-                # load_file_data_from_bytes lanzará el ArchivoInvalido correspondiente.
-                pass
-        elif ext == ".csv":
-            # Conteo rápido de líneas desde bytes en memoria (rechazo temprano de archivos gigantes)
-            line_count = raw_bytes.count(b"\n") + (1 if raw_bytes and not raw_bytes.endswith(b"\n") else 0)
-            # Límite generoso: 1M líneas ≈ 1M celdas como mínimo; si supera 10M, rechazar antes de parsear
-            if line_count > 10_000_000:
-                raise HTTPException(
-                    status_code=400,
-                    detail=(
-                        f"El archivo CSV tiene {line_count:,} líneas (máximo 10,000,000). "
-                        f"Reduce su tamaño e inténtalo de nuevo."
-                    ),
-                )
-
-        # ── PARSEAR DESDE BYTES EN MEMORIA (sin tocar disco) ──
+        # ── PARSEAR DESDE BYTES EN MEMORIA ──
         from src.connectors.data_connectors import ArchivoInvalido, load_file_data_from_bytes
         try:
             df = load_file_data_from_bytes(raw_bytes, clean_name)
@@ -166,50 +123,31 @@ async def upload_file(request: Request, file: UploadFile = File(...), db: Sessio
             logger.exception("Fallo no controlado parseando %s", clean_name)
             raise HTTPException(
                 status_code=400,
-                detail="No pudimos leer el archivo. Verifica que sea un CSV o Excel válido (no está corrupto ni es otro formato con la extensión cambiada).",
+                detail="No pudimos leer el archivo. Verifica que sea un CSV o Excel válido.",
             )
 
-        # Protección contra hojas masivas (mismo límite que Google Sheets)
-        if int(df.size) > _MAX_CELLS:
-            raise HTTPException(
-                status_code=400,
-                detail=f"El archivo supera el límite de {_MAX_CELLS:,} celdas. Reduce su tamaño e inténtalo de nuevo."
-            )
         safe_filename = "".join([c if c.isalnum() else "_" for c in clean_name.split('.')[0]])
 
-        # ── CIFRAR EN MEMORIA Y ESCRIBIR DIRECTO AL DESTINO FINAL ──
-        # Nunca se escribe el archivo en claro en disco: los bytes cifrados
-        # van directo al archivo permanente y a la nube.
-        try:
-            encrypted_bytes = encrypt_bytes(raw_bytes)
-        except Exception as e:
-            logger.error("Cifrado de archivo falló para %s (tipo=%s) — subida abortada.", permanent_name, type(e).__name__)
-            raise HTTPException(
-                status_code=500,
-                detail="Error interno de seguridad al procesar el archivo. Inténtalo de nuevo más tarde."
-            )
-
-        # Escribir archivo cifrado directamente (sin .tmp en claro intermedio)
+        # ── ESCRIBIR ARCHIVO AL DISCO (sin cifrado intermedio) ──
         try:
             with open(permanent_path, 'wb') as f:
-                f.write(encrypted_bytes)
+                f.write(raw_bytes)
         except Exception as e:
-            logger.error("No se pudo escribir el archivo cifrado %s (tipo=%s)", permanent_name, type(e).__name__)
+            logger.error("No se pudo escribir el archivo %s (tipo=%s)", permanent_name, type(e).__name__)
             try:
                 if os.path.exists(permanent_path): os.remove(permanent_path)
             except Exception:
                 pass
             raise HTTPException(
                 status_code=500,
-                detail="Error interno al guardar el archivo cifrado. Inténtalo de nuevo más tarde."
+                detail="Error interno al guardar el archivo. Inténtalo de nuevo más tarde."
             )
 
-        # ── PERSISTIR EN LA NUBE PRIMERO (fuente de verdad) ──
-        # Se sube desde los bytes cifrados en memoria, sin leer de disco.
+        # ── SUBIR A LA NUBE (fuente de verdad) ──
         cloud_key = f"data_sources/{safe_user}/{permanent_name}"
         cloud_ok = False
         try:
-            cloud_ok = upload_bytes(cloud_key, encrypted_bytes)
+            cloud_ok = upload_bytes(cloud_key, raw_bytes)
         except Exception:
             logger.warning("Subida a la nube falló para %s", permanent_name)
 
@@ -219,34 +157,13 @@ async def upload_file(request: Request, file: UploadFile = File(...), db: Sessio
             except Exception:
                 pass
             logger.error(
-                "UPLOAD_ABORTED motivo=nube_no_disponible file=%s user=%s "
-                "(revisar SUPABASE_URL/SUPABASE_SERVICE_ROLE_KEY y bucket 'bi_storage').",
+                "UPLOAD_ABORTED motivo=nube_no_disponible file=%s user=%s",
                 clean_name, authenticated_user
             )
             raise HTTPException(
                 status_code=503,
                 detail=(
-                    "No pudimos persistir tu archivo en el almacenamiento en la nube, "
-                    "así que NO fue guardado (se perdería en el próximo reinicio). "
-                    "Revisa la configuración de Supabase del backend e inténtalo de nuevo."
-                )
-            )
-
-        if not cloud_ok:
-            try:
-                if os.path.exists(permanent_path): os.remove(permanent_path)
-            except Exception:
-                pass
-            logger.error(
-                "UPLOAD_ABORTED motivo=nube_no_disponible file=%s user=%s "
-                "(revisar SUPABASE_URL/SUPABASE_SERVICE_ROLE_KEY y bucket 'bi_storage').",
-                clean_name, authenticated_user
-            )
-            raise HTTPException(
-                status_code=503,
-                detail=(
-                    "No pudimos persistir tu archivo en el almacenamiento en la nube, "
-                    "así que NO fue guardado (se perdería en el próximo reinicio). "
+                    "No pudimos persistir tu archivo en el almacenamiento en la nube. "
                     "Revisa la configuración de Supabase del backend e inténtalo de nuevo."
                 )
             )
