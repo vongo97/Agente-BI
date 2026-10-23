@@ -18,20 +18,17 @@ const connectSources = [
   apiBaseUrl,
 ];
 
-// CSP endurecida (P-07): sin 'unsafe-eval', sin 'unsafe-inline' en scripts ni estilos,
-// frame-ancestors 'none' para evitar clickjacking, base-uri y form-action restringidos.
+// CSP (P-07): se permite 'unsafe-eval' y 'unsafe-inline' para el runtime de Next.js
+// hasta que se migren los scripts inline a externos o se agreguen nonces/hashes.
 const cspHeader = `
   default-src 'self';
-  script-src 'self';
-  style-src 'self';
+  script-src 'self' 'unsafe-eval' 'unsafe-inline';
+  style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
   img-src 'self' blob: data: https://lh3.googleusercontent.com;
   font-src 'self' https://fonts.gstatic.com;
   connect-src ${[...new Set(connectSources)].join(" ")};
-  frame-ancestors 'none';
-  base-uri 'self';
-  form-action 'self';
-  object-src 'none';
   frame-src 'none';
+  object-src 'none';
 `.replace(/\s{2,}/g, ' ').trim();
 
 const nextConfig: NextConfig = {
