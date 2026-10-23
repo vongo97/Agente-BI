@@ -1096,7 +1096,7 @@ tests de integración de `/analyze` deben cubrir el flujo general, no solo el de
 | Campo | Valor |
 |---|---|
 | **Severidad** | MEDIO |
-| **Estado** | 🔴 ABIERTO (registrado 2026-10-23 antes de corregir) |
+| **Estado** | ✅ CERRADO (2026-10-23) |
 | **Verificado** | 🧪 Reproducción en producción con `colombia_covid_50k.csv` (datos.gov.co) |
 | **Archivos** | `server/src/engine/insight_auditor.py` · `server/src/routers/analysis.py` · `client/src/components/chat/InsightCards.tsx` |
 
@@ -1119,6 +1119,12 @@ tiene columnas explotables (fecha, categoría, métrica numérica).
 - Narrativa y "Qué haría" en términos neutrales: qué representa cada fila y su métrica de negocio, sin
   asumir rentabilidad.
 - No se especializa por dominio (salud, crimen, forex): los hechos genéricos aplican a cualquier tabla.
+
+**Evidencia de cierre (2026-10-23).**
+- `pytest tests -q` → **282 passed, 3 xfailed** (5 tests nuevos de P-59 en `test_insight_auditor.py`).
+- Datasets reales: COVID de datos.gov.co produce 5 hechos verificados (mes pico 2020-08 con 8,597 registros y 17.2%, composición BOGOTA 27.3% / ANTIOQUIA 14.8% / VALLE 8.3% por `departamento_nom`, edad promedio 40.44 / mediana 38.00); INE 11178 y 74999 producen composición por sexo y promedio/mediana de la tasa de paro; BCE produce promedio EUR/USD 1.18; NYC 311 y Chicago producen mes pico + composición legible y **ningún** hecho falso (sin promedios de `council_district`, `unique_key`, `departamento` ni de etiquetas como 'De 25 a 29 años').
+- Regresión retail intacta: el dataset de descuentos sigue produciendo KPI-01..03, DISC, LOSS y REG con las definiciones completas de retail.
+- Sin ventas ni profit las definiciones y el 'Qué haría' son neutrales; sin vocabulario de rentabilidad.
 
 **Criterio de cierre.**
 - Dataset sin ventas/profit pero con fecha+categoría+numérico produce ≥3 hechos genéricos con valores
