@@ -242,7 +242,14 @@ class TestAnalyzeAuditRouting(unittest.TestCase):
             )
 
         self.assertEqual(response.status_code, 200, response.text)
-        self.assertEqual(response.json()["analysis"], "Análisis original")
+        body = response.json()
+        # Con AUDIT_AGENT_ENABLED=false el agente de auditoría no debe narrar,
+        # pero P-54 sí añade hechos deterministas verificados con pandas al
+        # análisis general (y su payload de auditoría en modo determinista).
+        self.assertTrue(body["analysis"].startswith("Análisis original"))
+        self.assertIn("Hechos verificados", body["analysis"])
+        self.assertEqual(body["narrative_mode"], "deterministic")
+        self.assertTrue(body.get("audit"))
         mock_analyze_data.assert_called_once()
 
     @patch("src.routers.analysis.get_authenticated_user")
@@ -275,7 +282,9 @@ class TestAnalyzeAuditRouting(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200, response.text)
         self.assertEqual(response.json()["analysis"], "Análisis de respaldo")
-        mock_build_audit.assert_called_once()
+        # build_audit se intenta primero en la rama de auditoría y luego en la
+        # verificación determinista de P-54; ambos intentos fallan sin romper.
+        self.assertGreaterEqual(mock_build_audit.call_count, 1)
         mock_analyze_data.assert_called_once()
 
 

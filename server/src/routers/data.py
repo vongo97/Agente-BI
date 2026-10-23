@@ -17,10 +17,10 @@ from src.utils.limiter import limiter
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["Data Management"])
 
-# â”€â”€ Cuotas por usuario â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-_QUOTA_MAX_SOURCES   = 100             # MÃ¡x fuentes activas por usuario
-_QUOTA_MAX_FILE_MB   = 25             # MÃ¡x por archivo (MB)
-_QUOTA_MAX_TOTAL_MB  = 250            # MÃ¡x almacenamiento total por usuario (MB)
+# ── Cuotas por usuario ──────────────────────────────────────────────────────────────
+_QUOTA_MAX_SOURCES   = 100             # Máx fuentes activas por usuario
+_QUOTA_MAX_FILE_MB   = 25             # Máx por archivo (MB)
+_QUOTA_MAX_TOTAL_MB  = 250            # Máx almacenamiento total por usuario (MB)
 
 # MIME types permitidos directamente
 _ALLOWED_MIME_TYPES = {
@@ -29,7 +29,7 @@ _ALLOWED_MIME_TYPES = {
     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     "application/vnd.ms-excel.sheet.macroEnabled.12",
 }
-# MIME fallback: octet-stream solo si la extensiÃ³n es vÃ¡lida
+# MIME fallback: octet-stream solo si la extensión es válida
 _ALLOWED_EXTENSIONS = {'.csv', '.xlsx', '.xls', '.xlsm'}
 
 
@@ -45,22 +45,22 @@ async def upload_file(request: Request, file: UploadFile = File(...), db: Sessio
         raw_name = file.filename or ""
         if ".." in raw_name or "/" in raw_name or "\\" in raw_name:
             logger.warning("SECURITY_REJECTED path_traversal filename='%s' user=%s", raw_name, authenticated_user)
-            raise HTTPException(status_code=400, detail="Nombre de archivo invÃ¡lido.")
+            raise HTTPException(status_code=400, detail="Nombre de archivo inválido.")
 
         # Sanitizar nombre de archivo
         clean_name = "".join([c if c.isalnum() or c in "._-" else "_" for c in raw_name])
 
-        # Validar extensiÃ³n
+        # Validar extensión
         _, ext = os.path.splitext(clean_name.lower())
         if ext not in _ALLOWED_EXTENSIONS:
             logger.warning("SECURITY_REJECTED invalid_extension filename='%s' ext='%s' user=%s", raw_name, ext, authenticated_user)
-            raise HTTPException(status_code=400, detail="ExtensiÃ³n de archivo no permitida. Sube solo archivos CSV o Excel.")
+            raise HTTPException(status_code=400, detail="Extensión de archivo no permitida. Sube solo archivos CSV o Excel.")
 
-        # Validar MIME type: permitido directo o octet-stream con extensiÃ³n vÃ¡lida (fallback)
+        # Validar MIME type: permitido directo o octet-stream con extensión válida (fallback)
         content_type = (file.content_type or "").split(";")[0].strip().lower()
         if content_type not in _ALLOWED_MIME_TYPES:
             if ext in _ALLOWED_EXTENSIONS:
-                logger.debug("MIME %s aceptado por extensiÃ³n vÃ¡lida: %s", content_type, ext)
+                logger.debug("MIME %s aceptado por extensión válida: %s", content_type, ext)
             else:
                 logger.warning("SECURITY_REJECTED invalid_mime filename='%s' mime='%s' ext='%s' user=%s", raw_name, content_type, ext, authenticated_user)
                 raise HTTPException(
@@ -68,21 +68,21 @@ async def upload_file(request: Request, file: UploadFile = File(...), db: Sessio
                     detail=f"Tipo de archivo no permitido (MIME: {content_type}). Sube solo archivos CSV o Excel."
                 )
 
-        # Validar tamaÃ±o de archivo (â‰¤ 25 MB)
+        # Validar tamaño de archivo (≤ 25 MB)
         file.file.seek(0, os.SEEK_END)
         file_size = file.file.tell()
         file.file.seek(0)
         if file_size > _QUOTA_MAX_FILE_MB * 1024 * 1024:
             size_mb = file_size / (1024 * 1024)
             logger.warning("SECURITY_REJECTED file_too_large filename='%s' size_mb=%.2f limit_mb=%d user=%s", raw_name, size_mb, _QUOTA_MAX_FILE_MB, authenticated_user)
-            raise HTTPException(status_code=400, detail=f"El archivo excede el tamaÃ±o mÃ¡ximo permitido de {_QUOTA_MAX_FILE_MB}MB.")
+            raise HTTPException(status_code=400, detail=f"El archivo excede el tamaño máximo permitido de {_QUOTA_MAX_FILE_MB}MB.")
 
-        # Validar cuota: mÃ¡x {_QUOTA_MAX_SOURCES} fuentes activas por usuario
+        # Validar cuota: máx {_QUOTA_MAX_SOURCES} fuentes activas por usuario
         existing_count = db.query(DataSource).filter(DataSource.user_id == authenticated_user).count()
         if existing_count >= _QUOTA_MAX_SOURCES:
             raise HTTPException(
                 status_code=400,
-                detail=f"LÃ­mite alcanzado: mÃ¡ximo {_QUOTA_MAX_SOURCES} fuentes de datos por usuario. Elimina alguna antes de subir otra."
+                detail=f"Límite alcanzado: máximo {_QUOTA_MAX_SOURCES} fuentes de datos por usuario. Elimina alguna antes de subir otra."
             )
 
         # Validar cuota de almacenamiento total (250 MB por usuario)
@@ -92,7 +92,7 @@ async def upload_file(request: Request, file: UploadFile = File(...), db: Sessio
         ).all()
         total_used_bytes = 0
         for src in user_sources:
-            # Cuota por tamaÃ±o registrado en DB: independiente del disco efÃ­mero
+            # Cuota por tamaño registrado en DB: independiente del disco efímero
             # (con claves de nube en url ya no hay archivo local que medir).
             total_used_bytes += getattr(src, 'size_bytes', None) or 0
         if total_used_bytes + file_size > _QUOTA_MAX_TOTAL_MB * 1024 * 1024:
@@ -106,11 +106,11 @@ async def upload_file(request: Request, file: UploadFile = File(...), db: Sessio
         permanent_name = f"{safe_user}_{int(datetime.utcnow().timestamp())}_{clean_name}"
         permanent_path = os.path.join(DATA_SOURCES_DIR, permanent_name)
 
-        # â”€â”€ LEER ARCHIVO EN MEMORIA â”€â”€
+        # ── LEER ARCHIVO EN MEMORIA ──
         file.file.seek(0)
         raw_bytes = file.file.read()
 
-        # â”€â”€ PARSEAR DESDE BYTES EN MEMORIA â”€â”€
+        # ── PARSEAR DESDE BYTES EN MEMORIA ──
         from src.connectors.data_connectors import ArchivoInvalido, load_file_data_from_bytes
         try:
             df = load_file_data_from_bytes(raw_bytes, clean_name)
@@ -123,36 +123,67 @@ async def upload_file(request: Request, file: UploadFile = File(...), db: Sessio
             logger.exception("Fallo no controlado parseando %s", clean_name)
             raise HTTPException(
                 status_code=400,
-                detail="No pudimos leer el archivo. Verifica que sea un CSV o Excel vÃ¡lido.",
+                detail="No pudimos leer el archivo. Verifica que sea un CSV o Excel válido.",
             )
 
         safe_filename = "".join([c if c.isalnum() else "_" for c in clean_name.split('.')[0]])
 
-        # ── ESCRIBIR ARCHIVO AL DISCO ──
+        # ── ESCRIBIR ARCHIVO AL DISCO (caché local) ──
         try:
             os.makedirs(DATA_SOURCES_DIR, exist_ok=True)
             with open(permanent_path, 'wb') as f:
                 f.write(raw_bytes)
         except Exception as e:
-            logger.error("No se pudo escribir el archivo %s (tipo=%s): %s", permanent_name, type(e).__name__, str(e))
+            logger.error("UPLOAD_WRITE_FAILED file=%s tipo=%s", permanent_name, type(e).__name__)
             try:
-                if os.path.exists(permanent_path): os.remove(permanent_path)
+                if os.path.exists(permanent_path):
+                    os.remove(permanent_path)
             except Exception:
                 pass
             raise HTTPException(
                 status_code=500,
-                detail=f"Error interno al guardar el archivo: {str(e)}"
+                detail="No se pudo guardar el archivo en el servidor. Inténtalo de nuevo más tarde.",
             )
 
-        # ── SUBIR A LA NUBE (opcional: si falla, el archivo queda en disco local) ──
+        # ── SUBIR A LA NUBE (opcional: si falla seguimos con el disco local) ──
         cloud_key = f"data_sources/{safe_user}/{permanent_name}"
-        cloud_ok = False
         try:
-            cloud_ok = upload_bytes(cloud_key, raw_bytes)
+            cloud_ok = bool(upload_bytes(cloud_key, raw_bytes))
         except Exception:
-            logger.warning("Subida a la nube falló para %s; el archivo queda solo en disco local", permanent_name)
-        # El archivo queda ademÃ¡s como cachÃ© local (permanent_path) para
-        # accesos inmediatos; la verdad fuente es el objeto en la nube.
+            cloud_ok = False
+        if not cloud_ok:
+            logger.warning(
+                "UPLOAD_LOCAL_ONLY file=%s user=%s (nube no disponible; el archivo "
+                "se pierde si el contenedor se reinicia)",
+                clean_name, authenticated_user,
+            )
+
+        # 6. Actualizar sesión en memoria
+        session_data = get_user_data(authenticated_user)
+        if session_data is None or session_data.get("type") != "file":
+            session_data = {"type": "file", "data": {}, "sources": []}
+        session_data["data"][safe_filename] = df
+
+        # 7. Registrar la fuente en la base de datos. Si la nube falló se guarda
+        #    la ruta local para poder releerla mientras viva el proceso.
+        new_source = DataSource(
+            user_id=authenticated_user,
+            name=file.filename,
+            type="file",
+            url=cloud_key if cloud_ok else permanent_path,
+            columns=json.dumps(df.columns.tolist()),
+            is_encrypted=False,
+            size_bytes=file_size,
+        )
+        db.add(new_source)
+        db.commit()
+        db.refresh(new_source)
+
+        session_data["sources"].append(new_source.id)
+        data_store[get_session_key(authenticated_user)] = session_data
+
+        # 8. Persistencia del estado de sesión (cifrada en disco)
+        save_user_data(authenticated_user, session_data)
 
         return {
             "id": int(new_source.id),
@@ -161,8 +192,12 @@ async def upload_file(request: Request, file: UploadFile = File(...), db: Sessio
             "columns": [str(c) for c in df.columns.tolist()],
             "rows": int(len(df)),
             "total_tables": int(len(session_data["data"])),
-            "persisted": True,
-            "message": f"Archivo '{file.filename}' aÃ±adido con Ã©xito y persistido en la nube."
+            "persisted": cloud_ok,
+            "message": (
+                f"Archivo '{file.filename}' añadido con éxito."
+                if cloud_ok
+                else f"Archivo '{file.filename}' añadido con éxito (guardado local; la nube no está disponible)."
+            ),
         }
         
     except HTTPException as he:
@@ -172,10 +207,13 @@ async def upload_file(request: Request, file: UploadFile = File(...), db: Sessio
         from src.utils.logging_config import safe_error_message
         clean_msg = safe_error_message(e)
         if not is_render:
-            logger.exception("ERROR CRÃTICO /upload: %s", clean_msg)
+            logger.exception("ERROR CRÍTICO /upload: %s", clean_msg)
         else:
-            logger.error("ERROR CRÃTICO /upload: %s", clean_msg)
-        raise HTTPException(status_code=500, detail=f"Error interno del servidor: {clean_msg}")
+            logger.error("ERROR CRÍTICO /upload: %s", clean_msg)
+        raise HTTPException(
+            status_code=500,
+            detail="Error en el servidor al procesar el archivo. Por favor verifica que el formato sea válido.",
+        )
 
 @router.post("/connect-sql")
 @limiter.limit("5/minute")

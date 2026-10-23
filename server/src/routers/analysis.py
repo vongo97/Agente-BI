@@ -214,6 +214,7 @@ async def analyze(
 
         # Determinar el nombre de la fuente primaria para el aislamiento de contexto
         primary_source_name = None
+        source_name = None
         if data_source_id:
             source_obj = db.query(DataSource).filter(DataSource.id == data_source_id, DataSource.user_id == authenticated_user).first()
             if source_obj:

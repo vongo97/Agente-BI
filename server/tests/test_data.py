@@ -94,7 +94,7 @@ class TestDataRouter(unittest.TestCase):
     @patch('src.routers.data.upload_bytes')
     @patch('src.routers.data.get_authenticated_user')
     @patch('src.routers.data.check_authorization')
-    @patch('src.routers.data.load_file_data')
+    @patch('src.connectors.data_connectors.load_file_data_from_bytes')
     def test_upload_valid_csv(self, mock_load, mock_authz, mock_get_user, mock_upload):
         """Test que POST /api/v1/upload acepta un CSV válido y lo persiste en la nube."""
         mock_get_user.return_value = "test_user_persistence@example.com"
@@ -110,9 +110,12 @@ class TestDataRouter(unittest.TestCase):
         mock_source.type = "file"
         mock_source.url = os.path.join(DATA_SOURCES_DIR, "test_user.csv")
 
+        captured = {}
+
         def fake_add(obj):
             if hasattr(obj, 'id') and obj.id is None:
                 obj.id = 1
+            captured["source"] = obj
             return obj
 
         self.mock_db.add.side_effect = fake_add
@@ -132,29 +135,52 @@ class TestDataRouter(unittest.TestCase):
         self.assertTrue(body["persisted"])
         # El objeto se subió a la nube (fuente de verdad) antes de guardar la fila
         mock_upload.assert_called_once()
+        # Regresión: la fila DataSource debe crearse (antes un NameError sobre
+        # `new_source` devolvía 500 y el archivo quedaba sin registrar).
+        self.mock_db.add.assert_called_once()
+        self.assertIn("source", captured)
+        self.assertTrue(str(captured["source"].url).startswith("data_sources/"))
+        self.assertEqual(captured["source"].size_bytes, len(csv_bytes))
 
     @patch('src.routers.data.upload_bytes')
     @patch('src.routers.data.get_authenticated_user')
     @patch('src.routers.data.check_authorization')
-    @patch('src.routers.data.load_file_data')
-    def test_upload_aborts_without_cloud(self, mock_load, mock_authz, mock_get_user, mock_upload):
-        """Sin nube disponible la subida debe abortar con 503: nunca guardar una
-        fuente que se perdería en el próximo reinicio (éxito falso prohibido)."""
+    @patch('src.connectors.data_connectors.load_file_data_from_bytes')
+    def test_upload_valid_csv_local_only_when_cloud_down(self, mock_load, mock_authz, mock_get_user, mock_upload):
+        """Si la nube no está disponible el upload NO debe fallar: se guarda en
+        disco local, se registra la fila con la ruta local y `persisted=False`
+        deja claro que no sobrevive un reinicio del contenedor."""
         mock_get_user.return_value = "test_user_persistence@example.com"
         mock_upload.return_value = False  # bucket no configurado / caído
 
         df = pd.DataFrame({"producto": ["A"], "ventas": [100]})
         mock_load.return_value = df
 
+        captured = {}
+
+        def fake_add(obj):
+            obj.id = 7
+            captured["source"] = obj
+            return obj
+
+        self.mock_db.add.side_effect = fake_add
+        self.mock_db.refresh.side_effect = lambda obj: None
+
         response = self.client.post(
             "/api/v1/upload",
             files={"file": ("test.csv", io.BytesIO(b"producto,ventas\nA,100\n"), "text/csv")}
         )
 
-        self.assertEqual(response.status_code, 503)
-        self.assertIn("no fue guardado", response.json()["detail"].lower())
-        # No debe crearse ninguna fila DataSource (fuente fantasma prohibida)
-        self.mock_db.add.assert_not_called()
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertFalse(body["persisted"])
+        self.assertEqual(body["rows"], 1)
+        mock_upload.assert_called_once()
+        # La fila se crea apuntando a la ruta local, no a una clave de nube inexistente
+        self.assertIn("source", captured)
+        self.assertFalse(str(captured["source"].url).startswith("data_sources/"))
+        self.assertTrue(os.path.exists(captured["source"].url))
+        os.remove(captured["source"].url)
 
     @patch('src.routers.data.get_authenticated_user')
     @patch('src.routers.data.check_authorization')

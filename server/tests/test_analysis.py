@@ -28,10 +28,25 @@ pkce_mid.PKCEAuthMiddleware = FakePKCEAuthMiddleware
 sys.modules['src.utils.pkce_middleware'] = pkce_mid
 
 from src.database import get_db
-from src.utils.common import data_store
+from src.utils.common import data_store, SESSIONS_DIR
 from src.routers import analysis as analysis_router
 from src.utils.limiter import limiter
+import hashlib
 import pandas as pd
+
+# Pickle de sesión que otros tests (upload/analyze) dejan en disco para este
+# usuario. Sin limpiarlo, `ensure_user_session` lo recoge y tests como
+# `test_analyze_no_data_source` fallan según el orden de ejecución.
+_TEST_USER_SAFE = hashlib.md5(b"test_user_persistence@example.com").hexdigest()
+
+
+def _clean_session_pickles():
+    import glob
+    for path in glob.glob(os.path.join(SESSIONS_DIR, f"{_TEST_USER_SAFE}*.pkl")):
+        try:
+            os.remove(path)
+        except OSError:
+            pass
 
 
 class TestAnalysisRouter(unittest.TestCase):
@@ -49,12 +64,14 @@ class TestAnalysisRouter(unittest.TestCase):
 
         # Limpiar data_store antes de cada test
         data_store.clear()
+        _clean_session_pickles()
 
         # Mock del query de Chat/DataSource para que no falle
         self.mock_db.query.return_value.filter.return_value.first.return_value = None
 
     def tearDown(self):
         data_store.clear()
+        _clean_session_pickles()
 
     @patch('src.routers.analysis.get_authenticated_user')
     @patch('src.routers.analysis.check_authorization')

@@ -1029,15 +1029,63 @@ borrar la fila y los archivos generados.
    se puede usar más allá del login.
 3. `ENCRYPTION_KEY`, `AUTH_SECRET` y `DATABASE_URL`: presentes y operativos en el `.env` local.
 
+---
 
+### P-57 · `/upload` devuelve 500 y no registra la fuente (regresión)
 
+| Campo | Valor |
+|---|---|
+| **Severidad** | CRÍTICO |
+| **Estado** | ✅ CERRADO (2026-10-23) |
+| **Verificado** | 🧪 `pytest tests/test_data.py -q` → 5 passed · suite completa 277 passed · pendiente confirmación en producción |
+| **Archivos** | `server/src/routers/data.py` · `server/tests/test_data.py` |
 
+**Qué pasaba.** Cualquier `POST /api/v1/upload` con un CSV válido devolvía **HTTP 500** y el archivo no quedaba
+registrado. Dos causas encadenadas:
 
+1. El bloque que creaba la fila `DataSource`, actualizaba `session_data` y llamaba a `save_user_data` se perdió en
+   una edición previa: el `return` usaba `new_source`, que ya no existía (`NameError` → 500).
+2. `DataSource(is_encrypted=encrypt_ok, ...)` referenciaba una variable `encrypt_ok` que tampoco estaba definida.
 
+**Impacto.** La app era inutilizable: sin subida no hay análisis, dashboard ni auditoría. Además el detalle del
+error se ocultaba tras un mensaje genérico, lo que alargó el diagnóstico en producción.
 
+**Corrección.**
+- Se restaura el flujo completo: escribir en disco → intentar nube → actualizar sesión → crear `DataSource` →
+  `save_user_data` → responder.
+- La nube pasa a ser **opcional**: si `upload_bytes` falla se guarda la ruta local en `DataSource.url` y la respuesta
+  incluye `persisted=false`, en lugar de abortar con 503 (cambio deliberado sobre el contrato anterior de P-49).
+- `is_encrypted=False` explícito mientras el cifrado en reposo de la copia local siga revertido (ver P-11).
+- Se elimina la exposición de `str(e)` en el detalle 500 y se corrigió el mojibake (`Ã³`, `Ã±`, controles `\x8d`) de
+  los mensajes del endpoint, que llegaban corruptos al usuario.
+- Tests actualizados al contrato nuevo: `test_upload_valid_csv` (crea la fila, clave de nube) y
+  `test_upload_valid_csv_local_only_when_cloud_down` (200, `persisted=false`, `url` local existente).
 
+**Regla anti-repetición.** Ningún script de reemplazo por índices de línea sobre código Python: las ediciones se
+hacen con `edit` sobre texto exacto y se valida con `ast.parse` + tests del router antes de commitear.
 
+---
 
+### P-58 · `/analyze` devuelve 500 en el flujo general (`source_name` sin definir)
 
+| Campo | Valor |
+|---|---|
+| **Severidad** | CRÍTICO |
+| **Estado** | ✅ CERRADO (2026-10-23) |
+| **Verificado** | 🧪 `pytest tests/test_analysis.py tests/test_analysis_audit.py -q` → 15 passed · suite completa 277 passed |
+| **Archivos** | `server/src/routers/analysis.py` · `server/tests/test_analysis_audit.py` · `server/tests/test_analysis.py` |
 
+**Qué pasaba.** `source_name` solo se asignaba dentro de la rama `if audit_requested and data_type == "file":`.
+El añadido de P-54 lo usa después, en la verificación determinista del flujo general, así que cualquier análisis
+normal terminaba en `UnboundLocalError` → **HTTP 500** con "Error interno del servidor al procesar el análisis".
+
+**Corrección.** `source_name = None` se inicializa junto a `primary_source_name`, antes de cualquier rama.
+
+**Tests.** Los dos tests de `test_analysis_audit.py` que asumían el contrato anterior de P-54 (texto intacto y una
+sola llamada a `build_audit`) se actualizaron al contrato vigente: el flujo general añade "Hechos verificados" y
+`build_audit` puede ejecutarse dos veces (rama de auditoría + verificación). Se añadió limpieza del pickle de sesión
+del usuario de pruebas en `test_analysis.py` para eliminar el fallo dependiente del orden de ejecución.
+
+**Regla anti-repetición.** Toda variable usada fuera de una rama condicional se inicializa antes de la rama; los
+tests de integración de `/analyze` deben cubrir el flujo general, no solo el de auditoría.
 
