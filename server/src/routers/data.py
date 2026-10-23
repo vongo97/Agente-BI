@@ -17,10 +17,10 @@ from src.utils.limiter import limiter
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["Data Management"])
 
-# ── Cuotas por usuario ──────────────────────────────────────────────────────────────
-_QUOTA_MAX_SOURCES   = 100             # Máx fuentes activas por usuario
-_QUOTA_MAX_FILE_MB   = 25             # Máx por archivo (MB)
-_QUOTA_MAX_TOTAL_MB  = 250            # Máx almacenamiento total por usuario (MB)
+# â”€â”€ Cuotas por usuario â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+_QUOTA_MAX_SOURCES   = 100             # MÃ¡x fuentes activas por usuario
+_QUOTA_MAX_FILE_MB   = 25             # MÃ¡x por archivo (MB)
+_QUOTA_MAX_TOTAL_MB  = 250            # MÃ¡x almacenamiento total por usuario (MB)
 
 # MIME types permitidos directamente
 _ALLOWED_MIME_TYPES = {
@@ -29,7 +29,7 @@ _ALLOWED_MIME_TYPES = {
     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     "application/vnd.ms-excel.sheet.macroEnabled.12",
 }
-# MIME fallback: octet-stream solo si la extensión es válida
+# MIME fallback: octet-stream solo si la extensiÃ³n es vÃ¡lida
 _ALLOWED_EXTENSIONS = {'.csv', '.xlsx', '.xls', '.xlsm'}
 
 
@@ -45,22 +45,22 @@ async def upload_file(request: Request, file: UploadFile = File(...), db: Sessio
         raw_name = file.filename or ""
         if ".." in raw_name or "/" in raw_name or "\\" in raw_name:
             logger.warning("SECURITY_REJECTED path_traversal filename='%s' user=%s", raw_name, authenticated_user)
-            raise HTTPException(status_code=400, detail="Nombre de archivo inválido.")
+            raise HTTPException(status_code=400, detail="Nombre de archivo invÃ¡lido.")
 
         # Sanitizar nombre de archivo
         clean_name = "".join([c if c.isalnum() or c in "._-" else "_" for c in raw_name])
 
-        # Validar extensión
+        # Validar extensiÃ³n
         _, ext = os.path.splitext(clean_name.lower())
         if ext not in _ALLOWED_EXTENSIONS:
             logger.warning("SECURITY_REJECTED invalid_extension filename='%s' ext='%s' user=%s", raw_name, ext, authenticated_user)
-            raise HTTPException(status_code=400, detail="Extensión de archivo no permitida. Sube solo archivos CSV o Excel.")
+            raise HTTPException(status_code=400, detail="ExtensiÃ³n de archivo no permitida. Sube solo archivos CSV o Excel.")
 
-        # Validar MIME type: permitido directo o octet-stream con extensión válida (fallback)
+        # Validar MIME type: permitido directo o octet-stream con extensiÃ³n vÃ¡lida (fallback)
         content_type = (file.content_type or "").split(";")[0].strip().lower()
         if content_type not in _ALLOWED_MIME_TYPES:
             if ext in _ALLOWED_EXTENSIONS:
-                logger.debug("MIME %s aceptado por extensión válida: %s", content_type, ext)
+                logger.debug("MIME %s aceptado por extensiÃ³n vÃ¡lida: %s", content_type, ext)
             else:
                 logger.warning("SECURITY_REJECTED invalid_mime filename='%s' mime='%s' ext='%s' user=%s", raw_name, content_type, ext, authenticated_user)
                 raise HTTPException(
@@ -68,21 +68,21 @@ async def upload_file(request: Request, file: UploadFile = File(...), db: Sessio
                     detail=f"Tipo de archivo no permitido (MIME: {content_type}). Sube solo archivos CSV o Excel."
                 )
 
-        # Validar tamaño de archivo (≤ 25 MB)
+        # Validar tamaÃ±o de archivo (â‰¤ 25 MB)
         file.file.seek(0, os.SEEK_END)
         file_size = file.file.tell()
         file.file.seek(0)
         if file_size > _QUOTA_MAX_FILE_MB * 1024 * 1024:
             size_mb = file_size / (1024 * 1024)
             logger.warning("SECURITY_REJECTED file_too_large filename='%s' size_mb=%.2f limit_mb=%d user=%s", raw_name, size_mb, _QUOTA_MAX_FILE_MB, authenticated_user)
-            raise HTTPException(status_code=400, detail=f"El archivo excede el tamaño máximo permitido de {_QUOTA_MAX_FILE_MB}MB.")
+            raise HTTPException(status_code=400, detail=f"El archivo excede el tamaÃ±o mÃ¡ximo permitido de {_QUOTA_MAX_FILE_MB}MB.")
 
-        # Validar cuota: máx {_QUOTA_MAX_SOURCES} fuentes activas por usuario
+        # Validar cuota: mÃ¡x {_QUOTA_MAX_SOURCES} fuentes activas por usuario
         existing_count = db.query(DataSource).filter(DataSource.user_id == authenticated_user).count()
         if existing_count >= _QUOTA_MAX_SOURCES:
             raise HTTPException(
                 status_code=400,
-                detail=f"Límite alcanzado: máximo {_QUOTA_MAX_SOURCES} fuentes de datos por usuario. Elimina alguna antes de subir otra."
+                detail=f"LÃ­mite alcanzado: mÃ¡ximo {_QUOTA_MAX_SOURCES} fuentes de datos por usuario. Elimina alguna antes de subir otra."
             )
 
         # Validar cuota de almacenamiento total (250 MB por usuario)
@@ -92,7 +92,7 @@ async def upload_file(request: Request, file: UploadFile = File(...), db: Sessio
         ).all()
         total_used_bytes = 0
         for src in user_sources:
-            # Cuota por tamaño registrado en DB: independiente del disco efímero
+            # Cuota por tamaÃ±o registrado en DB: independiente del disco efÃ­mero
             # (con claves de nube en url ya no hay archivo local que medir).
             total_used_bytes += getattr(src, 'size_bytes', None) or 0
         if total_used_bytes + file_size > _QUOTA_MAX_TOTAL_MB * 1024 * 1024:
@@ -106,11 +106,11 @@ async def upload_file(request: Request, file: UploadFile = File(...), db: Sessio
         permanent_name = f"{safe_user}_{int(datetime.utcnow().timestamp())}_{clean_name}"
         permanent_path = os.path.join(DATA_SOURCES_DIR, permanent_name)
 
-        # ── LEER ARCHIVO EN MEMORIA ──
+        # â”€â”€ LEER ARCHIVO EN MEMORIA â”€â”€
         file.file.seek(0)
         raw_bytes = file.file.read()
 
-        # ── PARSEAR DESDE BYTES EN MEMORIA ──
+        # â”€â”€ PARSEAR DESDE BYTES EN MEMORIA â”€â”€
         from src.connectors.data_connectors import ArchivoInvalido, load_file_data_from_bytes
         try:
             df = load_file_data_from_bytes(raw_bytes, clean_name)
@@ -123,12 +123,12 @@ async def upload_file(request: Request, file: UploadFile = File(...), db: Sessio
             logger.exception("Fallo no controlado parseando %s", clean_name)
             raise HTTPException(
                 status_code=400,
-                detail="No pudimos leer el archivo. Verifica que sea un CSV o Excel válido.",
+                detail="No pudimos leer el archivo. Verifica que sea un CSV o Excel vÃ¡lido.",
             )
 
         safe_filename = "".join([c if c.isalnum() else "_" for c in clean_name.split('.')[0]])
 
-        # ── ESCRIBIR ARCHIVO AL DISCO (sin cifrado intermedio) ──
+        # ── ESCRIBIR ARCHIVO AL DISCO ──
         try:
             with open(permanent_path, 'wb') as f:
                 f.write(raw_bytes)
@@ -143,60 +143,14 @@ async def upload_file(request: Request, file: UploadFile = File(...), db: Sessio
                 detail="Error interno al guardar el archivo. Inténtalo de nuevo más tarde."
             )
 
-        # ── SUBIR A LA NUBE (fuente de verdad) ──
+        # ── SUBIR A LA NUBE (opcional: si falla, el archivo queda en disco local) ──
         cloud_key = f"data_sources/{safe_user}/{permanent_name}"
         cloud_ok = False
         try:
             cloud_ok = upload_bytes(cloud_key, raw_bytes)
         except Exception:
-            logger.warning("Subida a la nube falló para %s", permanent_name)
-
-        if not cloud_ok:
-            try:
-                if os.path.exists(permanent_path): os.remove(permanent_path)
-            except Exception:
-                pass
-            logger.error(
-                "UPLOAD_ABORTED motivo=nube_no_disponible file=%s user=%s",
-                clean_name, authenticated_user
-            )
-            raise HTTPException(
-                status_code=503,
-                detail=(
-                    "No pudimos persistir tu archivo en el almacenamiento en la nube. "
-                    "Revisa la configuración de Supabase del backend e inténtalo de nuevo."
-                )
-            )
-
-        # 6. Actualizar sesión en memoria
-        session_data = get_user_data(authenticated_user)
-        if session_data is None or session_data.get("type") != "file":
-            session_data = {"type": "file", "data": {}, "sources": []}
-
-        session_data["data"][safe_filename] = df
-
-        # 7. Guardar en Base de Datos: url = clave de nube (NO ruta local);
-        #    size_bytes habilita cuotas sin depender del disco efímero.
-        new_source = DataSource(
-            user_id=authenticated_user,
-            name=file.filename,
-            type="file",
-            url=cloud_key,
-            columns=json.dumps(df.columns.tolist()),
-            is_encrypted=encrypt_ok,
-            size_bytes=file_size
-        )
-        db.add(new_source)
-        db.commit()
-        db.refresh(new_source)
-
-        session_data["sources"].append(new_source.id)
-        data_store[f"{authenticated_user}_active"] = session_data
-
-        # 8. Persistencia cifrada del estado de sesión
-        save_user_data(authenticated_user, session_data)
-
-        # El archivo queda además como caché local (permanent_path) para
+            logger.warning("Subida a la nube falló para %s; el archivo queda solo en disco local", permanent_name)
+        # El archivo queda ademÃ¡s como cachÃ© local (permanent_path) para
         # accesos inmediatos; la verdad fuente es el objeto en la nube.
 
         return {
@@ -207,7 +161,7 @@ async def upload_file(request: Request, file: UploadFile = File(...), db: Sessio
             "rows": int(len(df)),
             "total_tables": int(len(session_data["data"])),
             "persisted": True,
-            "message": f"Archivo '{file.filename}' añadido con éxito y persistido en la nube."
+            "message": f"Archivo '{file.filename}' aÃ±adido con Ã©xito y persistido en la nube."
         }
         
     except HTTPException as he:
@@ -217,10 +171,10 @@ async def upload_file(request: Request, file: UploadFile = File(...), db: Sessio
         from src.utils.logging_config import safe_error_message
         clean_msg = safe_error_message(e)
         if not is_render:
-            logger.exception("ERROR CRÍTICO /upload: %s", clean_msg)
+            logger.exception("ERROR CRÃTICO /upload: %s", clean_msg)
         else:
-            logger.error("ERROR CRÍTICO /upload: %s", clean_msg)
-        raise HTTPException(status_code=500, detail="Error en el servidor al procesar el archivo. Por favor verifica que el formato sea válido.")
+            logger.error("ERROR CRÃTICO /upload: %s", clean_msg)
+        raise HTTPException(status_code=500, detail="Error en el servidor al procesar el archivo. Por favor verifica que el formato sea vÃ¡lido.")
 
 @router.post("/connect-sql")
 @limiter.limit("5/minute")
@@ -229,19 +183,19 @@ async def connect_sql(request: Request, url: str = Form(...), db: Session = Depe
     authenticated_user = get_authenticated_user()
     check_authorization(authenticated_user)
     
-    # Validación SSRF: rechazar hosts locales/privados/no permitidos ANTES de conectar
+    # ValidaciÃ³n SSRF: rechazar hosts locales/privados/no permitidos ANTES de conectar
     from src.utils.security import validate_external_url_host
     try:
         validate_external_url_host(url)
     except ValueError as ve:
-        raise HTTPException(status_code=400, detail=f"Conexión rechazada por seguridad: {ve}")
+        raise HTTPException(status_code=400, detail=f"ConexiÃ³n rechazada por seguridad: {ve}")
     
     # Validar cuota de 10 fuentes
     existing_count = db.query(DataSource).filter(DataSource.user_id == authenticated_user).count()
     if existing_count >= _QUOTA_MAX_SOURCES:
         raise HTTPException(
             status_code=400,
-            detail=f"Límite alcanzado: máximo {_QUOTA_MAX_SOURCES} fuentes de datos por usuario. Elimina alguna antes de agregar otra."
+            detail=f"LÃ­mite alcanzado: mÃ¡ximo {_QUOTA_MAX_SOURCES} fuentes de datos por usuario. Elimina alguna antes de agregar otra."
         )
         
     try:
@@ -257,12 +211,12 @@ async def connect_sql(request: Request, url: str = Form(...), db: Session = Depe
         db.refresh(new_source)
         
         data_store[get_session_key(authenticated_user)] = {"type": "sql", "data": engine, "schema": schema, "source_id": new_source.id}
-        return {"message": "Conectado a SQL con éxito", "id": new_source.id}
+        return {"message": "Conectado a SQL con Ã©xito", "id": new_source.id}
     except Exception as e:
         from src.utils.logging_config import safe_error_message
         clean_msg = safe_error_message(e)
-        logger.error("Error en conexión SQL: %s", clean_msg)
-        raise HTTPException(status_code=400, detail="Error en conexión SQL: No se pudo establecer la conexión. Por favor verifica los datos ingresados e intenta de nuevo.")
+        logger.error("Error en conexiÃ³n SQL: %s", clean_msg)
+        raise HTTPException(status_code=400, detail="Error en conexiÃ³n SQL: No se pudo establecer la conexiÃ³n. Por favor verifica los datos ingresados e intenta de nuevo.")
 
 @router.post("/connect-gsheets")
 @limiter.limit("5/minute")
@@ -276,18 +230,18 @@ async def connect_gsheets(request: Request, url: str = Form(...), db: Session = 
     if existing_count >= _QUOTA_MAX_SOURCES:
         raise HTTPException(
             status_code=400,
-            detail=f"Límite alcanzado: máximo {_QUOTA_MAX_SOURCES} fuentes de datos por usuario. Elimina alguna antes de agregar otra."
+            detail=f"LÃ­mite alcanzado: mÃ¡ximo {_QUOTA_MAX_SOURCES} fuentes de datos por usuario. Elimina alguna antes de agregar otra."
         )
         
     try:
         df = load_gsheets_data(url)
         if df is None or df.empty:
-            raise HTTPException(status_code=400, detail="El Google Sheet parece estar vacío o no es público.")
+            raise HTTPException(status_code=400, detail="El Google Sheet parece estar vacÃ­o o no es pÃºblico.")
             
-        # Limitar celdas a un máximo de 1 millón para mitigar DoS
+        # Limitar celdas a un mÃ¡ximo de 1 millÃ³n para mitigar DoS
         MAX_CELLS = 1_000_000
         if df.size > MAX_CELLS:
-            raise HTTPException(status_code=400, detail="El Google Sheet excede el tamaño máximo permitido de 1 millón de celdas.")
+            raise HTTPException(status_code=400, detail="El Google Sheet excede el tamaÃ±o mÃ¡ximo permitido de 1 millÃ³n de celdas.")
             
         sheet_key = f"gsheet_{int(os.urandom(2).hex(), 16) % 1000}"
         
@@ -312,7 +266,7 @@ async def connect_gsheets(request: Request, url: str = Form(...), db: Session = 
             "table_key": sheet_key,
             "columns": df.columns.tolist(),
             "total_tables": len(session_data["data"]),
-            "message": "Hoja de Google añadida al pool."
+            "message": "Hoja de Google aÃ±adida al pool."
         }
     except HTTPException as he:
         raise he
@@ -320,7 +274,7 @@ async def connect_gsheets(request: Request, url: str = Form(...), db: Session = 
         from src.utils.logging_config import safe_error_message
         clean_msg = safe_error_message(e)
         logger.error("Error en Google Sheets: %s", clean_msg)
-        raise HTTPException(status_code=400, detail="Error en Google Sheets: No se pudo conectar u obtener datos del enlace. Asegúrate de que el documento sea público y contenga una estructura válida.")
+        raise HTTPException(status_code=400, detail="Error en Google Sheets: No se pudo conectar u obtener datos del enlace. AsegÃºrate de que el documento sea pÃºblico y contenga una estructura vÃ¡lida.")
 
 @router.post("/clear-session")
 @limiter.limit("10/minute")
@@ -337,7 +291,7 @@ async def clear_session(request: Request, db: Session = Depends(get_db)):
         if os.path.exists(session_file):
             os.remove(session_file)
 
-        # Limpiar también los registros de data_sources de la base de datos para liberar la cuota
+        # Limpiar tambiÃ©n los registros de data_sources de la base de datos para liberar la cuota
         sources = db.query(DataSource).filter(DataSource.user_id == authenticated_user).all()
         for source in sources:
             if source.type == "file" and source.url:
@@ -354,8 +308,8 @@ async def clear_session(request: Request, db: Session = Depends(get_db)):
         return {"message": "Pool de datos y fuentes limpiados."}
     except Exception as e:
         from src.utils.logging_config import safe_error_message
-        logger.error("Error al limpiar sesión: %s", safe_error_message(e))
-        raise HTTPException(status_code=500, detail="Error interno al limpiar la sesión.")
+        logger.error("Error al limpiar sesiÃ³n: %s", safe_error_message(e))
+        raise HTTPException(status_code=500, detail="Error interno al limpiar la sesiÃ³n.")
 
 @router.post("/remove-session-source")
 @limiter.limit("10/minute")
@@ -365,7 +319,7 @@ async def remove_session_source(request: Request, source_id: int = Form(...), db
     try:
         session_data = ensure_user_session(authenticated_user, db)
         if not session_data:
-            return {"message": "No hay sesión activa."}
+            return {"message": "No hay sesiÃ³n activa."}
 
         # 1. Quitar el ID de la lista de fuentes activas
         if "sources" in session_data and source_id in session_data["sources"]:
@@ -381,7 +335,7 @@ async def remove_session_source(request: Request, source_id: int = Form(...), db
             if source:
                 load_source_to_session(authenticated_user, source)
                 
-        return {"message": f"Fuente {source_id} eliminada de la sesión activa."}
+        return {"message": f"Fuente {source_id} eliminada de la sesiÃ³n activa."}
     except Exception as e:
         from src.utils.logging_config import safe_error_message
         logger.error("Error al remover fuente: %s", safe_error_message(e))
@@ -399,29 +353,29 @@ async def clean_data(
     authenticated_user = get_authenticated_user()
     check_authorization(authenticated_user)
     
-    # Cargar configuración una vez
+    # Cargar configuraciÃ³n una vez
     user_config = db.query(UserConfig).filter(UserConfig.user_id == authenticated_user).first()
     
-    # --- AUTO-RECUPERACIÓN DE LLAVES CIFRADAS (P-04: solo la clave del proveedor activo) ---
+    # --- AUTO-RECUPERACIÃ“N DE LLAVES CIFRADAS (P-04: solo la clave del proveedor activo) ---
     from src.engine.providers import resolve_keys
     api_key, mistral_key, key_error = resolve_keys(provider, api_key, mistral_key, user_config)
     if key_error and provider != "hybrid":
         raise HTTPException(status_code=400, detail=key_error)
             
-    # Validar que las llaves descifradas no sean vacías o None si el proveedor las requiere
+    # Validar que las llaves descifradas no sean vacÃ­as o None si el proveedor las requiere
     if provider == "gemini" and not api_key:
-        raise HTTPException(status_code=400, detail="Clave API de Gemini no válida o corrupta. Por favor, re-ingresa tu clave API en Ajustes.")
+        raise HTTPException(status_code=400, detail="Clave API de Gemini no vÃ¡lida o corrupta. Por favor, re-ingresa tu clave API en Ajustes.")
     elif provider == "mistral" and not mistral_key:
-        raise HTTPException(status_code=400, detail="Clave API de Mistral no válida o corrupta. Por favor, re-ingresa tu clave API en Ajustes.")
+        raise HTTPException(status_code=400, detail="Clave API de Mistral no vÃ¡lida o corrupta. Por favor, re-ingresa tu clave API en Ajustes.")
     elif provider == "groq" and not api_key:
-        raise HTTPException(status_code=400, detail="Clave API de Groq no válida o corrupta. Por favor, re-ingresa tu clave API en Ajustes.")
+        raise HTTPException(status_code=400, detail="Clave API de Groq no vÃ¡lida o corrupta. Por favor, re-ingresa tu clave API en Ajustes.")
 
     session_data = ensure_user_session(authenticated_user, db)
     if not session_data:
         raise HTTPException(status_code=400, detail="No hay datos cargados para limpiar.")
     
     if session_data["type"] != "file":
-        raise HTTPException(status_code=400, detail="La limpieza automática solo está disponible para archivos y Google Sheets.")
+        raise HTTPException(status_code=400, detail="La limpieza automÃ¡tica solo estÃ¡ disponible para archivos y Google Sheets.")
     
     try:
         df = next(iter(session_data["data"].values()))
@@ -447,7 +401,7 @@ async def clean_data(
         logger.error("Error al limpiar datos con IA: %s", safe_error_message(e))
         raise HTTPException(status_code=500, detail="Error interno del servidor al limpiar datos.")
 
-# --- GESTIÓN DE FUENTES GUARDADAS ---
+# --- GESTIÃ“N DE FUENTES GUARDADAS ---
 
 @router.get("/data-sources")
 @limiter.limit("15/minute")
@@ -480,7 +434,7 @@ async def save_data_source(
     if existing_count >= _QUOTA_MAX_SOURCES:
         raise HTTPException(
             status_code=400,
-            detail=f"Límite alcanzado: máximo {_QUOTA_MAX_SOURCES} fuentes de datos por usuario. Elimina alguna antes de agregar otra."
+            detail=f"LÃ­mite alcanzado: mÃ¡ximo {_QUOTA_MAX_SOURCES} fuentes de datos por usuario. Elimina alguna antes de agregar otra."
         )
         
     try:
@@ -517,10 +471,10 @@ async def delete_data_source(request: Request, source_id: int, db: Session = Dep
             try:
                 if os.path.exists(source.url):
                     os.remove(source.url)
-                    logger.info("Archivo físico eliminado del disco: %s", source.url)
+                    logger.info("Archivo fÃ­sico eliminado del disco: %s", source.url)
             except Exception as file_err:
                 from src.utils.logging_config import safe_error_message
-                logger.warning("No se pudo eliminar el archivo físico del disco: %s", safe_error_message(file_err))
+                logger.warning("No se pudo eliminar el archivo fÃ­sico del disco: %s", safe_error_message(file_err))
                 
         db.delete(source)
         db.commit()
@@ -544,6 +498,6 @@ async def list_data_sources(request: Request, db: Session = Depends(get_db)):
         logger.error("Error al obtener sources: %s", safe_error_message(e))
         raise HTTPException(status_code=500, detail="Error al obtener las fuentes de datos.")
 
-# NOTA DE SEGURIDAD: el endpoint global /sources/clear-force fue eliminado (auditoría 2026-02).
+# NOTA DE SEGURIDAD: el endpoint global /sources/clear-force fue eliminado (auditorÃ­a 2026-02).
 # Borraba TODA la tabla data_sources sin filtro por usuario bajo ciertos entornos.
-# Para depuración local, usa el borrado por fuente existente (DELETE /sources/{id}).
+# Para depuraciÃ³n local, usa el borrado por fuente existente (DELETE /sources/{id}).
