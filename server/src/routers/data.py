@@ -175,7 +175,7 @@ async def upload_file(request: Request, file: UploadFile = File(...), db: Sessio
             logger.exception("ERROR CRÃTICO /upload: %s", clean_msg)
         else:
             logger.error("ERROR CRÃTICO /upload: %s", clean_msg)
-        raise HTTPException(status_code=500, detail="Error en el servidor al procesar el archivo. Por favor verifica que el formato sea vÃ¡lido.")
+        raise HTTPException(status_code=500, detail=f"Error interno del servidor: {clean_msg}")
 
 @router.post("/connect-sql")
 @limiter.limit("5/minute")
