@@ -130,17 +130,18 @@ async def upload_file(request: Request, file: UploadFile = File(...), db: Sessio
 
         # ── ESCRIBIR ARCHIVO AL DISCO ──
         try:
+            os.makedirs(DATA_SOURCES_DIR, exist_ok=True)
             with open(permanent_path, 'wb') as f:
                 f.write(raw_bytes)
         except Exception as e:
-            logger.error("No se pudo escribir el archivo %s (tipo=%s)", permanent_name, type(e).__name__)
+            logger.error("No se pudo escribir el archivo %s (tipo=%s): %s", permanent_name, type(e).__name__, str(e))
             try:
                 if os.path.exists(permanent_path): os.remove(permanent_path)
             except Exception:
                 pass
             raise HTTPException(
                 status_code=500,
-                detail="Error interno al guardar el archivo. Inténtalo de nuevo más tarde."
+                detail=f"Error interno al guardar el archivo: {str(e)}"
             )
 
         # ── SUBIR A LA NUBE (opcional: si falla, el archivo queda en disco local) ──
