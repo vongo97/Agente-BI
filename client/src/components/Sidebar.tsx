@@ -75,7 +75,17 @@ export function Sidebar() {
     const loadChat = async (id: number) => {
         try {
             const res = await getChatDetails(id, userId);
-            setMessages(res.messages);
+            // Al cargar historial, eliminar el campo 'audit' de los mensajes para
+            // que las tarjetas de auditoría (InsightCards) no se muestren de nuevo.
+            // La auditoría solo debe mostrarse una vez, al subir el archivo.
+            const messagesWithoutAudit = (res.messages || []).map((m: any) => {
+                if (m.audit) {
+                    const { audit, ...rest } = m;
+                    return rest;
+                }
+                return m;
+            });
+            setMessages(messagesWithoutAudit);
             setActiveChatId(id);
             if (res.data_sources && Array.isArray(res.data_sources)) {
                 setDataSources((res.data_sources as DataSource[]).map((s) => ({
