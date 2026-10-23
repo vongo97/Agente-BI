@@ -25,6 +25,8 @@ interface DashboardContextType {
     setGroqKey: (key: string) => void;
     aiProvider: string;
     setAiProvider: (provider: string) => void;
+    providerModels: Record<string, string>;
+    setProviderModels: (models: Record<string, string>) => void;
     dataSources: DataSource[];
     setDataSources: (sources: DataSource[] | ((prev: DataSource[]) => DataSource[])) => void;
     addDataSource: (source: DataSource) => void;
@@ -91,6 +93,7 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
     // El tipo es string (no una union fija): el catalogo de proveedores vive en el
 // backend, asi que anadir OpenAI/Anthropic/DeepSeek no obliga a tocar el contexto.
 const [aiProvider, setAiProvider] = useState<string>("gemini");
+    const [providerModels, setProviderModels] = useState<Record<string, string>>({});
     const [dataSources, setDataSources] = useState<DataSource[]>([]);
     const [isSidebarOpen, setSidebarOpen] = useState(false);
     const [messages, setMessages] = useState<Message[]>([]);
@@ -165,6 +168,7 @@ const [aiProvider, setAiProvider] = useState<string>("gemini");
                 if (data.pdf_orientation) setPdfOrientation(data.pdf_orientation);
                 if (data.pdf_include_data_table !== undefined) setPdfIncludeDataTable(data.pdf_include_data_table);
                 if (data.chart_theme) setChartTheme(data.chart_theme);
+                if (data.provider_models) setProviderModels(data.provider_models);
 
                 // Hardening de LocalStorage (Migración única a DB segura)
                 const localGemini = localStorage.getItem("gemini_api_key");
@@ -308,6 +312,7 @@ const [aiProvider, setAiProvider] = useState<string>("gemini");
             mistralKey, setMistralKey,
             groqKey, setGroqKey,
             aiProvider, setAiProvider,
+            providerModels, setProviderModels,
             dataSources, setDataSources,
             addDataSource, removeDataSource,
             isSidebarOpen, setSidebarOpen,
