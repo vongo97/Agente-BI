@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { Settings, Key, Cpu, Shield, Save, CheckCircle2, AlertCircle, Sparkles, Menu, Palette, Sliders, Activity, Eye, EyeOff, FileText, Columns } from "lucide-react";
 import { useDashboard } from "@/context/DashboardContext";
-import { getAiProviders } from "@/lib/api";
+import { getAiProviders, setUserConfig, saveProviderModels } from "@/lib/api";
 import { ProviderKeysPanel } from "@/components/settings/ProviderKeysPanel";
 
 type TabType = "ai" | "security" | "appearance";
@@ -27,7 +27,8 @@ export function SettingsView() {
         reportFooterText, setReportFooterText,
         pdfOrientation, setPdfOrientation,
         pdfIncludeDataTable, setPdfIncludeDataTable,
-        chartTheme, setChartTheme
+        chartTheme, setChartTheme,
+        userId
     } = useDashboard();
 
     const [status, setStatus] = useState<"idle" | "saving" | "success" | "error">("idle");
@@ -69,10 +70,23 @@ export function SettingsView() {
     } as Record<string, string>;
     
     // Las claves ya no se validan aquí: cada proveedor se valida y guarda en su propia
-    // fila (ProviderKeysPanel). Este botón solo confirma el resto de ajustes.
+    // fila (ProviderKeysPanel). Este botón guarda el resto de ajustes en el backend.
     const handleSave = async () => {
-        setStatus("success");
-        setMsg("Configuración guardada. Las claves se validan y guardan en 'Seguridad y Llaves'.");
+        setStatus("saving");
+        setMsg("");
+        try {
+            await setUserConfig(userId, undefined, undefined, undefined, aiProvider, undefined,
+                temperature, anomalySensitivity, magicCleanStrategy,
+                currencyFormat, dateFormat, brandColor, undefined,
+                reportOrgName, reportFooterText, pdfOrientation,
+                pdfIncludeDataTable, chartTheme);
+            await saveProviderModels(providerModels);
+            setStatus("success");
+            setMsg("Configuración guardada correctamente.");
+        } catch (err) {
+            setStatus("error");
+            setMsg("Error al guardar la configuración: " + (err as Error).message);
+        }
         setTimeout(() => setStatus("idle"), 4000);
     };
 
