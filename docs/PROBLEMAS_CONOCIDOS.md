@@ -1134,3 +1134,26 @@ tiene columnas explotables (fecha, categoría, métrica numérica).
 - Regresión: el superstore sigue produciendo los mismos 27 hechos y las definiciones completas.
 - `pytest tests -q` en verde.
 
+---
+
+### P-60 · `pkce_service.py` roto desde su creación (sintaxis + módulos inexistentes)
+
+| Campo | Valor |
+|---|---|
+| **Severidad** | BAJO (código muerto inalcanzable; no afecta el arranque ni los flujos activos) |
+| **Estado** | 🟡 PARCIAL (sintaxis corregida y verificada 2026-10-24; decisión pendiente: eliminar el archivo o completar los módulos que referencia) |
+| **Verificado** | 🧪 `compileall` sobre `src/` → OK tras la corrección; suite completa 284 passed; import de `main` en modo producción OK |
+| **Archivos** | `server/src/services/pkce_service.py` |
+
+**Qué pasa.** `compileall` detectó un literal sin cerrar en la línea 90 (`'security_level': 'A,`), presente desde
+el commit `96829bfb`. Además el módulo importa `src.utils.pkce_storage_factory` y (en los tests se mockea)
+`src.utils.pkce_middleware`, que **nunca existieron** en la historia de git. Nada importa `pkce_service`, por lo
+que el archivo es código muerto: no rompe el arranque ni los flujos activos, pero si alguien lo importara
+revientaría en runtime.
+
+**Corrección aplicada.** Literal reparado (`'security_level': 'A',`); `compileall src/` pasa limpio. No se
+elimina el archivo ni se completan los módulos en este cambio (alcance mínimo).
+
+**Regla anti-repetición.** Antes de commitear código nuevo de servicios, correr `compileall src/` (o al menos
+importar el paquete) para detectar sintaxis rota; `compileall` se añade a la verificación estándar de deploys.
+

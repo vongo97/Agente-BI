@@ -87,7 +87,7 @@ class PKCEService:
                 'storage_type': storage_type,
                 'client_type': client_type,
                 'user_id': user_id,
-                'security_level': 'A,
+                'security_level': 'A',
                 'message': 'PKCE pair generado exitosamente para autenticación OAuth2 segura'
             }
 
