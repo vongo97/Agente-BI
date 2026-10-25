@@ -1157,3 +1157,39 @@ elimina el archivo ni se completan los módulos en este cambio (alcance mínimo)
 **Regla anti-repetición.** Antes de commitear código nuevo de servicios, correr `compileall src/` (o al menos
 importar el paquete) para detectar sintaxis rota; `compileall` se añade a la verificación estándar de deploys.
 
+---
+
+### P-61 · Upload pesado tumba el servidor: timeout corto del cliente + reintentos duplican el trabajo (OOM)
+
+| Campo | Valor |
+|---|---|
+| **Severidad** | ALTO |
+| **Estado** | ✅ CERRADO (2026-10-25) |
+| **Verificado** | 🧪 Reproducido por el usuario subiendo `nyc_311_20k.csv` (15.9 MB, 44 columnas) en producción |
+| **Archivos** | `client/src/lib/api.ts` · `server/src/routers/data.py` |
+
+**Qué pasa.** El CSV de 15.9 MB ocupa ~40 MB como DataFrame y ~80 MB de pico transitorio durante el upload
+(parse + disco + nube + pickle/cifrado de sesión). En un contenedor de 512 MB (plan gratuito) eso no cae solo,
+pero `securedFetch` (P-08) usa timeout fijo de 30 s con **2 reintentos**. Un upload lento supera los 30 s, el
+cliente aborta y reintenta; el aborto **no cancela el handler en FastAPI**, que sigue procesando el intento #1
+mientras entra el #2 (y el #3). Dos o tres uploads pesados en paralelo + pickle/cifrado de sesión disparan la RAM
+por encima del límite y el contenedor muere por OOM: "se cae el servidor" al subir el archivo.
+
+**Corrección propuesta.**
+- Cliente: `securedFetch` acepta `timeoutMs` y `retries` por llamada; `uploadFile` usa 120 s y **0 reintentos**
+  (un upload no es idempotente: reintentarlo duplica el trabajo del servidor).
+- Servidor: liberar `raw_bytes` (con `gc.collect()`) después de escribir en disco y subir a la nube, antes de la
+  persistencia de sesión; y rechazar con 400 claro cualquier DataFrame que ocupe más de 80 MB en RAM
+  (`memory_usage(deep=True)`), porque en el plan gratuito es inviable procesarlo sin tumbar el contenedor.
+- Log del tamaño en RAM del pool tras cada upload para diagnosticar futuros crecimientos.
+
+**Criterio de cierre.**
+- `uploadFile` no reintenta ante timeout (1 sola petición) y usa 120 s.
+- Dataset > 80 MB de RAM → 400 con mensaje accionable, sin escribir nada en disco ni DB.
+- Suite backend y cliente en verde; los 6 datasets de prueba siguen subiendo (el mayor, NYC 311, ocupa 39.7 MB de RAM).
+**Evidencia de cierre (2026-10-25).**
+- Medición con el loader propio: NYC 311 = 15.9 MB de archivo → 39.7 MB de DataFrame, pico de parseo 30.7 MB, pickle 6.6 MB, cifrado 8.8 MB. Colombia 50k → 29.1 MB. Chicago → 11.5 MB. Ninguno supera la cuota de 80 MB; el pico transitorio por upload baja al liberar `raw_bytes` antes de la sesión.
+- `uploadFile` ahora usa 120 s y **0 reintentos**; `securedFetch` acepta `timeoutMs`/`retries` por llamada sin cambiar el comportamiento de las demás rutas.
+- Guard de memoria: DataFrame > 80 MB → HTTP 400 con mensaje accionable antes de tocar disco/nube/DB (test `test_upload_rejects_oversized_dataframe`). Log `UPLOAD_OK ... df=X pool=Y tablas=N` para vigilar el crecimiento del pool.
+- Verificación: `pytest tests -q` → **285 passed, 3 xfailed**; cliente `tsc --noEmit` limpio y `vitest run` → **64 passed**.
+

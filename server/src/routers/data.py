@@ -1,4 +1,5 @@
 import os
+import gc
 import pandas as pd
 import json
 import hashlib
@@ -21,6 +22,11 @@ router = APIRouter(tags=["Data Management"])
 _QUOTA_MAX_SOURCES   = 100             # Máx fuentes activas por usuario
 _QUOTA_MAX_FILE_MB   = 25             # Máx por archivo (MB)
 _QUOTA_MAX_TOTAL_MB  = 250            # Máx almacenamiento total por usuario (MB)
+
+# Cuota de memoria por DataFrame (P-61): un CSV de texto puede ocupar 3-6x su
+# tamaño en RAM. En el plan gratuito (512 MB) aceptar cualquier archivo de
+# hasta 25 MB puede tumbar el contenedor por OOM.
+_MAX_DF_MEMORY_MB = 80
 
 # MIME types permitidos directamente
 _ALLOWED_MIME_TYPES = {
@@ -128,6 +134,24 @@ async def upload_file(request: Request, file: UploadFile = File(...), db: Sessio
 
         safe_filename = "".join([c if c.isalnum() else "_" for c in clean_name.split('.')[0]])
 
+        # P-61: cuota de memoria por DataFrame. Rechazar antes de tocar disco,
+        # nube o sesión: un archivo que ocupa más de _MAX_DF_MEMORY_MB en RAM
+        # es inviable en el plan gratuito y tumba el contenedor por OOM.
+        df_mem_mb = float(df.memory_usage(deep=True).sum()) / (1024 * 1024)
+        if df_mem_mb > _MAX_DF_MEMORY_MB:
+            logger.warning(
+                "UPLOAD_REJECTED motivo=df_muy_pesado file=%s ram=%.1fMB limite=%dMB user=%s",
+                clean_name, df_mem_mb, _MAX_DF_MEMORY_MB, authenticated_user,
+            )
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"El archivo ocupa {df_mem_mb:.0f} MB en memoria (límite {_MAX_DF_MEMORY_MB} MB) y "
+                    "el servidor no puede procesarlo sin quedarse sin recursos. Divide el archivo, "
+                    "filtra las columnas que no necesites o sube una muestra."
+                ),
+            )
+
         # ── ESCRIBIR ARCHIVO AL DISCO (caché local) ──
         try:
             os.makedirs(DATA_SOURCES_DIR, exist_ok=True)
@@ -158,6 +182,11 @@ async def upload_file(request: Request, file: UploadFile = File(...), db: Sessio
                 clean_name, authenticated_user,
             )
 
+        # P-61: los bytes crudos ya están en disco y en la nube; liberarlos
+        # antes de la persistencia de sesión reduce el pico de RAM.
+        del raw_bytes
+        gc.collect()
+
         # 6. Actualizar sesión en memoria
         session_data = get_user_data(authenticated_user)
         if session_data is None or session_data.get("type") != "file":
@@ -181,6 +210,18 @@ async def upload_file(request: Request, file: UploadFile = File(...), db: Sessio
 
         session_data["sources"].append(new_source.id)
         data_store[get_session_key(authenticated_user)] = session_data
+
+        # P-61: observabilidad del pool — si crece sin control, el siguiente
+        # cuello de RAM es este (todas las tablas viven en memoria).
+        pool_mem_mb = sum(
+            float(t.memory_usage(deep=True).sum()) / (1024 * 1024)
+            for t in session_data.get("data", {}).values()
+            if hasattr(t, "memory_usage")
+        )
+        logger.info(
+            "UPLOAD_OK file=%s df=%.1fMB pool=%.1fMB tablas=%d user=%s",
+            clean_name, df_mem_mb, pool_mem_mb, len(session_data.get("data", {})), authenticated_user,
+        )
 
         # 8. Persistencia del estado de sesión (cifrada en disco)
         save_user_data(authenticated_user, session_data)

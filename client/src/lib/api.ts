@@ -36,12 +36,19 @@ function sleep(ms: number): Promise<void> {
 
 /**
  * Ejecuta fetch con timeout y reintentos exponenciales.
- * - Timeout: aborta la petición tras FETCH_TIMEOUT_MS.
- * - Reintento: solo en errores de red o timeout (no en 4xx/5xx de aplicación).
+ * - Timeout: aborta la petición tras `networkOptions.timeoutMs` (30 s por defecto).
+ * - Reintento: solo en errores de red o timeout (no en 4xx/5xx de aplicación);
+ *   `networkOptions.retries` lo ajusta por llamada (0 desactiva reintentos).
  * - 401/403: cierra la sesión de NextAuth y redirige a /login.
  * Expuesto para pruebas de red (P-08).
  */
-export async function securedFetch(url: string, options: RequestInit = {}): Promise<Response> {
+export async function securedFetch(
+  url: string,
+  options: RequestInit = {},
+  networkOptions: { timeoutMs?: number; retries?: number } = {}
+): Promise<Response> {
+  const timeoutMs = networkOptions.timeoutMs ?? FETCH_TIMEOUT_MS;
+  const maxRetries = networkOptions.retries ?? MAX_RETRIES;
   const headers = options.headers ? { ...options.headers } as Record<string, string> : {};
   if (apiAuthToken) {
     headers["Authorization"] = `Bearer ${apiAuthToken}`;
@@ -49,9 +56,9 @@ export async function securedFetch(url: string, options: RequestInit = {}): Prom
 
   let lastError: unknown;
 
-  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
     try {
       const response = await fetch(url, {
@@ -81,7 +88,7 @@ export async function securedFetch(url: string, options: RequestInit = {}): Prom
 
       // Timeout de red: reintentar con backoff si quedan intentos.
       if (err instanceof DOMException && err.name === "AbortError") {
-        if (attempt < MAX_RETRIES) {
+        if (attempt < maxRetries) {
           await sleep((attempt + 1) * RETRY_BASE_MS);
           continue;
         }
@@ -91,7 +98,7 @@ export async function securedFetch(url: string, options: RequestInit = {}): Prom
       }
 
       // Otros errores de red (DNS, caída del servidor, etc.): reintentar con backoff.
-      if (attempt < MAX_RETRIES) {
+      if (attempt < maxRetries) {
         await sleep((attempt + 1) * RETRY_BASE_MS);
         continue;
       }
@@ -127,10 +134,14 @@ export async function uploadFile(file: File, userId: string) {
   formData.append("file", file);
   formData.append("user_id", userId);
 
-  const response = await securedFetch(`${API_URL}/upload`, {
-    method: "POST",
-    body: formData,
-  });
+  // P-61: un upload grande tarda más de 30 s en el plan gratuito y NO es
+  // idempotente: reintentarlo duplica el trabajo del servidor (parseo, nube,
+  // pickle de sesión) y puede tumbarlo por OOM. Timeout largo, sin reintentos.
+  const response = await securedFetch(
+    `${API_URL}/upload`,
+    { method: "POST", body: formData },
+    { timeoutMs: 120000, retries: 0 }
+  );
   return handleResponse(response);
 }
 

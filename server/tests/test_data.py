@@ -146,6 +146,30 @@ class TestDataRouter(unittest.TestCase):
     @patch('src.routers.data.get_authenticated_user')
     @patch('src.routers.data.check_authorization')
     @patch('src.connectors.data_connectors.load_file_data_from_bytes')
+    def test_upload_rejects_oversized_dataframe(self, mock_load, mock_authz, mock_get_user, mock_upload):
+        """P-61: un DataFrame que exceda la cuota de memoria se rechaza con 400
+        y mensaje accionable, ANTES de escribir en disco, nube o DB."""
+        mock_get_user.return_value = "test_user_persistence@example.com"
+
+        df = pd.DataFrame({"producto": ["A"], "ventas": [100]})
+        df.memory_usage = lambda deep=True: pd.Series([10 ** 9] * 5)  # > 80 MB simulado
+        mock_load.return_value = df
+
+        response = self.client.post(
+            "/api/v1/upload",
+            files={"file": ("pesado.csv", io.BytesIO(b"producto,ventas\nA,100\n"), "text/csv")}
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("memoria", response.json()["detail"].lower())
+        # No debe tocar disco, nube ni base de datos
+        mock_upload.assert_not_called()
+        self.mock_db.add.assert_not_called()
+
+    @patch('src.routers.data.upload_bytes')
+    @patch('src.routers.data.get_authenticated_user')
+    @patch('src.routers.data.check_authorization')
+    @patch('src.connectors.data_connectors.load_file_data_from_bytes')
     def test_upload_valid_csv_local_only_when_cloud_down(self, mock_load, mock_authz, mock_get_user, mock_upload):
         """Si la nube no está disponible el upload NO debe fallar: se guarda en
         disco local, se registra la fila con la ruta local y `persisted=False`
