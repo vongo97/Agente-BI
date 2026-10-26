@@ -116,7 +116,7 @@ export function InsightCards({ audit }: InsightCardsProps) {
                         </p>
                         <p className="text-[10px] text-[var(--bi-text-2)] truncate">
                             {insights.length > 0
-                                ? `${insights.length} hallazgos calculados con pandas · sin LLM`
+                                ? `${insights.length} ${insights.length === 1 ? "hallazgo calculado" : "hallazgos calculados"} con pandas · sin LLM`
                                 : "Perfil calculado con pandas · sin métricas inventadas"}
                         </p>
                     </div>

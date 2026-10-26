@@ -1235,3 +1235,52 @@ la auditoría de "no ofrece algo que me sirva": números correctos, contenido po
   `test_no_second_composition_without_candidates`); `pytest tests -q` → **289 passed, 3 xfailed**;
   `compileall src/` → OK.
 
+---
+
+### P-63 · Auditoría con ventas sin profit: lamenta lo que falta en vez de explotar lo que hay
+
+| Campo | Valor |
+|---|---|
+| **Severidad** | MEDIO |
+| **Estado** | ✅ CERRADO (2026-10-26) |
+| **Verificado** | 🧪 `build_audit` sobre `datasets_vektra/11_P1_regiones_top5_departamentos.csv` (5 filas: Posicion, DEPARTAMENTO, Cantidad_Empresas, Suma_Ingresos) |
+| **Archivos** | `server/src/engine/insight_auditor.py` |
+
+**Qué pasa.** Los rankings regionales del usuario (11_P1/P2/P3 con `Suma_Ingresos`, rol ventas detectado)
+caen en el ramal retail parcial: narrativa negativa ("El dataset registra $345 en ventas, **pero no hay
+una columna de profit para calcular rentabilidad**"), 1 sola tarjeta (KPI-01), definiciones de conceptos
+que no se calcularon (Profit neto, Pérdida bruta, Margen, Descuento, Umbral) y 3 notas de "calidad" que
+son ausencias, no datos. El usuario califica: es incómodo; quiere que la auditoría trabaje con lo que el
+archivo contiene y muestre viñetas útiles.
+
+**Corrección propuesta.**
+- Nueva tarjeta CAT-V01 "Ventas por '{categoría}'": participación del top 3 de valores sobre el total de
+  ventas (groupby+sum verificable), con los mismos guardrails de utilidad (top-1 <98%, top-3 ≥50%,
+  ≥2 grupos); solo en el ramal ventas-sin-profit (el retail completo ya da ese análisis).
+- Narrativa ventas-sin-profit positiva: registra ventas + repartición; sin el "pero no hay profit".
+- "Qué haría" neutral en ramal ventas-sin-profit y sin ventas (mismo texto neutro, sin exigir rentabilidad).
+- Definiciones en ramal ventas-sin-profit: solo Línea y No medible (no definir lo no calculado).
+- Calidad: eliminar por completo las notas de ausencia (identificador de orden, ventas, profit, descuento).
+  Superceden la salida parcial de P-59 iteración 2 por petición explícita del usuario (excepción de
+  evolución: se actualizan los tests `test_without_profit_does_not_invent_margin` (calidad/narrativa) y
+  `test_partial_retail_still_reports_missing_columns`; el núcleo de ambos (no inventar KPI-02/KPI-03) se
+  conserva). El blockeo de orden inutilizable ("La columna de orden no contiene identificadores
+  utilizables; se ignora.") SIEMPRE se mantiene porque describe una corrección aplicada, no una ausencia.
+- Cliente: corregir singular/plural del contador ("1 hallazgo calculado").
+
+**Criterio de cierre.**
+- 11_P1/P2/P3: KPI-01 + CAT-V01 con cifras exactas; sin frases "pero no hay…"; definiciones reducidas;
+  calidad sin ausencias. Retail completo y ramal genérico sin regresión (tests).
+- Suite backend en verde; cliente TSC/vitest en verde.
+**Evidencia de cierre (2026-10-26).**
+- 11_P1: KPI-01 `$345` + CAT-V01 `ATLANTICO 31.2%, CUNDINAMARCA 25.2%, BOLIVAR 22.8%` (top del
+  ranking exacto); 11_P2/P3: `$193` + `BARRANQUILLA 47.2%, CARTAGENA 38.8%, BUCARAMANGA 13.9%`.
+- En los 3 archivos: cero frases 'No se detectó', calidad vacía, definiciones reducidas a
+  Línea/Participación de ventas/No medible.
+- Regresión verificada: retail completo intacto (KPI-01..LOSS-03, definiciones completas);
+  gov datasets (INE/Colombia/NYC/Chicago/léxico ECB) con mismos hechos que en P-62.
+- Tests: `test_without_profit_does_not_invent_margin` y `test_partial_retail_still_reports_missing_columns`
+  actualizados al contrato nuevo (conservan el núcleo anti-invención KPI-02/KPI-03); clase nueva
+  `TestSalesWithoutProfit` (4 tests, cifras exactas y ausencia de lamentos). `pytest tests -q` →
+  **293 passed, 3 xfailed**; `compileall src/` OK; cliente `tsc --noEmit` limpio + **64 passed**.
+\n

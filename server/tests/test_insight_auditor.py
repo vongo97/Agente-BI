@@ -157,10 +157,13 @@ class TestHonestLimits:
         audit = build_audit(df, source_name="sin_profit.csv")
 
         assert audit["profile"]["roles"]["profit"] is None
-        assert any("profit" in item.lower() for item in audit["profile"]["quality"])
         assert all(item["id"] != "KPI-02" for item in audit["insights"])
         assert all(item["id"] != "KPI-03" for item in audit["insights"])
-        assert "no hay una columna de profit" in audit["analysis"].lower()
+        # P-63: ventas sin profit no lamenta columnas ausentes ni las lista
+        # como "calidad"; no inventa profit/margen.
+        assert "pero no hay una columna de profit" not in audit["analysis"]
+        assert "columna de profit" not in audit["profile"]["quality"]
+        assert [d["term"] for d in audit["definitions"]] == ["Línea", "Participación de ventas", "No medible"]
 
     def test_profit_margin_is_not_used_as_profit(self):
         df = pd.DataFrame(
@@ -358,9 +361,9 @@ class TestGenericFactsWithoutSales:
         assert "identificador de orden" not in quality
         assert "columna de ventas" not in narrative
 
-    def test_partial_retail_still_reports_missing_columns(self):
-        """Con contexto retail (ventas sin profit), la ausencia SÍ es
-        información de calidad relevante."""
+    def test_partial_retail_quality_has_no_absence_notes(self):
+        """P-63 (feedback usuario): ventas sin profit NO lista ausencias como
+        "calidad"; describe problemas de calidad reales, no lo que falta."""
         df = pd.DataFrame(
             {
                 "fecha": ["2021-01-05", "2021-02-05", "2021-03-05", "2021-04-05"],
@@ -369,8 +372,9 @@ class TestGenericFactsWithoutSales:
         )
         audit = build_audit(df, source_name="ventas.csv")
         quality = " ".join(audit["profile"]["quality"])
-        assert "columna de profit" in quality
-        assert "columna de descuento" in quality
+        assert "columna de profit" not in quality
+        assert "columna de descuento" not in quality
+        assert "identificador de orden" not in quality
 
     def test_retail_dataset_keeps_retail_definitions_and_facts(self):
         """Regresión: con ventas+profit no cambian los hechos ni el
@@ -381,6 +385,64 @@ class TestGenericFactsWithoutSales:
         assert "Umbral de descuento" in terms
         assert _fact(audit, "KPI-01")["id"] == "KPI-01"
         assert not any(f["id"] == "TIME-G01" for f in audit["insights"])
+
+
+class TestSalesWithoutProfit:
+    """P-63: rankings con Suma_Ingresos (ventas, sin profit) — la auditoría
+    trabaja con lo que el archivo contiene: total + repartición verificable,
+    sin frases de columnas ausentes."""
+
+    SALES_DF = pd.DataFrame(
+        {
+            "Posicion": [1, 2, 3, 4, 5],
+            "DEPARTAMENTO": ["ATLANTICO", "CUNDINAMARCA", "BOLIVAR", "SANTANDER", "RISARALDA"],
+            "Cantidad_Empresas": [766, 964, 355, 500, 247],
+            "Suma_Ingresos": [107.57, 86.85, 78.68, 45.59, 26.23],
+        }
+    )
+
+    def test_breakdown_exact_values(self):
+        audit = build_audit(self.SALES_DF, source_name="p1.csv")
+        analysis = audit["analysis"]
+        ids = {f["id"] for f in audit["insights"]}
+
+        assert "KPI-01" in ids
+        assert "CAT-V01" in ids
+
+        breakdown = _fact(audit, "CAT-V01")
+        # 344.92 total de ingresos; participación exacta por departamento.
+        top3 = self.SALES_DF.sort_values("Suma_Ingresos", ascending=False).head(3)
+        total = self.SALES_DF["Suma_Ingresos"].sum()
+        shares = ", ".join(
+            f"{row.DEPARTAMENTO} {row.Suma_Ingresos / total * 100:.1f}%"
+            for row in top3.itertuples()
+        )
+        assert breakdown["display_value"] == shares
+        assert breakdown["display_value"] in analysis
+
+    def test_narrative_has_no_grieving_and_no_pending_definitions(self):
+        audit = build_audit(self.SALES_DF, source_name="p1.csv")
+        analysis = audit["analysis"]
+        terms = {d["term"] for d in audit["definitions"]}
+
+        assert "pero no hay una columna de profit" not in analysis
+        assert "Profit neto" not in terms
+        assert "Margen" not in terms
+        assert "Línea" in terms
+        assert "El dataset registra" in analysis
+
+    def test_quality_reports_real_issues_not_absences(self):
+        audit = build_audit(self.SALES_DF, source_name="p1.csv")
+        quality = " ".join(audit["profile"]["quality"])
+        assert "No se detectó" not in quality
+        assert "identificador de orden" not in quality
+
+    def test_single_row_dataset_keeps_total_without_breakdown(self):
+        df = pd.DataFrame({"region": ["Norte"], "sales": [100.0]})
+        audit = build_audit(df, source_name="una_linea.csv")
+        ids = {f["id"] for f in audit["insights"]}
+        assert "KPI-01" in ids
+        assert "CAT-V01" not in ids
 
 
 

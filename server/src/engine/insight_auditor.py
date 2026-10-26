@@ -137,6 +137,10 @@ DEFINITIONS = [
         "definition": "Primer nivel exacto con al menos 10 líneas cuyo profit agregado es negativo.",
     },
     {
+        "term": "Participación de ventas",
+        "definition": "Parte de las ventas del top 3 de una columna sobre el total de ventas. Es un reparto, no un total nuevo.",
+    },
+    {
         "term": "No medible",
         "definition": "Si falta la columna requerida, el hallazgo se omite. No se estima ni se inventa una cifra.",
     },
@@ -415,11 +419,6 @@ def _prepare_frame(
         work[target] = parsed
 
     order_column = roles.get("order_id")
-    # P-59: las ausencias de ventas/profit/descuento/orden solo se reportan
-    # como calidad cuando hay contexto retail (alguna métrica de negocio
-    # presente). En datasets de otro dominio listarlas es ruido: el dataset
-    # no "falla" por no ser de ventas.
-    has_retail_context = bool(roles.get("sales") or roles.get("profit"))
     if order_column:
         work["__order"] = work[order_column]
         orders = int(work["__order"].nunique(dropna=True))
@@ -427,16 +426,11 @@ def _prepare_frame(
             quality.append("La columna de orden no contiene identificadores utilizables; se ignora.")
             roles["order_id"] = None
             work.drop(columns=["__order"], inplace=True)
-    elif has_retail_context:
-        quality.append("No se detectó identificador de orden; no se calculan métricas por orden.")
-
-    if has_retail_context:
-        if not roles.get("sales"):
-            quality.append("No se detectó una columna de ventas; no se calculan ingresos ni márgenes.")
-        if not roles.get("profit"):
-            quality.append("No se detectó una columna de profit; no se calculan márgenes ni pérdidas.")
-        if not roles.get("discount"):
-            quality.append("No se detectó una columna de descuento; no se puede medir fuga por descuento.")
+    # P-63: las ausencias de orden/ventas/profit/descuento dejan de listarse
+    # como "calidad" (petición explícita del usuario: la auditoría trabaja con
+    # lo que el archivo contiene, no lamenta lo que no tiene). Las notas que
+    # quedan describen problemas de calidad reales: filas/columnas ignoradas,
+    # valores fuera de rango, celdas vacías, duplicados.
 
     missing_share = float(work.drop(columns=["__row"], errors="ignore").isna().mean().mean())
     if missing_share > 0.02:
@@ -1475,6 +1469,69 @@ def _pick_secondary_categoric_column(
     return best
 
 
+def _sales_share_fact(work: pd.DataFrame, roles: dict[str, Optional[str]]) -> Optional[AuditFact]:
+    """CAT-V01 (P-63): datasets con ventas pero sin profit — el ranking o
+    repartición de esas ventas entre las categorías del dataset. En archivos
+    tipo "top 5 regiones" cada fila es un grupo: la composición por conteo
+    de filas no dice nada; el conteo útil es por valor de ventas.
+    Guardrails de utilidad: categoría legible, ≥2 grupos, top-1 < 98%,
+    top-3 ≥ 50% del total de ventas. Si ninguna categoría los pasa, no se
+    emite la tarjeta."""
+    if "__sales" not in work:
+        return None
+    excluded = {
+        roles.get(role_name)
+        for role_name in ("order_id", "date", "ship_date", "sales", "profit", "discount")
+    }
+    excluded.discard(None)
+    total = float(work["__sales"].sum())
+    if total <= 0:
+        return None
+    best: Optional[tuple] = None
+    for column in work.columns:
+        if column.startswith("__") or column in excluded:
+            continue
+        normalized = _norm_name(column)
+        if _is_identifier_like(normalized) or _is_time_dimension(normalized):
+            continue
+        if not _looks_categoric(work[column]):
+            continue
+        grouped = work.groupby(work[column].astype(str))["__sales"].sum()
+        if len(grouped) < 2:
+            continue
+        shares = grouped / total
+        shares = shares.sort_values(ascending=False)
+        if float(shares.iloc[0]) >= 0.98:
+            continue
+        top3 = shares.head(3)
+        top3_share = float(top3.sum())
+        if top3_share < 0.5:
+            continue
+        key = (-top3_share, len(grouped), str(column))
+        if best is None or key < best[0]:
+            best = (key, str(column), top3, int(work[column].notna().sum()))
+    if best is None:
+        return None
+    _, column, top3, sample = best
+    display = ", ".join(f"{name} {_fmt_pct(float(share))}" for name, share in top3.items())
+    return AuditFact(
+        id="CAT-V01",
+        title=f"Ventas por '{column}'",
+        value=float(top3.iloc[0]),
+        display_value=display,
+        unit="%",
+        category="composición",
+        severity="info",
+        direction="neutral",
+        definition=(
+            f"Top 3 de '{column}' por ventas; el porcentaje es la participación del grupo "
+            f"sobre el total de ventas ({_fmt_money(total)})."
+        ),
+        evidence=f"groupby('{column}').sum() sobre '{roles.get('sales')}'",
+        sample_size=sample,
+    )
+
+
 def _generic_facts(
     work: pd.DataFrame,
     roles: dict[str, Optional[str]],
@@ -1727,7 +1784,15 @@ def _render_narrative(
     elif profit:
         lines.append(f"El dataset registra **{profit.display_value}** de profit, pero no hay una columna de ventas para calcular el margen.")
     elif sales:
-        lines.append(f"El dataset registra **{sales.display_value}** en ventas, pero no hay una columna de profit para calcular rentabilidad.")
+        # P-63: ventas sin profit → narrativa positiva con lo que el archivo
+        # contiene, sin lamentar columnas ausentes.
+        lines.append(f"El dataset registra **{sales.display_value}** en ventas.")
+        sales_breakdown = by_id.get("CAT-V01")
+        if sales_breakdown:
+            breakdown_label = sales_breakdown.title.split("'", 1)[-1].rstrip("'")
+            lines.append(
+                f"Por **{breakdown_label}**, la repartición de las ventas es: {sales_breakdown.display_value}."
+            )
     elif facts:
         # P-59: hechos genéricos calculados de las columnas disponibles.
         lines.append(
@@ -1875,14 +1940,13 @@ def _render_narrative(
             "Monitorear el margen del último año contra el año anterior antes de extrapolar una tendencia."
         )
     if not actions:
-        if sales or profit:
+        if profit:
             actions.append("Definir una métrica de rentabilidad y un dueño antes de sacar conclusiones de negocio.")
         else:
             actions.append(
-                "Definir qué representa cada fila de este dataset y cuál es su métrica de negocio "
-                "(casos, eventos, tasas, costos…), con un dueño, antes de traducir composición y "
-                "actividad en decisiones. Las cifras de arriba están verificadas; las conclusiones "
-                "de negocio requieren esa definición."
+                "Define qué representa cada fila y qué métrica quieres gestionar "
+                "(unidades, ingresos, casos, contratos…), con un dueño, antes de traducir "
+                "composición e ingresos en decisiones. Las cifras de arriba están verificadas."
             )
     for index, action in enumerate(actions, start=1):
         lines.append(f"{index}. {action}")
@@ -1893,9 +1957,15 @@ def _render_narrative(
         "Auditoría determinista con pandas. No se ejecutó código generado por un LLM y no se necesitó una API key. "
         "Cada tarjeta tiene un `id`, una definición y la evidencia del cálculo."
     )
-    # P-59: sin ventas ni profit no se muestran las definiciones de retail;
-    # solo las que aplican a los hechos genéricos realmente calculados.
-    definitions = DEFINITIONS if (sales or profit) else GENERIC_DEFINITIONS
+    # P-59 / P-63: solo se definen los conceptos que la auditoría realmente
+    # calcula. Ventas sin profit no define rentabilidad que no existe.
+    if not (sales or profit):
+        definitions = GENERIC_DEFINITIONS
+    elif not profit:
+        used_terms = {"Línea", "Participación de ventas", "No medible"}
+        definitions = [definition for definition in DEFINITIONS if definition["term"] in used_terms]
+    else:
+        definitions = DEFINITIONS
     for definition in definitions:
         lines.append(f"- **{definition['term']}:** {definition['definition']}")
     if profile.get("quality"):
@@ -2137,6 +2207,13 @@ def build_audit(
             evidence=f"sum({roles.get('sales')})",
             sample_size=len(work),
         )
+    # P-63: ventas sin profit → explotar lo que contiene el archivo: la
+    # repartición de esas ventas entre sus categorías. El retail completo
+    # ya produce su propio análisis; aquí no se duplica.
+    if "__sales" in work and "__profit" not in work:
+        share_fact = _sales_share_fact(work, roles)
+        if share_fact:
+            facts.append(share_fact)
     if total_profit is not None:
         _add_fact(
             facts,
@@ -2203,12 +2280,19 @@ def build_audit(
 
     narrative = _render_narrative(facts, profile, analysis)
     figure = _build_figure(work, analysis, profile)
+    # P-63: ventas sin profit no asocia definiciones de conceptos que no se
+    # calcularon (profit neto, pérdidas, descuentos).
+    if "__profit" in work:
+        definitions_out = DEFINITIONS
+    else:
+        partial_terms = {"Línea", "Participación de ventas", "No medible"}
+        definitions_out = [definition for definition in DEFINITIONS if definition["term"] in partial_terms]
     return {
         "analysis": narrative,
         "figure": figure,
         "insights": [asdict(fact) for fact in facts],
         "profile": profile,
-        "definitions": DEFINITIONS,
+        "definitions": definitions_out,
         "methodology": _methodology(profile),
         "source_name": profile["source_name"],
         "generated_at": datetime.now(timezone.utc).isoformat(),
