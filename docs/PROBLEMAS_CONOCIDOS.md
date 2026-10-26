@@ -1193,3 +1193,45 @@ por encima del límite y el contenedor muere por OOM: "se cae el servidor" al su
 - Guard de memoria: DataFrame > 80 MB → HTTP 400 con mensaje accionable antes de tocar disco/nube/DB (test `test_upload_rejects_oversized_dataframe`). Log `UPLOAD_OK ... df=X pool=Y tablas=N` para vigilar el crecimiento del pool.
 - Verificación: `pytest tests -q` → **285 passed, 3 xfailed**; cliente `tsc --noEmit` limpio y `vitest run` → **64 passed**.
 
+---
+
+### P-62 · Auditoría no-retail: hecho temporal tautológico y pocas tarjetas en datasets ricos
+
+| Campo | Valor |
+|---|---|
+| **Severidad** | MEDIO |
+| **Estado** | ✅ CERRADO (2026-10-26) |
+| **Verificado** | 🧪 `build_audit` sobre `nyc_311_20k.csv` reproduce el caso (cifras verificadas pero contenido poco útil) |
+| **Archivos** | `server/src/engine/insight_auditor.py` |
+
+**Qué pasa.** Con datos de alcance corto (NYC 311: 20,000 filas de solo 3 días), TIME-G01 emite
+"Mes con más registros: 2026-10 (20,000 registros, 100.0%)" — reafirma lo obvio porque los datos
+caen en un único año-mes. Además, con 44 columnas solo se emiten 2 hechos: una sola composición
+(agency) aunque `borough`, `city`, `status` pasan los filtros de legibilidad. El usuario califica
+la auditoría de "no ofrece algo que me sirva": números correctos, contenido pobre.
+
+**Corrección propuesta.**
+- TIME-G01 adaptativo: si el alcance tiene un único año-mes, agrupar por día ("Día con más
+  registros"); si solo existe un día distinto, omitir la tarjeta en vez de emitir un 100%.
+- CAT-G02: segunda composición con la columna categórica legible de mayor entropía normalizada
+  (excluye la columna ya usada por CAT-G01 y columnas casi constantes ≥98% de su valor dominante).
+- Narrativa y `GENERIC_DEFINITIONS` actualizados al bucketing adaptativo.
+
+**Criterio de cierre.**
+- Tests nuevos: día pico en alcance corto (título "Día con más registros", participación < 100%);
+  sin TIME-G01 cuando solo hay un día; CAT-G02 presente con columna distinta y cifras exactas;
+  sin CAT-G02 cuando no hay segunda categoría legible. Suite backend en verde.
+- Reproducción manual en producción: NYC 311 con ≥3 hechos sin tautologías.
+**Evidencia de cierre (2026-10-26).**
+- NYC 311 antes: `2026-10 (20,000 registros, 100.0%)` + solo CAT-G01 ('agency'). Después:
+  `2026-10-21 (11,965 registros, 59.8%)` (día pico real), CAT-G01 agency
+  (NYPD 38.4%, HPD 30.0%, DSNY 7.1%) y CAT-G02 status (Closed 48.0%, Open 31.6%, In Progress 20.2%).
+- Colombia covid 50k: cifras originales intactas (pico 2020-08 8,597/17.2%, BOGOTA 27.3%,
+  edad 40.44/38.00) + CAT-G02 sexo (F 50.2%, M 49.8%). INE paro: mismas tarjetas previas + CAT-G02
+  cuando existe segunda categoría con cobertura ≥50%; no emite tarjetas de relleno.
+- Criterio de CAT-G02: legible, no id/tiempo, top-1 < 98%, top-3 ≥ 50%; si no hay, no se emite.
+- Verificación: 4 tests nuevos (`test_short_span_buckets_by_day_not_month`,
+  `test_single_day_span_has_no_peak_card`, `test_second_composition_exact_values`,
+  `test_no_second_composition_without_candidates`); `pytest tests -q` → **289 passed, 3 xfailed**;
+  `compileall src/` → OK.
+

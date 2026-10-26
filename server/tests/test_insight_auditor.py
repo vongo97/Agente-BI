@@ -288,6 +288,63 @@ class TestGenericFactsWithoutSales:
         assert not any("Mediana de 'departamento'" in title for title in titles)
         assert not any("Composición por 'departamento'" in title for title in titles)
 
+    def test_short_span_buckets_by_day_not_month(self):
+        """P-62: con alcance menor a un mes, 'mes con más registros' es
+        tautólogo (100%): la tarjeta agrupa por día y su participación
+        es real, no 100%."""
+        rows = ["2024-06-01"] * 5 + ["2024-06-02"] * 2 + ["2024-06-03"] * 3
+        df = pd.DataFrame({"fecha": rows, "tipo": ["A", "B", "C"] * 3 + ["A"]})
+        audit = build_audit(df, source_name="dias.csv")
+        peak = _fact(audit, "TIME-G01")
+        assert peak["title"] == "Día con más registros"
+        assert "2024-06-01" in peak["display_value"]
+        assert "50.0%" in peak["display_value"]
+        assert "100.0%" not in peak["display_value"]
+        assert "El día con más registros es" in audit["analysis"]
+        assert "El periodo con más registros es" not in audit["analysis"]
+
+    def test_single_day_span_has_no_peak_card(self):
+        """P-62: un único día en todo el dataset no genera tarjeta:
+        la cifra 100% no informa nada."""
+        df = pd.DataFrame({
+            "fecha": ["2024-06-01"] * 6,
+            "tipo": ["A", "B", "C", "A", "B", "C"],
+        })
+        audit = build_audit(df, source_name="un_dia.csv")
+        ids = {f["id"] for f in audit["insights"]}
+        assert "TIME-G01" not in ids
+        assert "CAT-G01" in ids
+
+    def test_second_composition_exact_values(self):
+        """P-62: CAT-G02 existe, usa la segunda categoría legible y sus
+        cifras son exactas."""
+        df = pd.DataFrame({
+            "fecha": [f"2024-{m:02d}-10" for m in range(1, 11)],
+            "region": ["Norte"] * 4 + ["Sur"] * 3 + ["Este"] * 2 + ["Oeste"] * 1,
+            "estado": ["OK"] * 5 + ["KO"] * 3 + ["NA"] * 2,
+        })
+        audit = build_audit(df, source_name="dos_cat.csv")
+        c1 = _fact(audit, "CAT-G01")
+        c2 = _fact(audit, "CAT-G02")
+        assert "'region'" in c1["title"]
+        assert "'estado'" in c2["title"]
+        assert c1["display_value"] == "Norte 40.0%, Sur 30.0%, Este 20.0%"
+        assert c2["display_value"] == "OK 50.0%, KO 30.0%, NA 20.0%"
+        assert c2["display_value"] in audit["analysis"]
+
+    def test_no_second_composition_without_candidates(self):
+        """P-62: si no hay una segunda categoría legible, no se emite
+        CAT-G02 (cero hallazgos > hallazgo de relleno)."""
+        df = pd.DataFrame({
+            "fecha": ["2024-01-10", "2024-02-10", "2024-03-10", "2024-04-10"],
+            "region": ["Norte", "Sur", "Este", "Oeste"],
+            "constante": ["A"] * 4,
+        })
+        audit = build_audit(df, source_name="una_cat.csv")
+        ids = {f["id"] for f in audit["insights"]}
+        assert "CAT-G01" in ids
+        assert "CAT-G02" not in ids
+
     def test_quality_does_not_list_retail_absences(self):
         """P-59 (feedback usuario): en datasets no retail, 'no se detectó
         ventas/profit/descuento' no es un problema de calidad; es ruido."""

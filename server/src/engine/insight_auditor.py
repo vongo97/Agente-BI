@@ -152,7 +152,7 @@ GENERIC_DEFINITIONS = [
     },
     {
         "term": "Periodo pico",
-        "definition": "Año-mes con mayor número de registros. La participación se calcula sobre el total de fechas válidas.",
+        "definition": "Agrupación temporal con mayor número de registros: por día si el alcance es menor a un mes, por año-mes en caso contrario. La participación se calcula sobre el total de fechas válidas.",
     },
     {
         "term": "Composición",
@@ -1429,6 +1429,52 @@ def _pick_metric_column(work: pd.DataFrame, roles: dict[str, Optional[str]]) -> 
     return None
 
 
+def _pick_secondary_categoric_column(
+    work: pd.DataFrame,
+    roles: dict[str, Optional[str]],
+    used: Optional[str],
+) -> Optional[str]:
+    """Segunda columna para composición (P-62): tras la primera tarjeta queda
+    información sin explotar en datasets de muchas columnas. Candidatas:
+    legibles (no identificador, no dimensión temporal, cardinalidad 2-50),
+    sin la columna ya usada y no casi constantes (≥98% de un solo valor).
+    El top-3 debe cubrir al menos la mitad de los datos (una composición que
+    reparte poco no informa); entre las que pasan, se elige la de mayor
+    cobertura y, a igualdad, menor cardinalidad. Si no hay candidata, no se
+    emite segunda tarjeta (cero hallazgos > hallazgo ruidoso)."""
+    excluded = {
+        roles.get(role_name)
+        for role_name in ("order_id", "date", "ship_date", "sales", "profit", "discount")
+    }
+    excluded.discard(None)
+    if used:
+        excluded.add(used)
+    best: Optional[str] = None
+    best_key: Optional[tuple] = None
+    for column in work.columns:
+        if column.startswith("__") or column in excluded:
+            continue
+        normalized = _norm_name(column)
+        if _is_identifier_like(normalized) or _is_time_dimension(normalized):
+            continue
+        series = work[column]
+        if not _looks_categoric(series):
+            continue
+        counts = series.dropna().value_counts()
+        if len(counts) < 2:
+            continue
+        probabilities = counts / counts.sum()
+        if float(probabilities.iloc[0]) >= 0.98:
+            continue
+        top3_share = float(probabilities.head(3).sum())
+        if top3_share < 0.5:
+            continue
+        key = (-top3_share, len(counts), str(column))
+        if best_key is None or key < best_key:
+            best, best_key = str(column), key
+    return best
+
+
 def _generic_facts(
     work: pd.DataFrame,
     roles: dict[str, Optional[str]],
@@ -1447,25 +1493,51 @@ def _generic_facts(
         dates = work["__date"].dropna()
         if len(dates):
             month_counts = dates.dt.to_period("M").value_counts().sort_index()
-            peak_month = month_counts.idxmax()
-            peak_n = int(month_counts.max())
-            _add_fact(
-                facts,
-                fact_id="TIME-G01",
-                title="Mes con más registros",
-                value=float(peak_n),
-                display_value=f"{peak_month} ({_fmt_count(peak_n)} registros, {_fmt_pct(peak_n / len(dates))})",
-                unit="registros",
-                category="actividad",
-                severity="info",
-                direction="neutral",
-                definition=(
-                    "Año-mes con mayor número de registros. La participación se calcula "
-                    f"sobre las {_fmt_count(len(dates))} fechas válidas."
-                ),
-                evidence=f"value_counts por año-mes sobre '{roles.get('date')}'",
-                sample_size=len(dates),
-            )
+            day_counts = dates.dt.to_period("D").value_counts().sort_index()
+            # P-62: la agrupación depende del alcance. Con un solo año-mes en
+            # los datos, "mes con más registros" es tautológico (100%): se
+            # recalcula por día y, si tampoco hay variedad de días, la
+            # tarjeta se omite en vez de afirmar lo evidente.
+            if len(month_counts) <= 1 and len(day_counts) >= 2:
+                peak_day = day_counts.idxmax()
+                peak_n = int(day_counts.max())
+                _add_fact(
+                    facts,
+                    fact_id="TIME-G01",
+                    title="Día con más registros",
+                    value=float(peak_n),
+                    display_value=f"{peak_day} ({_fmt_count(peak_n)} registros, {_fmt_pct(peak_n / len(dates))})",
+                    unit="registros",
+                    category="actividad",
+                    severity="info",
+                    direction="neutral",
+                    definition=(
+                        "Día con mayor número de registros. La participación se calcula "
+                        f"sobre las {_fmt_count(len(dates))} fechas válidas."
+                    ),
+                    evidence=f"value_counts por día sobre '{roles.get('date')}'",
+                    sample_size=len(dates),
+                )
+            elif len(month_counts) >= 2:
+                peak_month = month_counts.idxmax()
+                peak_n = int(month_counts.max())
+                _add_fact(
+                    facts,
+                    fact_id="TIME-G01",
+                    title="Mes con más registros",
+                    value=float(peak_n),
+                    display_value=f"{peak_month} ({_fmt_count(peak_n)} registros, {_fmt_pct(peak_n / len(dates))})",
+                    unit="registros",
+                    category="actividad",
+                    severity="info",
+                    direction="neutral",
+                    definition=(
+                        "Año-mes con mayor número de registros. La participación se calcula "
+                        f"sobre las {_fmt_count(len(dates))} fechas válidas."
+                    ),
+                    evidence=f"value_counts por año-mes sobre '{roles.get('date')}'",
+                    sample_size=len(dates),
+                )
             year_counts = dates.dt.year.value_counts().sort_index()
             if len(year_counts) >= 2:
                 first_year, last_year = int(year_counts.index[0]), int(year_counts.index[-1])
@@ -1514,6 +1586,32 @@ def _generic_facts(
                 f"participación sobre {_fmt_count(total)} filas con valor."
             ),
             evidence=f"value_counts de '{categoric_column}'",
+            sample_size=total,
+        )
+
+    # P-62: una sola composición desperdicia datasets de muchas columnas.
+    secondary_column = _pick_secondary_categoric_column(work, roles, categoric_column)
+    if secondary_column:
+        counts = work[secondary_column].dropna().astype(str).value_counts()
+        total = int(counts.sum())
+        top3 = counts.head(3)
+        display = ", ".join(f"{name} {_fmt_pct(int(n) / total)}" for name, n in top3.items())
+        _add_fact(
+            facts,
+            fact_id="CAT-G02",
+            title=f"Composición por '{secondary_column}'",
+            value=float(int(top3.iloc[0]) / total),
+            display_value=display,
+            unit="%",
+            category="composición",
+            severity="info",
+            direction="neutral",
+            definition=(
+                f"Top 3 valores de '{secondary_column}' por número de registros; el porcentaje es su "
+                f"participación sobre {_fmt_count(total)} filas con valor. "
+                f"Segunda categoría legible del dataset (si lo hubiere), excluida la usada por CAT-G01."
+            ),
+            evidence=f"value_counts de '{secondary_column}'",
             sample_size=total,
         )
 
@@ -1638,13 +1736,22 @@ def _render_narrative(
             "estadísticos. No se estima ninguna métrica de negocio que el archivo no contenga."
         )
         if generic_peak:
-            lines.append(f"El periodo con más registros es **{generic_peak.display_value}**.")
+            if generic_peak.title.startswith("Día"):
+                lines.append(f"El día con más registros es **{generic_peak.display_value}**.")
+            else:
+                lines.append(f"El periodo con más registros es **{generic_peak.display_value}**.")
         if generic_trend:
             lines.append(f"Al comparar el primer y el último año con datos: **{generic_trend.display_value}**.")
         if generic_composition:
             composition_label = generic_composition.title.split("'", 1)[-1].rstrip("'")
             lines.append(
                 f"Por **{composition_label}**, los valores más frecuentes son: {generic_composition.display_value}."
+            )
+        generic_composition_2 = by_id.get("CAT-G02")
+        if generic_composition_2:
+            composition_label_2 = generic_composition_2.title.split("'", 1)[-1].rstrip("'")
+            lines.append(
+                f"Por **{composition_label_2}**, los valores más frecuentes son: {generic_composition_2.display_value}."
             )
         if generic_mean and generic_median:
             lines.append(
