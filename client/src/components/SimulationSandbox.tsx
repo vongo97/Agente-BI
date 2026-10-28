@@ -16,6 +16,7 @@ import {
   generateSimulationAgents
 } from "@/lib/api";
 import { Simulation, SimulationMessage, DataSource } from "@/types/shared";
+import { simulationKeyForProvider } from "@/lib/simulation-provider";
 
 // Sub-componentes refactorizados
 import { SimHistory } from "./simulation/SimHistory";
@@ -24,7 +25,6 @@ import { SimDebate } from "./simulation/SimDebate";
 import { SimReport } from "./simulation/SimReport";
 import { SimOntologyGraph } from "./simulation/SimOntologyGraph";
 import { SimAgentConfig } from "./simulation/SimAgentConfig";
-
 
 export function SimulationSandbox() {
     const { apiKey, mistralKey, groqKey, aiProvider, setAiProvider, userId, dataSources, setSidebarOpen } = useDashboard();
@@ -124,16 +124,16 @@ export function SimulationSandbox() {
         setLoadingSuggestions(true);
         try {
             const ids = Array.from(selectedSources);
-            let currentApiKey = apiKey;
-            if (aiProvider === 'mistral') {
-                currentApiKey = mistralKey;
-            } else if (aiProvider === 'groq') {
-                currentApiKey = groqKey;
-            }
+            const currentApiKey = simulationKeyForProvider(aiProvider, {
+                gemini: apiKey,
+                mistral: mistralKey,
+                groq: groqKey,
+            });
             const data = await getSimulationSuggestions(currentUserId, ids, currentApiKey, aiProvider, mistralKey);
             setSuggestions(data);
         } catch (err) {
             console.error("Error fetching suggestions", err);
+            addToast("No se pudieron generar sugerencias con el proveedor seleccionado: " + ((err as Error).message || "Error desconocido"), "error");
         } finally {
             setLoadingSuggestions(false);
         }
@@ -178,11 +178,11 @@ export function SimulationSandbox() {
         setOntologyData({ nodes: [], edges: [] });
         try {
             const ids = Array.from(selectedSources);
-            const data = await getSimulationOntology(ids, aiProvider === 'groq' ? 'groq' : 'gemini');
+            const data = await getSimulationOntology(ids, aiProvider);
             setOntologyData(data);
         } catch (err) {
             console.error("Error al extraer ontología:", err);
-            addToast("Error al modelar el Reality Graph de los datos.", "error");
+            addToast("Error al modelar el Reality Graph con el proveedor seleccionado: " + ((err as Error).message || "Error desconocido"), "error");
             setSandboxStep('form');
         } finally {
             setLoadingOntology(false);
@@ -193,12 +193,11 @@ export function SimulationSandbox() {
         setGeneratingAgents(true);
         try {
             const ids = Array.from(selectedSources);
-            let currentApiKey = apiKey;
-            if (aiProvider === 'mistral') {
-                currentApiKey = mistralKey;
-            } else if (aiProvider === 'groq') {
-                currentApiKey = groqKey;
-            }
+            const currentApiKey = simulationKeyForProvider(aiProvider, {
+                gemini: apiKey,
+                mistral: mistralKey,
+                groq: groqKey,
+            });
             const data = await generateSimulationAgents(ids, hypothesis, aiProvider, currentApiKey, mistralKey);
             setAgentsData(data);
             setSandboxStep('agents');

@@ -1,19 +1,28 @@
-from fastapi import APIRouter, Depends, Form, HTTPException, Request
+from fastapi import APIRouter, Body, Depends, Form, HTTPException, Request
 from sqlalchemy.orm import Session
 from sqlalchemy import desc
 from typing import Optional
 import json
 import logging
-from src.database import get_db, Chat, Message, DashboardItem
+from src.database import get_db, Chat, Message, DashboardItem, DataSource
 from src.engine.bi_analyst import generate_auto_dashboard
 from src.engine.executor import execute_analysis
 from src.engine.insight_auditor import AUDIT_MARKER
-from src.utils.common import check_authorization, get_user_data, get_authenticated_user
+from src.utils.common import check_authorization, get_user_data, get_authenticated_user, ensure_user_session
 from src.utils.limiter import limiter
 import pandas as pd
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["Dashboard"])
+
+
+def _serialize_chat_source(source: DataSource) -> dict:
+    return {
+        "id": source.id,
+        "name": source.name,
+        "type": source.type,
+        "columns": json.loads(source.columns) if source.columns else [],
+    }
 
 @router.get("/history")
 async def get_history(db: Session = Depends(get_db)):
@@ -46,31 +55,64 @@ async def get_chat_details(chat_id: int, db: Session = Depends(get_db)):
             "audit": audit_payload,
         })
     
-    source_info = None
-    if chat.data_source:
-        # Nunca exponer credenciales: la URL SQL está cifrada en reposo; al cliente
-        # solo le es útil el nombre/host, no la cadena de conexión completa.
-        display_url = chat.data_source.url
-        if chat.data_source.type == "sql":
-            from src.utils.security import decrypt_key
-            real_url = decrypt_key(chat.data_source.url) or chat.data_source.url
-            # Redactar credenciales antes de enviar: protocolo://**@host/db
-            import re
-            display_url = re.sub(r"(://)[^@/]*@", r"\1***@", real_url)
-        source_info = {
-            "id": chat.data_source.id,
-            "name": chat.data_source.name,
-            "type": chat.data_source.type,
-            "url": display_url,
-            "columns": json.loads(chat.data_source.columns) if chat.data_source.columns else []
-        }
+    chat_sources = list(chat.data_sources or [])
+    if not chat_sources and chat.data_source:
+        chat_sources = [chat.data_source]
+    source_infos = [_serialize_chat_source(source) for source in chat_sources]
 
     return {
         "id": chat.id, 
         "title": chat.title, 
         "messages": messages,
-        "data_source": source_info
+        "data_sources": source_infos,
+        "data_source": source_infos[0] if source_infos else None,
     }
+
+
+@router.put("/history/{chat_id}/sources")
+@limiter.limit("30/minute")
+async def set_chat_sources(
+    request: Request,
+    chat_id: int,
+    payload: dict = Body(...),
+    db: Session = Depends(get_db),
+):
+    """Replace the file sources attached to an owned chat and rebuild its pool."""
+    authenticated_user = get_authenticated_user()
+    check_authorization(authenticated_user)
+    chat = db.query(Chat).filter(
+        Chat.id == chat_id, Chat.user_id == authenticated_user
+    ).first()
+    if not chat:
+        raise HTTPException(status_code=404, detail="Recurso no encontrado o sin acceso")
+
+    raw_ids = payload.get("source_ids") if isinstance(payload, dict) else None
+    if not isinstance(raw_ids, list) or not all(type(item) is int for item in raw_ids):
+        raise HTTPException(status_code=400, detail="source_ids debe ser una lista de identificadores.")
+    source_ids = list(dict.fromkeys(raw_ids))
+
+    sources = db.query(DataSource).filter(
+        DataSource.user_id == authenticated_user,
+        DataSource.id.in_(source_ids),
+    ).all() if source_ids else []
+    if len(sources) != len(source_ids):
+        raise HTTPException(status_code=404, detail="Una o más fuentes no existen o no son accesibles.")
+    if any(source.type != "file" for source in sources):
+        raise HTTPException(status_code=400, detail="Por ahora, los chats multiarchivo admiten archivos CSV/Excel.")
+
+    source_order = {source_id: index for index, source_id in enumerate(source_ids)}
+    sources.sort(key=lambda source: source_order[int(source.id)])
+    chat.data_sources = sources
+    chat.data_source_id = sources[0].id
+    db.commit()
+
+    session_data = ensure_user_session(authenticated_user, db, chat_id)
+    if source_ids and (not session_data or len(session_data.get("sources", [])) != len(source_ids)):
+        raise HTTPException(
+            status_code=400,
+            detail="No se pudieron cargar todas las fuentes vinculadas a la conversación.",
+        )
+    return {"data_sources": [_serialize_chat_source(source) for source in sources]}
 
 @router.post("/dashboard/pin")
 async def pin_to_dashboard(
@@ -147,7 +189,7 @@ async def unpin_from_dashboard(request: Request, item_id: int, db: Session = Dep
 @limiter.limit("20/hour")
 async def auto_dashboard(
     request: Request,
-    api_key: str = Form(...),
+    api_key: Optional[str] = Form(None),
     data_source_id: Optional[int] = Form(None),
     provider: str = Form("gemini"),
     mistral_key: Optional[str] = Form(None),

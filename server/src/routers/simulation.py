@@ -1,3 +1,4 @@
+import asyncio
 import os
 import json
 import pandas as pd
@@ -18,8 +19,6 @@ from src.database import (
 )
 from src.engine.swarm_engine import SwarmEngine
 from src.engine.prompts import SIMULATION_SUGGESTIONS_PROMPT, SIMULATION_ONTOLOGY_PROMPT
-from google import genai
-from google.genai import types
 
 from src.utils.security import decrypt_key
 from src.utils.common import check_authorization, get_user_data, get_authenticated_user
@@ -29,6 +28,73 @@ from src.utils.limiter import limiter
 # Quitamos el prefijo del router para evitar duplicidad con main.py
 router = APIRouter(tags=["Simulation"])
 logger = logging.getLogger(__name__)
+
+
+async def _generate_simulation_json(
+    *,
+    provider: str,
+    api_key: Optional[str],
+    mistral_key: Optional[str],
+    user_config,
+    prompt: str,
+    system_instruction: str,
+    max_tokens: int,
+) -> str:
+    """Call the requested simulation provider; only hybrid has an explicit fallback."""
+    from src.engine.providers import PROVIDERS, chat, get_model, resolve_keys
+
+    selected = (provider or "gemini").strip().lower()
+    if selected != "hybrid" and selected not in PROVIDERS:
+        raise HTTPException(status_code=400, detail="El proveedor seleccionado no está disponible.")
+
+    resolved_api_key, resolved_mistral_key, key_error = resolve_keys(
+        selected, api_key, mistral_key, user_config
+    )
+    if selected == "hybrid":
+        if not resolved_api_key or not resolved_mistral_key:
+            raise HTTPException(
+                status_code=400,
+                detail="El modo híbrido requiere claves guardadas de Gemini y Mistral.",
+            )
+        providers = [("gemini", resolved_api_key), ("mistral", resolved_mistral_key)]
+    else:
+        if key_error:
+            raise HTTPException(status_code=400, detail=key_error)
+        key = resolved_mistral_key if selected == "mistral" else resolved_api_key
+        if not key:
+            raise HTTPException(status_code=400, detail="No hay una clave para el proveedor seleccionado.")
+        providers = [(selected, key)]
+
+    last_error: Optional[Exception] = None
+    for index, (provider_id, key) in enumerate(providers):
+        try:
+            return await asyncio.to_thread(
+                chat,
+                provider=provider_id,
+                key=key,
+                prompt=prompt,
+                temperature=0.1,
+                system_instruction=system_instruction,
+                timeout=30,
+                model_override=get_model(provider_id, user_config),
+                max_tokens=max_tokens,
+            )
+        except Exception as exc:
+            last_error = exc
+            if index < len(providers) - 1:
+                logger.warning(
+                    "Proveedor de simulación %s falló; usando fallback híbrido %s (%s)",
+                    provider_id, providers[index + 1][0], type(exc).__name__,
+                )
+
+    logger.error(
+        "Falló el proveedor de simulación seleccionado (%s): %s",
+        selected, type(last_error).__name__ if last_error else "unknown",
+    )
+    raise HTTPException(
+        status_code=502,
+        detail="No se pudo generar la respuesta con el proveedor seleccionado.",
+    )
 
 class SimulationAgentRequest(BaseModel):
     name: str
@@ -298,159 +364,65 @@ async def get_simulation_suggestions(request: Request, req: SuggestionRequest, d
 
         prompt = SIMULATION_SUGGESTIONS_PROMPT.format(context_str=full_context_str, head_str=head_sample)
         
-        # [PILAR 2] Recuperar y Descifrar Keys de forma independiente
-        gemini_key = req.api_key
-        mistral_key = req.mistral_key
-        groq_key = None
-        
         config = db.query(UserConfig).filter(UserConfig.user_id == authenticated_user).first()
-        
-        # Cargar y descifrar Gemini key
-        if not gemini_key or len(gemini_key) < 10 or "..." in gemini_key:
-            if config and config.gemini_key:
-                gemini_key = decrypt_key(config.gemini_key)
-        else:
-            gemini_key = decrypt_key(gemini_key)
-            
-        # Cargar y descifrar Mistral key
-        if not mistral_key or len(mistral_key) < 10 or "..." in mistral_key:
-            if config and config.mistral_key:
-                mistral_key = decrypt_key(config.mistral_key)
-        else:
-            if mistral_key:
-                mistral_key = decrypt_key(mistral_key)
-                
-        # Cargar y descifrar Groq key
-        if config and config.groq_key:
-            groq_key = decrypt_key(config.groq_key)
+        system_prompt = (
+            "Eres un Socio Consultor de Gestión de Riesgos y Estrategia Corporativa de primer nivel. "
+            "Propón hipótesis rigurosas y escenarios de estrés, con tono analítico y formal. "
+            "Cíñete estrictamente a las reglas y datos provistos por el usuario y responde con JSON válido."
+        )
+        raw_text = await _generate_simulation_json(
+            provider=req.provider,
+            api_key=req.api_key,
+            mistral_key=req.mistral_key,
+            user_config=config,
+            prompt=prompt,
+            system_instruction=system_prompt,
+            max_tokens=2048,
+        )
 
-        prov = req.provider.lower()
-        
-        # Validar la clave correspondiente al proveedor
-        if prov == "gemini" and not gemini_key:
-            raise HTTPException(status_code=400, detail="Clave API de Gemini no válida o corrupta. Por favor, re-ingresa tu clave API en Ajustes.")
-        elif prov == "mistral" and not mistral_key:
-            raise HTTPException(status_code=400, detail="Clave API de Mistral no válida o corrupta. Por favor, re-ingresa tu clave API en Ajustes.")
-        elif prov == "groq" and not groq_key:
-            raise HTTPException(status_code=400, detail="Clave API de Groq no válida o corrupta. Por favor, re-ingresa tu clave API en Ajustes.")
-        elif prov == "hybrid":
-            if not gemini_key:
-                raise HTTPException(status_code=400, detail="Clave API de Gemini no válida o corrupta. Por favor, re-ingresa tu clave API en Ajustes.")
-            if not mistral_key:
-                raise HTTPException(status_code=400, detail="Clave API de Mistral no válida o corrupta. Por favor, re-ingresa tu clave API en Ajustes.")
-        
-        key = mistral_key if prov == "mistral" else (groq_key if prov == "groq" else gemini_key)
-        if prov == "hybrid": prov = "gemini"
+        # Limpiar posibles bloques de código markdown
+        if "```json" in raw_text:
+            raw_text = raw_text.split("```json")[1].split("```")[0].strip()
+        elif "```" in raw_text:
+            raw_text = raw_text.split("```")[1].split("```")[0].strip()
 
-        try:
-            if prov == "mistral":
-                from mistralai import Mistral
-                m_client = Mistral(api_key=key)
-                m_resp = m_client.chat.complete(model="mistral-large-latest", messages=[{"role": "user", "content": prompt}], response_format={"type": "json_object"})
-                raw_text = m_resp.choices[0].message.content
-            elif prov == "groq":
-                try:
-                    import requests
-                    url = "https://api.groq.com/openai/v1/chat/completions"
-                    headers = {
-                        "Authorization": f"Bearer {key}",
-                        "Content-Type": "application/json"
-                    }
-                    system_prompt = (
-                        "Eres un Socio Consultor de Gestión de Riesgos y Estrategia Corporativa de primer nivel. "
-                        "Tu objetivo es proponer hipótesis de simulación y escenarios de estrés altamente rigurosos, "
-                        "serios y de nivel directivo (C-Level). Tu tono debe ser extremadamente analítico, formal, "
-                        "preciso y con máxima autoridad intelectual. Cíñete estrictamente a las reglas y datos provistos por el usuario."
-                    )
-                    payload = {
-                        "model": "llama-3.3-70b-versatile",
-                        "messages": [
-                            {"role": "system", "content": system_prompt},
-                            {"role": "user", "content": prompt}
-                        ],
-                        "temperature": 0.1,
-                        "response_format": {"type": "json_object"}
-                    }
-                    response = requests.post(url, json=payload, headers=headers, timeout=30)
-                    response.raise_for_status()
-                    result = response.json()
-                    raw_text = result["choices"][0]["message"]["content"]
-                except Exception as groq_err:
-                    logger.warning("[Sim-sugg] Groq falló (ej: rate limit). Intentando fallback automático a Gemini... Error: %s", str(groq_err))
-                    if gemini_key: # Si hay gemini_key de Gemini disponible, hacer fallback
-                        client = genai.Client(api_key=gemini_key)
-                        response = client.models.generate_content(
-                            model="gemini-flash-latest", 
-                            contents=prompt, 
-                            config=types.GenerateContentConfig(response_mime_type="application/json")
-                        )
-                        raw_text = response.text.strip()
-                    else:
-                        raise groq_err
+        suggestions = json.loads(raw_text)
+
+        # Buscar la lista de sugerencias dentro de la respuesta si es un diccionario
+        if isinstance(suggestions, dict):
+            if "suggestions" in suggestions and isinstance(suggestions["suggestions"], list):
+                suggestions = suggestions["suggestions"]
             else:
-                client = genai.Client(api_key=key)
-                # 'gemini-flash-latest' siempre apunta al mejor modelo flash estable disponible
-                response = client.models.generate_content(
-                    model="gemini-flash-latest", 
-                    contents=prompt, 
-                    config=types.GenerateContentConfig(response_mime_type="application/json")
-                )
-                raw_text = response.text.strip()
-            
-            # Limpiar posibles bloques de código markdown
-            if "```json" in raw_text:
-                raw_text = raw_text.split("```json")[1].split("```")[0].strip()
-            elif "```" in raw_text:
-                raw_text = raw_text.split("```")[1].split("```")[0].strip()
-                
-            suggestions = json.loads(raw_text)
-            
-            # Buscar la lista de sugerencias dentro de la respuesta si es un diccionario
-            if isinstance(suggestions, dict):
-                if "suggestions" in suggestions and isinstance(suggestions["suggestions"], list):
-                    suggestions = suggestions["suggestions"]
-                else:
-                    # Intentar buscar cualquier clave que contenga una lista
-                    list_found = False
-                    for k, v in suggestions.items():
-                        if isinstance(v, list):
-                            suggestions = v
-                            list_found = True
-                            break
-                    if not list_found:
-                        # Si no hay ninguna lista interna, asumir que el objeto raíz representa una sola sugerencia
-                        suggestions = [suggestions]
-            
-            # Asegurarnos de que sea una lista y normalizar las claves a "title" y "hypothesis"
-            final_suggestions = []
-            if isinstance(suggestions, list):
-                for item in suggestions:
-                    if isinstance(item, dict):
-                        # Mapear "title" (español e inglés)
-                        title_val = item.get("title") or item.get("titulo") or item.get("name") or item.get("nombre") or ""
-                        # Mapear "hypothesis" (español e inglés)
-                        hyp_val = item.get("hypothesis") or item.get("hipotesis") or item.get("description") or item.get("descripcion") or ""
-                        
-                        if title_val or hyp_val:
-                            final_suggestions.append({
-                                "title": str(title_val).strip(),
-                                "hypothesis": str(hyp_val).strip()
-                            })
-            
-            # Si tras la normalización la lista está vacía, envolver la respuesta original
-            if not final_suggestions:
-                final_suggestions = [{"title": "Sugerencia de Simulación", "hypothesis": str(suggestions)}]
-                
-            return final_suggestions
-        except Exception as e:
-            logger.exception("[Sim-sugg] Error en generación IA")
-            return [{"title": "Error en Motor IA", "hypothesis": "La IA no pudo procesar los datos. Consulte los registros del servidor para más detalles."}]
+                list_found = False
+                for value in suggestions.values():
+                    if isinstance(value, list):
+                        suggestions = value
+                        list_found = True
+                        break
+                if not list_found:
+                    suggestions = [suggestions]
+
+        final_suggestions = []
+        if isinstance(suggestions, list):
+            for item in suggestions:
+                if isinstance(item, dict):
+                    title_val = item.get("title") or item.get("titulo") or item.get("name") or item.get("nombre") or ""
+                    hyp_val = item.get("hypothesis") or item.get("hipotesis") or item.get("description") or item.get("descripcion") or ""
+                    if title_val or hyp_val:
+                        final_suggestions.append({
+                            "title": str(title_val).strip(),
+                            "hypothesis": str(hyp_val).strip(),
+                        })
+
+        if not final_suggestions:
+            raise HTTPException(status_code=502, detail="El proveedor devolvió sugerencias en un formato inválido.")
+        return final_suggestions
     except HTTPException:
         # P-43: la validación de claves (400) debe llegar al cliente tal cual.
         raise
     except Exception as e:
         logger.exception("[Sim-sugg] Error crítico")
-        return [{"title": "Error Crítico", "hypothesis": "Error interno al procesar los archivos para el simulador. Consulte los registros del servidor para más detalles."}]
+        raise HTTPException(status_code=500, detail="Error interno al procesar las sugerencias de simulación.")
 
 
 class OntologyRequest(BaseModel):
@@ -497,142 +469,68 @@ async def get_simulation_ontology(request: Request, req: OntologyRequest, db: Se
 
         prompt = SIMULATION_ONTOLOGY_PROMPT.format(context_str=full_context_str, head_str=head_sample)
         
-        # Recuperar y Descifrar Keys de forma independiente
         config = db.query(UserConfig).filter(UserConfig.user_id == authenticated_user).first()
-        prov = req.provider.lower() if req.provider else "groq"
-        
-        gemini_key = None
-        if config and config.gemini_key:
-            gemini_key = decrypt_key(config.gemini_key)
-            
-        mistral_key = None
-        if config and config.mistral_key:
-            mistral_key = decrypt_key(config.mistral_key)
-            
-        groq_key = None
-        if config and config.groq_key:
-            groq_key = decrypt_key(config.groq_key)
+        system_prompt = (
+            "Eres un Diseñador y Arquitecto de Grafos de Conocimiento. "
+            "Estructura una ontología analítica y formal y responde con JSON válido."
+        )
+        raw_text = await _generate_simulation_json(
+            provider=req.provider or "groq",
+            api_key=None,
+            mistral_key=None,
+            user_config=config,
+            prompt=prompt,
+            system_instruction=system_prompt,
+            max_tokens=2048,
+        )
+        if "```json" in raw_text:
+            raw_text = raw_text.split("```json")[1].split("```")[0].strip()
+        elif "```" in raw_text:
+            raw_text = raw_text.split("```")[1].split("```")[0].strip()
 
-        # Validaciones de claves del proveedor seleccionado
-        if prov == "gemini" and not gemini_key:
-            raise HTTPException(status_code=400, detail="Clave API de Gemini no válida o corrupta. Por favor, re-ingresa tu clave API en Ajustes.")
-        elif prov == "mistral" and not mistral_key:
-            raise HTTPException(status_code=400, detail="Clave API de Mistral no válida o corrupta. Por favor, re-ingresa tu clave API en Ajustes.")
-        elif prov == "groq" and not groq_key:
-            raise HTTPException(status_code=400, detail="Clave API de Groq no válida o corrupta. Por favor, re-ingresa tu clave API en Ajustes.")
+        ontology = json.loads(raw_text)
+        if not isinstance(ontology, dict):
+            raise HTTPException(status_code=502, detail="El proveedor devolvió una ontología inválida.")
+        nodes = ontology.get("nodes", [])
+        edges = ontology.get("edges", [])
+        if not isinstance(nodes, list) or not isinstance(edges, list):
+            raise HTTPException(status_code=502, detail="El proveedor devolvió una ontología inválida.")
 
-        try:
-            if prov == "mistral":
-                from mistralai import Mistral
-                m_client = Mistral(api_key=mistral_key)
-                m_resp = m_client.chat.complete(model="mistral-large-latest", messages=[{"role": "user", "content": prompt}], response_format={"type": "json_object"})
-                raw_text = m_resp.choices[0].message.content
-            elif prov == "groq":
-                try:
-                    import requests
-                    url = "https://api.groq.com/openai/v1/chat/completions"
-                    headers = {
-                        "Authorization": f"Bearer {groq_key}",
-                        "Content-Type": "application/json"
-                    }
-                    system_prompt = (
-                        "Eres un Diseñador y Arquitecto de Grafos de Conocimiento Senior. "
-                        "Tu objetivo es estructurar la ontología de los datos de forma analítica y formal. "
-                        "Debes responder estrictamente en el formato JSON requerido."
-                    )
-                    payload = {
-                        "model": "llama-3.3-70b-versatile",
-                        "messages": [
-                            {"role": "system", "content": system_prompt},
-                            {"role": "user", "content": prompt}
-                        ],
-                        "temperature": 0.1,
-                        "response_format": {"type": "json_object"}
-                    }
-                    response = requests.post(url, json=payload, headers=headers, timeout=30)
-                    response.raise_for_status()
-                    result = response.json()
-                    raw_text = result["choices"][0]["message"]["content"]
-                except Exception as groq_err:
-                    logger.warning("[Sim-ontology] Groq falló (ej: rate limit). Intentando fallback automático a Gemini... Error: %s", str(groq_err))
-                    if gemini_key:
-                        client = genai.Client(api_key=gemini_key)
-                        response = client.models.generate_content(
-                            model="gemini-flash-latest", 
-                            contents=prompt, 
-                            config=types.GenerateContentConfig(response_mime_type="application/json")
-                        )
-                        raw_text = response.text.strip()
-                    else:
-                        raise groq_err
-            else:
-                client = genai.Client(api_key=gemini_key)
-                response = client.models.generate_content(
-                    model="gemini-flash-latest", 
-                    contents=prompt, 
-                    config=types.GenerateContentConfig(response_mime_type="application/json")
-                )
-                raw_text = response.text.strip()
-            
-            # Limpiar
-            if "```json" in raw_text:
-                raw_text = raw_text.split("```json")[1].split("```")[0].strip()
-            elif "```" in raw_text:
-                raw_text = raw_text.split("```")[1].split("```")[0].strip()
-                
-            ontology = json.loads(raw_text)
-            
-            # Normalizar formato de salida
-            nodes = ontology.get("nodes", [])
-            edges = ontology.get("edges", [])
-            
-            # Asegurar IDs únicos y minúsculos para nodos
-            normalized_nodes = []
-            seen_ids = set()
-            for n in nodes:
-                if isinstance(n, dict):
-                    n_id = str(n.get("id") or n.get("id_nodo") or "").strip().lower()
-                    n_label = str(n.get("label") or n.get("nombre") or n.get("id") or "Entidad")
-                    n_type = str(n.get("type") or n.get("tipo") or "Entity")
-                    
-                    if n_id and n_id not in seen_ids:
-                        seen_ids.add(n_id)
-                        normalized_nodes.append({
-                            "id": n_id,
-                            "label": n_label,
-                            "type": n_type
-                        })
-            
-            # Normalizar aristas
-            normalized_edges = []
-            for e in edges:
-                if isinstance(e, dict):
-                    source = str(e.get("source") or e.get("origen") or "").strip().lower()
-                    target = str(e.get("target") or e.get("destino") or "").strip().lower()
-                    rel = str(e.get("relationship") or e.get("relacion") or "relaciona")
-                    
-                    # Agregar solo si los nodos existen
-                    if source in seen_ids and target in seen_ids:
-                        normalized_edges.append({
-                            "source": source,
-                            "target": target,
-                            "relationship": rel
-                        })
-            
-            return {
-                "nodes": normalized_nodes,
-                "edges": normalized_edges
-            }
-        except Exception as e:
-            logger.error("[Sim-ontology] Error en generación IA: %s", type(e).__name__)
-            return {"nodes": [], "edges": []}
+        normalized_nodes = []
+        seen_ids = set()
+        for node in nodes:
+            if not isinstance(node, dict):
+                continue
+            node_id = str(node.get("id") or node.get("id_nodo") or "").strip().lower()
+            if node_id and node_id not in seen_ids:
+                seen_ids.add(node_id)
+                normalized_nodes.append({
+                    "id": node_id,
+                    "label": str(node.get("label") or node.get("nombre") or node.get("id") or "Entidad"),
+                    "type": str(node.get("type") or node.get("tipo") or "Entity"),
+                })
+
+        normalized_edges = []
+        for edge in edges:
+            if not isinstance(edge, dict):
+                continue
+            source = str(edge.get("source") or edge.get("origen") or "").strip().lower()
+            target = str(edge.get("target") or edge.get("destino") or "").strip().lower()
+            if source in seen_ids and target in seen_ids:
+                normalized_edges.append({
+                    "source": source,
+                    "target": target,
+                    "relationship": str(edge.get("relationship") or edge.get("relacion") or "relaciona"),
+                })
+
+        return {"nodes": normalized_nodes, "edges": normalized_edges}
     except HTTPException:
         # P-43: la validación de claves (400) debe llegar al cliente tal cual.
         raise
     except Exception as e:
         from src.utils.logging_config import safe_error_message
         logger.error("[Sim-ontology] Error crítico: %s", safe_error_message(e))
-        return {"nodes": [], "edges": []}
+        raise HTTPException(status_code=500, detail="Error interno al generar la ontología de simulación.")
 
 
 class GenerateAgentsRequest(BaseModel):

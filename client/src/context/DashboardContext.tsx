@@ -121,6 +121,13 @@ const [aiProvider, setAiProvider] = useState<string>("gemini");
     const [pdfIncludeDataTable, setPdfIncludeDataTable] = useState(true);
     const [chartTheme, setChartTheme] = useState("neon");
 
+    const configUserEmail = session?.user?.email ?? null;
+    const configUserKey = configUserEmail?.trim().toLowerCase() ?? null;
+    const [loadedConfigUser, setLoadedConfigUser] = useState<string | null>(null);
+    const configLoaded = Boolean(configUserKey && loadedConfigUser === configUserKey);
+    const pendingSyncRef = useRef<Record<string, string | number | boolean>>({});
+    const syncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
     const addDataSource = (source: DataSource) => {
         setDataSources(prev => {
             // Evitar duplicados por nombre de archivo
@@ -137,19 +144,29 @@ const [aiProvider, setAiProvider] = useState<string>("gemini");
         setDataSources(prev => prev.filter(s => s.filename !== filename));
     };
 
-    // Cargar API Keys y preferencias desde el Backend
+    // El token puede renovarse sin que haya que recargar la configuración.
     useEffect(() => {
-        // Configurar token de autorización en el API wrapper
-        if (session && session.accessToken) {
-            setApiAuthToken(session.accessToken);
-        } else {
-            setApiAuthToken(null);
+        setApiAuthToken(session?.accessToken ?? null);
+    }, [session?.accessToken]);
+
+    // Cargar API Keys y preferencias desde el Backend antes de permitir autosync.
+    useEffect(() => {
+        let cancelled = false;
+        setLoadedConfigUser(null);
+        pendingSyncRef.current = {};
+        if (syncTimerRef.current) {
+            clearTimeout(syncTimerRef.current);
+            syncTimerRef.current = null;
+        }
+
+        if (!configUserEmail || !configUserKey) {
+            return () => { cancelled = true; };
         }
 
         const fetchConfig = async () => {
-            const userEmail = session?.user?.email || "invitado@agente-bi.local";
             try {
-                const data = await getUserConfig(userEmail);
+                const data = await getUserConfig(configUserEmail);
+                if (cancelled) return;
                 if (data.gemini_key) setApiKey(data.gemini_key);
                 if (data.mistral_key) setMistralKey(data.mistral_key);
                 if (data.groq_key) setGroqKey(data.groq_key);
@@ -194,7 +211,8 @@ const [aiProvider, setAiProvider] = useState<string>("gemini");
                 }
 
                 if (needsSync) {
-                    await setUserConfig(userEmail, syncGemini, syncMistral, undefined, syncProvider, undefined);
+                    await setUserConfig(configUserEmail, syncGemini, syncMistral, undefined, syncProvider, undefined);
+                    if (cancelled) return;
                     if (syncGemini) setApiKey(syncGemini);
                     if (syncMistral) setMistralKey(syncMistral);
                     if (syncProvider) setAiProvider(syncProvider as "gemini" | "mistral" | "groq");
@@ -204,22 +222,26 @@ const [aiProvider, setAiProvider] = useState<string>("gemini");
                 localStorage.removeItem("gemini_api_key");
                 localStorage.removeItem("mistral_api_key");
                 localStorage.removeItem("ai_provider");
+                setLoadedConfigUser(configUserKey);
             } catch (err) {
-                console.error("Error cargando config del server:", err);
+                if (!cancelled) console.error("Error cargando config del server:", err);
             }
         };
 
-        if (session) {
-            fetchConfig();
-        }
-    }, [session]);
+        fetchConfig();
+        return () => {
+            cancelled = true;
+            pendingSyncRef.current = {};
+            if (syncTimerRef.current) {
+                clearTimeout(syncTimerRef.current);
+                syncTimerRef.current = null;
+            }
+        };
+    }, [configUserEmail, configUserKey]);
 
     // Guardar en Backend automáticamente (Hardening: No guardar en LocalStorage)
     // Debounce: agrupa ráfagas de cambios (la carga inicial dispara 16 efectos)
     // en UNA sola petición POST /user-config para no agotar el rate limit (429).
-    const pendingSyncRef = useRef<Record<string, string | number | boolean>>({});
-    const syncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
     // Orden posicional de los argumentos de setUserConfig en client/src/lib/api.ts
     const SYNC_FIELD_ORDER = [
         "gemini_key", "mistral_key", "gamma_key", "preferred_provider", "groq_key",
@@ -230,6 +252,9 @@ const [aiProvider, setAiProvider] = useState<string>("gemini");
     ] as const;
 
     const syncConfig = useCallback(async (value: string | number | boolean, field: string) => {
+        // No persistir defaults, ni cambios de otra cuenta, antes de hidratar
+        // la configuración del usuario activo desde el backend.
+        if (!configLoaded || !configUserEmail || loadedConfigUser !== configUserKey) return;
         // Si el valor es una máscara o está vacío, no lo sincronizamos
         if (typeof value === 'string' && (!value || value.startsWith("xxxx") || value.includes("..."))) return;
 
@@ -239,15 +264,14 @@ const [aiProvider, setAiProvider] = useState<string>("gemini");
             const pending = pendingSyncRef.current;
             pendingSyncRef.current = {};
             if (Object.keys(pending).length === 0) return;
-            const userEmail = session?.user?.email || "invitado@agente-bi.local";
             try {
-                const args = [userEmail, ...SYNC_FIELD_ORDER.map(f => pending[f])] as Parameters<typeof setUserConfig>;
+                const args = [configUserEmail, ...SYNC_FIELD_ORDER.map(f => pending[f])] as Parameters<typeof setUserConfig>;
                 await setUserConfig(...args);
             } catch (err) {
                 console.error("Error sincronizando configuracion:", err);
             }
         }, 1200);
-    }, [session]);
+    }, [configLoaded, configUserEmail, configUserKey, loadedConfigUser]);
 
     useEffect(() => {
         if (apiKey) syncConfig(apiKey, "gemini_key");

@@ -100,7 +100,11 @@ export function Chat() {
 
         try {
             const mainSourceId = dataSources[0].id;
-            const res = await analyzeData(queryText, apiKey, userId, activeChatId || undefined, mainSourceId, aiProvider, mistralKey);
+            const sourceIds = dataSources.map((source) => source.id).filter((id): id is number => id !== undefined);
+            const res = await analyzeData(
+                queryText, apiKey, userId, activeChatId || undefined,
+                mainSourceId, aiProvider, mistralKey, sourceIds,
+            );
 
             const assistantMsg: Message = {
                 id: res.message_id,
@@ -137,7 +141,8 @@ export function Chat() {
         setLoadingAudit(true);
         setLoadingMessage("🔎 Auditando datos con pandas...");
         try {
-            const res = await runAudit(activeChatId || undefined, dataSources[0].id);
+            const sourceIds = dataSources.map((source) => source.id).filter((id): id is number => id !== undefined);
+            const res = await runAudit(activeChatId || undefined, dataSources[0].id, sourceIds);
             const assistantMsg: Message = {
                 id: res.message_id,
                 role: "assistant",

@@ -39,6 +39,19 @@ _METRIC_RE = re.compile(
     r"\b(margen|margenes|profit|rentabilidad|perdida|perdidas|descuento|descuentos)\b"
 )
 _TIME_RE = re.compile(r"\b(ano|anios|tiempo|periodo|evolucion\w*|crecimiento|comportamiento)\b")
+_GENERAL_DATA_INTENT_RE = re.compile(
+    r"\b(analiza\w*|resumen|resume|compara\w*|describe\w*|muestra|destaca\w*|"
+    r"hallazgos?|insights?|conclusiones?)\b"
+)
+_DATA_CONTEXT_RE = re.compile(
+    r"\b(datos?|documentos?|archivos?|dataset|tabla|ventas?|ingresos?|profit|"
+    r"margenes?|perdidas?|descuentos?|regiones?|productos?|clientes?|registros?|"
+    r"casos?|metricas?|resultados?)\b"
+)
+_NON_AUDIT_ACTION_RE = re.compile(
+    r"\b(grafico|grafica|plot|visualizacion|diagrama|codigo|script|sql|"
+    r"simulacion|escenario|exporta|descarga|genera\s+(?:un\s+)?(?:grafico|grafica|diagrama))\b"
+)
 
 
 def audit_agent_enabled() -> bool:
@@ -65,6 +78,12 @@ def is_audit_query(query: str) -> bool:
     q = _normalize(query).strip()
     if not q:
         return False
+    # P-54: las peticiones de artefactos (gráfico, código, SQL, simulación,
+    # exportación) no son preguntas de auditoría, aunque mencionen hallazgos
+    # o datos. Se comprueba antes que la intención explícita para que
+    # "exporta los hallazgos" no se desvíe al auditor.
+    if _NON_AUDIT_ACTION_RE.search(q):
+        return False
     if _EXPLICIT_INTENT_RE.search(q):
         return True
 
@@ -81,6 +100,13 @@ def is_audit_query(query: str) -> bool:
     ):
         return True
     if re.search(r"\bmargen\b", q) and re.search(r"\b(por que|explica)\b", q):
+        return True
+    # P-54: las preguntas analíticas comunes también usan hechos medidos como
+    # fuente única de cifras. Peticiones de gráficos/código siguen en el motor
+    # generativo, y el saludo/ayuda general no se desvía al auditor.
+    if _GENERAL_DATA_INTENT_RE.search(q):
+        return True
+    if has_question and _DATA_CONTEXT_RE.search(q):
         return True
     return False
 

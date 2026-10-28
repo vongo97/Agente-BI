@@ -82,9 +82,27 @@ class TestAuditIntent:
         assert is_audit_query("¿Cuánto perdemos por descuentos?")
 
     def test_regular_analysis_is_not_hijacked(self):
+        # P-54 (evolución 2026-10-28): las preguntas factuales sobre los datos
+        # SÍ se enrutan a auditoría (el determinista es la única fuente de
+        # cifras). Lo que no se desvía son las peticiones de artefactos.
         assert not is_audit_query("Genera un gráfico de ventas por región")
-        assert not is_audit_query("¿Cuál es el producto más vendido?")
         assert not is_audit_query("Hola")
+
+    def test_general_fact_questions_route_to_audit(self):
+        """P-54: preguntas factuales de datos usan hechos medidos, no LLM libre."""
+        assert is_audit_query("¿Cuál es el producto más vendido?")
+        assert is_audit_query("Analiza estos datos")
+        assert is_audit_query("Dame un resumen del dataset")
+        assert is_audit_query("Compara las regiones")
+        assert is_audit_query("¿Qué métricas hay en los registros?")
+
+    def test_artifact_requests_stay_in_generative_engine(self):
+        """P-54: gráficos, código, SQL y simulación no son preguntas de auditoría."""
+        assert not is_audit_query("Genera un diagrama de ventas")
+        assert not is_audit_query("Escribe el código Python del análisis")
+        assert not is_audit_query("Genera el SQL para las ventas")
+        assert not is_audit_query("Crea una simulación de escenarios")
+        assert not is_audit_query("Exporta los hallazgos a PDF")
 
 
 class TestFactSelection:

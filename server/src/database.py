@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine, Column, Integer, String, Text, ForeignKey, DateTime, Float, Boolean, text, inspect
+from sqlalchemy import create_engine, Column, Integer, String, Text, ForeignKey, DateTime, Float, Boolean, Table, text, inspect
 from sqlalchemy.orm import sessionmaker, relationship, DeclarativeBase
 from datetime import datetime
 import os
@@ -92,6 +92,15 @@ class Base(DeclarativeBase):
     """Base de SQLAlchemy 2.0"""
     pass
 
+
+chat_data_sources = Table(
+    "chat_data_sources",
+    Base.metadata,
+    Column("chat_id", Integer, ForeignKey("chats.id", ondelete="CASCADE"), primary_key=True),
+    Column("data_source_id", Integer, ForeignKey("data_sources.id", ondelete="CASCADE"), primary_key=True),
+    Column("created_at", DateTime, default=datetime.utcnow, nullable=False),
+)
+
 class Chat(Base):
     __tablename__ = "chats"
     id = Column(Integer, primary_key=True, index=True)
@@ -102,7 +111,13 @@ class Chat(Base):
     
     messages = relationship("Message", back_populates="chat", cascade="all, delete-orphan")
     dashboard_items = relationship("DashboardItem", back_populates="chat")
-    data_source = relationship("DataSource", back_populates="chats")
+    data_source = relationship("DataSource", back_populates="primary_chats", foreign_keys=[data_source_id])
+    data_sources = relationship(
+        "DataSource",
+        secondary=chat_data_sources,
+        back_populates="chats",
+        order_by="DataSource.id",
+    )
 
 class Message(Base):
     __tablename__ = "messages"
@@ -174,7 +189,8 @@ class DataSource(Base):
     size_bytes = Column(Integer, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
-    chats = relationship("Chat", back_populates="data_source")
+    primary_chats = relationship("Chat", back_populates="data_source", foreign_keys="Chat.data_source_id")
+    chats = relationship("Chat", secondary=chat_data_sources, back_populates="data_sources")
 
 class Simulation(Base):
     __tablename__ = "simulations"

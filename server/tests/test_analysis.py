@@ -69,17 +69,30 @@ class TestAnalysisRouter(unittest.TestCase):
         # Mock del query de Chat/DataSource para que no falle
         self.mock_db.query.return_value.filter.return_value.first.return_value = None
 
+        # Hermeticidad (P-34): sin esta parche, get_session_file descarga de
+        # Supabase sesiones de prueba que tests anteriores subieron al bucket
+        # real, y el test deja de ser reproducible (falla según el historial
+        # de ejecuciones). La sesión debe resolver solo con disco local.
+        self._cloud_patch = patch("src.utils.common.sync_cloud_to_local", return_value=False)
+        self._cloud_patch.start()
+
     def tearDown(self):
+        self._cloud_patch.stop()
         data_store.clear()
         _clean_session_pickles()
 
     @patch('src.routers.analysis.get_authenticated_user')
     @patch('src.routers.analysis.check_authorization')
     def test_analyze_requires_api_key(self, mock_authz, mock_get_user):
-        """Test que POST /api/v1/analyze retorna error 400 con api_key inválida."""
+        """Test que POST /api/v1/analyze retorna error 400 con api_key inválida.
+
+        P-54 (evolución 2026-10-28): las preguntas de auditoría difieren la
+        validación de clave (el determinista no la necesita); para probar la
+        validación de clave se usa una consulta generativa (gráfico).
+        """
         mock_get_user.return_value = "test_user_persistence@example.com"
         response = self.client.post("/api/v1/analyze", data={
-            "query": "analiza las ventas",
+            "query": "Genera un gráfico de ventas por región",
             "api_key": "short",
             "provider": "gemini"
         })
@@ -120,8 +133,12 @@ class TestAnalysisRouter(unittest.TestCase):
             "```python\nprint('done')\n```"
         )
 
+        # P-54 (evolución 2026-10-28): las preguntas analíticas generales
+        # ("analiza...") ahora se enrutan a la auditoría determinista. Este
+        # test valida el FLUJO GENERATIVO, así que usa una consulta de
+        # gráfico, que sigue yendo al motor LLM.
         response = self.client.post("/api/v1/analyze", data={
-            "query": "analiza las ventas por producto",
+            "query": "Genera un gráfico de ventas por producto",
             "api_key": "fake_gemini_key_valid",
             "provider": "gemini"
         })

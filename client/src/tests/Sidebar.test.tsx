@@ -10,6 +10,7 @@ const api = vi.hoisted(() => ({
   connectGoogleSheets: vi.fn(),
   removeSessionSource: vi.fn(),
   runAudit: vi.fn(),
+  setChatSources: vi.fn(),
   setApiAuthToken: vi.fn(),
 }));
 
@@ -19,6 +20,7 @@ const dashboard = vi.hoisted(() => ({
   setActiveChatId: vi.fn(),
   setSidebarOpen: vi.fn(),
   setView: vi.fn(),
+  activeChatId: null as number | null,
   addDataSource: vi.fn(),
   removeDataSource: vi.fn(),
 }));
@@ -37,7 +39,6 @@ vi.mock('@/context/DashboardContext', () => ({
   useDashboard: () => ({
     dataSources: [],
     isSidebarOpen: false,
-    activeChatId: null,
     view: 'chat',
     ...dashboard,
   }),
@@ -54,12 +55,16 @@ vi.mock('@/components/ThemeToggle', () => ({
 describe('Sidebar data source scoping', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    dashboard.activeChatId = null;
     api.getHistory.mockResolvedValue([
       { id: 7, title: 'Conversación previa', created_at: '2026-10-20T00:00:00Z' },
     ]);
     api.getChatDetails.mockResolvedValue({
       messages: [],
-      data_source: { id: 3, name: 'ventas.csv', columns: ['region', 'total'] },
+      data_sources: [
+        { id: 3, name: 'ventas.csv', columns: ['region', 'total'] },
+        { id: 4, name: 'costos.csv', columns: ['region', 'cost'] },
+      ],
     });
   });
 
@@ -71,7 +76,7 @@ describe('Sidebar data source scoping', () => {
     expect(dashboard.setDataSources).not.toHaveBeenCalled();
   });
 
-  it('restaura la fuente de una conversación del historial', async () => {
+  it('restaura todas las fuentes de una conversación del historial', async () => {
     render(<Sidebar />);
 
     fireEvent.click(await screen.findByText('Conversación previa'));
@@ -81,7 +86,30 @@ describe('Sidebar data source scoping', () => {
     });
     expect(dashboard.setDataSources).toHaveBeenCalledWith([
       { id: 3, filename: 'ventas.csv', columns: ['region', 'total'] },
+      { id: 4, filename: 'costos.csv', columns: ['region', 'cost'] },
     ]);
+  });
+
+  it('asocia al chat todas las fuentes nuevas que se subieron juntas', async () => {
+    dashboard.activeChatId = 7;
+    api.uploadFile
+      .mockResolvedValueOnce({ id: 11, filename: 'ventas.csv', columns: ['region', 'sales'] })
+      .mockResolvedValueOnce({ id: 12, filename: 'costos.csv', columns: ['region', 'cost'] });
+    api.setChatSources.mockResolvedValue({ data_sources: [] });
+    api.runAudit.mockResolvedValue({ chat_id: 7, message_id: 13, analysis: 'Audit', audit: {}, figure: null });
+
+    render(<Sidebar />);
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+    const files = [
+      new File(['region,sales\nN,1'], 'ventas.csv', { type: 'text/csv' }),
+      new File(['region,cost\nN,2'], 'costos.csv', { type: 'text/csv' }),
+    ];
+    fireEvent.change(input, { target: { files } });
+
+    await waitFor(() => {
+      expect(api.setChatSources).toHaveBeenCalledWith(7, [11, 12]);
+      expect(api.runAudit).toHaveBeenCalledWith(7, 11, [11, 12]);
+    });
   });
 
   it('ejecuta auditoría automática tras subir el primer archivo', async () => {
@@ -109,7 +137,7 @@ describe('Sidebar data source scoping', () => {
     fireEvent.change(input, { target: { files: [file] } });
 
     await waitFor(() => {
-      expect(api.runAudit).toHaveBeenCalledWith(undefined, 3);
+      expect(api.runAudit).toHaveBeenCalledWith(undefined, 3, [3]);
     });
     expect(dashboard.setMessages).toHaveBeenCalledTimes(1);
     const updater = dashboard.setMessages.mock.calls[0][0];

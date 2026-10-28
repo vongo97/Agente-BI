@@ -10,7 +10,7 @@ import { useState, useEffect, useCallback } from "react";
 import {
     uploadFile, connectSql, connectGoogleSheets,
     getHistory, getChatDetails,
-    removeSessionSource, runAudit
+    removeSessionSource, runAudit, setChatSources
 } from "@/lib/api";
 import { setApiAuthToken } from "@/lib/api";
 import { useDashboard } from "@/context/DashboardContext";
@@ -109,20 +109,38 @@ export function Sidebar() {
         setUploading(true);
         const files = Array.from(e.target.files);
         let firstSourceId: number | undefined;
+        const uploadedSourceIds: number[] = [];
         try {
             for (const file of files) {
                 const res = await uploadFile(file, userId) as { id: number; filename: string; columns: string[] };
                 addDataSource({ id: res.id, filename: res.filename, columns: res.columns, type: 'file' });
                 if (!firstSourceId) firstSourceId = res.id;
+                uploadedSourceIds.push(res.id);
             }
             setView('chat');
+            const sourceIds = Array.from(new Set([
+                ...dataSources.map((source) => source.id).filter((id): id is number => id !== undefined),
+                ...uploadedSourceIds,
+            ]));
+            if (activeChatId) {
+                try {
+                    await setChatSources(activeChatId, sourceIds);
+                } catch (linkErr) {
+                    const error = linkErr as Error;
+                    addToast(
+                        "Los archivos se subieron, pero no se pudieron vincular a este chat: " + (error.message || "Error desconocido"),
+                        "error",
+                    );
+                    return;
+                }
+            }
             // Auto-auditoría verificada (Opción A): tras subir CSV/Excel, se ejecuta
-            // la auditoría determinista sin LLM sobre el primer archivo y se muestra
+            // la auditoría determinista sin LLM sobre los archivos vinculados y se muestra
             // en el chat. SQL y Google Sheets se soportarán en fases posteriores;
             // el endpoint /analyze/audit devuelve 400 controlado si no es tipo file.
             if (firstSourceId !== undefined) {
                 try {
-                    const auditRes = await runAudit(undefined, firstSourceId);
+                    const auditRes = await runAudit(activeChatId || undefined, firstSourceId, sourceIds);
                     setMessages((prev) => [
                         ...prev,
                         {
@@ -177,7 +195,16 @@ export function Sidebar() {
 
     const handleRemoveActiveSource = async (source: DataSource) => {
         if (source.id) {
-            try { await removeSessionSource(userId, source.id); }
+            try {
+                await removeSessionSource(userId, source.id);
+                if (activeChatId) {
+                    const remainingIds = dataSources
+                        .filter((item) => item.id !== source.id)
+                        .map((item) => item.id)
+                        .filter((id): id is number => id !== undefined);
+                    await setChatSources(activeChatId, remainingIds);
+                }
+            }
             catch (err) { console.error("Error removing from session:", err); }
         }
         removeDataSource(source.filename);

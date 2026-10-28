@@ -51,7 +51,7 @@ registrado aquí incluye:
 
 ## 2. Resumen (ordenado de mayor a menor)
 
-**Totales:** 3 críticos · 16 altos · 26 medios · 7 bajos · **52 problemas**
+**Totales:** 4 críticos · 18 altos · 27 medios · 7 bajos · **56 problemas**
 
 ### 🔴 CRÍTICOS
 
@@ -60,6 +60,7 @@ registrado aquí incluye:
 | **P-01** | Auth | Bypass de autenticación *fail-open*: sin `ENVIRONMENT`/`RENDER` cualquier request entra como `test_user` y salta `AUTHORIZED_EMAILS` | ✅ CERRADO | `server/src/utils/common.py:98-163` · `tests/test_auth_bypass.py` |
 | **P-02** | Datos | Sesiones guardadas con `pd.to_pickle` **en claro**, saltando el cifrado Fernet | ✅ CERRADO | `server/src/routers/data.py:378,517` · `tests/test_session_encryption.py` |
 | **P-04** | Claves IA | Fallback a `gemini_key` aunque el proveedor activo sea otro → clave de Google enviada a terceros | ✅ CERRADO | `providers.py:394` · `dashboard.py`, `visual_summary.py`, `data.py`, `simulation.py` · `tests/test_key_resolution.py` |
+| **P-57** | Frontend / Dependencias | `dompurify` 3.4.16 con 3 bypass XSS publicados el 21-10-2026 (GHSA-cg2g-xh64-v4q7 crítica, GHSA-mrv2-3pqr-j5jr, GHSA-c6gr-qvv4-5v3f). Sanitiza el SVG de Mermaid generado por IA | ✅ CERRADO | `npm audit fix` → `dompurify` 3.4.17 · `npm run build` OK · `npx tsc --noEmit` limpio · `npx vitest run` → 64 passed · `npm audit --omit=dev` → 0 critical (quedan 2 low de katex/mermaid, ver P-58/P-59) |
 
 ### 🟠 ALTOS
 
@@ -70,7 +71,7 @@ registrado aquí incluye:
 | **P-06** | Dependencias | 11 vulnerabilidades npm (5 críticas): `next 16.1.1` (RCE/DoS), `next-auth beta.30` (fail-open), `plotly.js`→`maplibre-gl` | ✅ CERRADO | `client/package.json` · `npm audit --omit=dev` → 2 low, 0 critical/high/moderate |
 | **P-07** | Frontend | CSP permisiva: `unsafe-inline`, `unsafe-eval`, `connect-src ws: wss:`, sin `frame-ancestors` | ✅ CERRADO | `client/next.config.ts` · `script-src 'self'` (sin unsafe-eval/unsafe-inline) · `style-src 'self'` (sin unsafe-inline) · `frame-ancestors 'none'` · `base-uri 'self'` · `form-action 'self'` · `object-src 'none'` · `frame-src 'none'` · `connect-src` con hosts específicos (no ws:/wss: genéricos) · `client/src/tests/CSP.test.ts` (13 passed) · Antigravity 2026-10-22 |
 | **P-08** | Frontend | Capa de red sin timeout, `AbortController`, retry ni reacci�n a 401/403 | ? CERRADO | `client/src/lib/api.ts` � `securedFetch` con AbortController (30 s), retry exponencial (2 reintentos), 401/403 ? signOut + redirect /login � `client/src/tests/ApiNetwork.test.ts` (6 passed) |
-| **P-09** | Frontend | Autosync guarda valores por defecto antes de cargar la config → puede sobrescribir ajustes del usuario | ABIERTO | `client/src/context/DashboardContext.tsx:138-211,216-246` |
+| **P-09** | Frontend | Autosync guarda valores por defecto antes de cargar la config → puede sobrescribir ajustes del usuario | ✅ CERRADO | `client/src/context/DashboardContext.tsx` · gate de hidratación `loadedConfigUser`/`configLoaded`: `syncConfig` no persiste hasta que `getUserConfig` resuelve para el usuario activo; cleanup de timers/pendientes al desmontar o cambiar de cuenta; token de NextAuth desacoplado de la carga de config · `client/src/tests/DashboardConfigHydration.test.tsx` (3 passed: carga lenta no autosavea defaults, fallo de red deja autosave deshabilitado, cambio del usuario autosavea tras hidratar) · suite `vitest run` → 78 passed · `tsc --noEmit` limpio (2026-10-28) |
 | **P-10** | Cifrado | `ENCRYPTION_KEY` inválida genera clave efímera; `encrypt/decrypt` aceptan texto plano | ✅ CERRADO | `server/src/utils/security.py` · fail-closed en producción sin clave · clave determinista en dev · `encrypt_key` lanza `ValueError` en vez de texto plano · `decrypt_key` rechaza no-Fernet · `tests/test_security_encryption_key.py` (10 passed) · Antigravity 2026-10-22 |
 | **P-11** | Uploads | Original escrito en claro en `.tmp` antes de cifrar; sin mitigación de zip-bomb | ✅ CERRADO | `server/src/routers/data.py` · `server/src/utils/security.py` · `encrypt_bytes` cifra en memoria sin `.tmp` en claro · zip-bomb temprano desde bytes (Excel dimensiones + CSV líneas) · `server/tests/test_upload_security.py` (7 passed) · Antigravity 2026-10-22 |
 | **P-12** | API | `str(e)` de excepciones internas persistido y devuelto al cliente | ✅ CERRADO | `server/src/routers/simulation.py` · `str(e)` reemplazado por mensajes genéricos en 3 ubicaciones (líneas 139, 447, 453) · detalle solo en logs internos con `logger.exception` · Antigravity 2026-10-22 |
@@ -80,9 +81,11 @@ registrado aquí incluye:
 | **P-16** | Sandbox | Lista negra incompleta: `pd.read_table`, `DataFrame.to_csv`, `np.save`, `plt.savefig`, `pd.io.common.os`… | ✅ CERRADO | `server/src/engine/executor.py` · allowlist de módulos/atributos + bloqueo `getattr`/`setattr`/`delattr` + `to_csv`, `read_table`, `np.save*`, `savefig` bloqueados en AST y runtime · `tests/test_sandbox_imports.py` (12 passed) · Antigravity 2026-10-22 |
 | **P-51** | Sandbox | La allowlist de imports no incluye `time`; pandas/numpy lo importan en runtime y **todo análisis falla** con `ImportError: Librería 'time' bloqueada por seguridad` | ✅ CERRADO | `server/src/engine/executor.py:283-294,457-468,762-769` · `tests/test_sandbox_imports.py` |
 | **P-52** | Sandbox | La lista AST de atributos prohibidos incluye `rename`; bloquea `DataFrame.rename()` legítimo y hace fallar análisis con pandas | ✅ CERRADO | `server/src/engine/executor.py:153-166` · `tests/test_sandbox_imports.py::TestSandboxRename` |
-| **P-54** | IA/BI | La narrativa del an�lisis no tiene verificaci�n num�rica en el flujo general | ?? PARCIAL (Fase 1 + Fase 2 + flujo general con hechos verificables) | `insight_auditor.py` � `audit_agent.py` � `analysis.py` � `InsightCards.tsx` � `tests/test_insight_auditor.py` � `tests/test_audit_agent.py` � `tests/test_analysis_audit.py` � `build_audit` adjuntado a todas las respuestas de /analyze (P-54 flujo general) � auditor�a real del superstore 27 hechos | 🟡 PARCIAL (Fase 1 + Fase 2 opt-in) | `insight_auditor.py` · `audit_agent.py` · `analysis.py` · `InsightCards.tsx` · `tests/test_insight_auditor.py` · `tests/test_audit_agent.py` · `tests/test_analysis_audit.py` · auditoría real del superstore 27 hechos |
+| **P-54** | IA/BI | La narrativa del análisis no tiene verificación numérica en el flujo general | 🟡 PARCIAL (Fase 1 + Fase 2 + flujo general con hechos verificables + enrutado de preguntas analíticas 2026-10-28) | `insight_auditor.py` · `audit_agent.py` · `analysis.py` · `InsightCards.tsx` · `tests/test_insight_auditor.py` · `tests/test_audit_agent.py` · `tests/test_analysis_audit.py` · `build_audit` adjuntado a todas las respuestas de /analyze (P-54 flujo general) · auditoría real del superstore 27 hechos · **2026-10-28:** `is_audit_query` ampliado: las preguntas factuales sobre los datos ("analiza", "resumen", "compara", "¿cuál es el producto más vendido?"…) se enrutan al paquete determinista como única fuente de cifras; las peticiones de artefactos (gráfico, código, SQL, simulación, exportación) se comprueban ANTES que la intención explícita y quedan en el motor generativo ("exporta los hallazgos" no se desvía) · `tests/test_audit_agent.py` actualizado (`test_general_fact_questions_route_to_audit`, `test_artifact_requests_stay_in_generative_engine`) · `tests/test_analysis.py` actualizado al contrato (validación de clave con consulta generativa; flujo generativo con consulta de gráfico) · suite backend 305 passed |
 | **P-55** | Infra/API | El frontend de Render apunta al backend `-zifr`, pero su CORS no incluye ese origen; además hay dos backends (`-7nav` SQLite y `-zifr` Postgres) y `render.yaml` describe el SQLite | ✅ CERRADO | CORS resuelto hacia `-zifr` · backend unificado · confirmado por el usuario en producción 2026-10-22 · Cambio de infraestructura Render (no de código local) · Antigravity 2026-10-22 |
 | **P-56** | Infra/IA | `/analyze` es `async` pero ejecuta llamadas LLM síncronas y re-guarda la sesión completa en el event loop; bloquea `/health`, Render reinicia el servicio y el navegador muestra `Failed to fetch` | 🟡 PARCIAL (corregido en código; falta verificar en producción) | `server/src/engine/bi_analyst.py:334-500` · `server/src/routers/analysis.py` · `server/src/utils/common.py:234-320` · `server/main.py` · `render.yaml` |
+| **P-58** | Dependencias Python | 16 de 118 paquetes del backend con advisories publicados tras el cierre de P-06: `python-multipart` 0.0.12 (16), `PyJWT` 2.13.0 (29, auth), `cryptography` 43.0.1 (10, Fernet), `pillow` 11.3.0 (74), `starlette` 0.38.6 (14), `oauthlib` 3.3.1 (timing attack PKCE), `certifi` 2026.5.20 (CA emSign comprometido), `urllib3`, `anyio`, `h2`, `hpack`, `httplib2`, `mako`, `pyasn1`, `python-dotenv`, `pip` | 🟡 PARCIAL | Subidos en `server/requirements.txt`: `fastapi` 0.133.0 (starlette ≥1.3.1), `python-multipart` 0.0.31, `PyJWT` 2.15.0, `cryptography` 49.0.0, `python-dotenv`, `certifi`, `urllib3`, `anyio`, `h2`, `hpack`, `httplib2`, `oauthlib`, `mako`, `pyasn1`. **Bloqueado:** `pillow` 11.3.0 (74 advisories) porque `google-genai` 0.2.0 exige `pillow<12`; requiere migrar `google-genai` (usado en `bi_analyst`, `providers`, `simulation`, `swarm_engine`). Suite: `pytest tests` → 293 passed, 3 xfailed · `pip check` OK |
+| **P-59** | Infra / Node.js | Node.js local v24.13.0 afectado por el release de seguridad del 21-10-2026 (RCE Brotli CVE-2026-111497, bypass TLS hostname CVE-2026-105483/106069, `dns.resolve` CVE-2026-105482). `render.yaml` no fija `NODE_VERSION` del servicio cliente | 🟡 PARCIAL | `render.yaml` (servicio cliente) fija `NODE_VERSION: 24.22.1`, pendiente de verificar en el próximo deploy. **Pendiente usuario:** actualizar Node local (`node --version` → v24.13.0) a v24.22.1 |
 | **P-43** | API | `except Exception` de los endpoints de simulación se traga los `HTTPException` accionables → todo error se ve como 500 "Error interno" | ✅ CERRADO | `simulation.py` (4 endpoints) · `dashboard.py` (auto_dashboard) · `exports.py` (chart, pptx) · `tests/test_http_exception_passthrough*.py` |
 
 ### 🟡 MEDIOS
@@ -107,7 +110,7 @@ registrado aquí incluye:
 | **P-32** | IA | Sin timeouts/reintentos en llamadas a LLM | ✅ CERRADO | `server/src/engine/providers.py:220-270` · `tests/test_providers.py::TestTimeout` |
 | **P-53** | IA | `safe_parse_validator_json` no limpia BOM/zero-width; un JSON válido del Validator se rechaza y se pierde su feedback | ✅ CERRADO | `server/src/engine/bi_analyst.py:216-252` · `tests/test_validator_json.py` |
 | **P-33** | Seguridad | `/connect-sql`: validación SSRF débil (DNS rebinding) y allowlist opcional | `security.py:108`, `data.py:313-326` |
-| **P-34** | Datos | La sesión se guarda por usuario (sin `chat_id`) → conversaciones se pisan | ✅ CERRADO | `server/src/utils/common.py` · `get_session_file` acepta `chat_id` para archivo aislado por conversación · `save_user_data` y `get_user_data` pasan `chat_id` · `server/tests/test_session_isolation.py` (5 passed) · Antigravity 2026-10-22 | **Nota:** `ensure_user_session` todavía reconstruye el pool con todas las fuentes del usuario al reiniciar; aislamiento completo de fuentes por chat requiere `chat_sources` asociación (pendiente) |
+| **P-34** | Datos | La sesión se guarda por usuario (sin `chat_id`) → conversaciones se pisan | ✅ CERRADO | Aislamiento por chat (2026-10-22) + **multi-fuente por chat (2026-10-28)**: tabla N-a-N `chat_data_sources` (`server/src/database.py`) · `PUT /history/{chat_id}/sources` con verificación de propiedad y reconstrucción del pool del chat (`server/src/routers/dashboard.py`) · `ensure_user_session` reconstruye **solo las fuentes vinculadas al chat** (o la primaria en chats antiguos) y ya no hereda la sesión activa de otro chat (`get_user_data` sin fallback) · `scope_session_to_sources` acota el pool a las fuentes de la conversación · `/analyze` y `/analyze/audit` aceptan `data_source_ids` validando pertenencia al chat · historial devuelve `data_sources` completo · el sidebar vincula los archivos subidos al chat activo · `server/tests/test_chat_data_sources.py` (2 passed) + `test_session_isolation.py` (8 passed) + Sidebar (4 passed) · suites: backend **305 passed**, cliente **78 passed** |
 | **P-35** | Memoria | `data_store` global en memoria sin límite ni TTL | ✅ CERRADO | `server/src/utils/common.py` · `_BoundedStore` con max_entries=100 y ttl_seconds=3600 · LRU por inserción + expiración por tiempo · `server/tests/test_data_store_limits.py` (7 passed) · Antigravity 2026-10-22 |
 | **P-44** | Frontend | ✅ CERRADO — Sin cliente OAuth la UI redirigía a Google con `client_id=undefined` ("OAuth client was not found") en vez de avisar | `client/src/app/login/page.tsx` + `LoginForm.tsx` |
 | **P-45** | Frontend | Error de hidratación en la landing (atributos SSR ≠ cliente) al cargar | `client/src/app/page.tsx` · consola del navegador |
@@ -346,6 +349,9 @@ y se compara por `id`. Test: con filtro activo, un solo POST por cambio de filtr
 `plotly.js@4.1.2` y `mermaid@11.17.2`. `npm audit --omit=dev` → **2 low, 0 critical/high/moderate**
 (`mermaid`/`katex`, sin fix dentro de la rama 11). `npm run build` verde, `npx tsc --noEmit` limpio y
 `npx vitest run` → **38 passed**. `next-auth` sigue siendo una beta, pero ya no tiene la vulnerabilidad crítica.
+
+**Nota 2026-10-22 (reapertura parcial).** El cierre de 2026-10-21 sigue siendo válido para su fecha, pero se publicaron advisories
+posteriores: `dompurify` crítica (→ **P-57**), 16 paquetes Python (→ **P-58**) y Node.js con el release del 21-10 (→ **P-59**).
 
 **Regla:** ningún deploy sin `npm audit` revisado; las críticas de runtime bloquean el release.
 
@@ -885,7 +891,7 @@ un duplicado.
 
 **Tests:** `server/tests/test_session_isolation.py` (5 passed) — verifica que `get_session_key`, `get_session_file`, `save_user_data`/`get_user_data` y `promote_active_session` aíslan por chat.
 
-**Limitación restante:** `ensure_user_session` todavía reconstruye el pool con **todas** las `DataSource` del usuario al reiniciar el contenedor, no solo las del chat específico. El aislamiento completo de fuentes por chat requiere una tabla de asociación `chat_sources` o campo `data_source_ids` en `Chat` (pendiente, ver P-34 multi-fuente).
+**Limitación resuelta (2026-10-28, multi-fuente):** la tabla N-a-N `chat_data_sources` asocia cada conversación con sus fuentes. `ensure_user_session(user, db, chat_id, source_ids)` reconstruye ahora **solo** las fuentes vinculadas al chat (o la primaria de chats antiguos), nunca todas las del usuario; una sesión de chat sin datos ya no hereda la sesión activa del usuario (`get_user_data` eliminó ese fallback). El endpoint `PUT /history/{chat_id}/sources` re-vincula fuentes con verificación de propiedad y reconstruye el pool. Tests: `test_chat_data_sources.py` (asociación multi-fuente sin cruzar usuarios + endpoint con ownership y rebuild), `test_session_isolation.py` extendido (8 passed: reconstrucción solo con fuentes del chat y no-herencia del pool activo).
 
 **Regla:** cada conversación debe tener su propio archivo de sesión aislado para evitar que se pisasen mutuamente.
 **P-35** · `data_store` sin límite (CERRADO por Antigravity 2026-10-22). *Cierre:* LRU/TTL o persistencia; test de crecimiento.
@@ -933,7 +939,7 @@ un duplicado.
 **Verificación:** `pytest tests/test_exports.py tests/test_simulation.py -q` → **5 passed, 3 xfailed** (suite verde).
 
 **Regla:** los tests que fallan por problemas de infraestructura de test (no de código de producción) se marcan como `xfail` con justificación escrita.
-**P-42** · Proveedor ignorado en simulación: `/simulation/suggestions` y `/simulation/ontology` usan siempre Gemini (`simulation.py:339,402` y `:563`) aunque el usuario elija otro proveedor → resultados de otro modelo, sin aviso. **No hay fuga de claves** (la clave de Gemini va contra la API de Gemini). *Verificado en runtime (2026-10-19):* `POST /simulation/suggestions` con `provider=openai` responde `"API key must be set when using the Google AI API"` (demostró que ejecutó Gemini) y `/simulation/ontology` devuelve `{"nodes":[],"edges":[]}` con HTTP 200 (fallo silencioso). *Cierre:* ambos endpoints resuelven el proveedor con `resolve_keys()` y despachan al vendor elegido (o rechazan explícitamente los no soportados); test que falle si vuelven a caer en Gemini. **Regla:** lo que el selector promete es lo que se ejecuta.
+**P-42 · CERRADO (2026-10-28)** · Proveedor ignorado en simulación: `/simulation/suggestions` y `/simulation/ontology` usaban siempre Gemini (`simulation.py:339,402` y `:563`) aunque el usuario eligiera otro proveedor → resultados de otro modelo, sin aviso; además Groq tenía fallback automático y silencioso a Gemini y la ontología devolvía `{"nodes":[],"edges":[]}` con HTTP 200 ante cualquier fallo. **No había fuga de claves** (la clave de Gemini iba contra la API de Gemini). *Corrección:* nuevo helper `_generate_simulation_json()` que resuelve credenciales con `resolve_keys()` y llama al `chat()` unificado de `providers.py`; solo el modo `hybrid` tiene fallback explícito Gemini→Mistral; proveedor desconocido → 400; fallo del proveedor → 502 con mensaje claro (nunca grafo vacío silencioso); la ontología ya no manda `groq|gemini` a ciegas sino el proveedor activo; el cliente (`SimulationSandbox`) deja de forzar Gemini y usa `simulationKeyForProvider()` (solo gemini/mistral/groq; el resto se resuelve en el backend con la clave cifrada). *Evidencia:* `tests/test_simulation_provider_routing.py` (4 passed: enrutado al proveedor y su propia clave, fallback híbrido explícito limitado a sus dos proveedores, fallo de un proveedor reportado sin caer a Gemini, proveedor desconocido rechazado antes de despachar) + `client/src/tests/SimulationProviderKey.test.ts` (8 passed) + suite backend **305 passed, 3 xfailed** · suite cliente **78 passed**. **Regla:** lo que el selector promete es lo que se ejecuta; ningún fallback de proveedor puede ser silencioso.
 **P-44 · CERRADO** · Login sin credenciales OAuth. Antes, con las variables ausentes, `signIn("google")` enviaba al usuario a Google con `client_id=undefined` → `401 invalid_client`. Ahora `/login` es un *server component* (`force-dynamic`) que exige **id y secreto**; si faltan, **no renderiza** el botón de Google y muestra un aviso ámbar con los nombres exactos de las variables, más el modo Invitado cuando está disponible. Si no hay ningún método, lo dice explícitamente (fail-closed). *Evidencia:* `npx tsc --noEmit` = 0 y el HTML SSR de `/login` contiene `googleEnabled:false`, el aviso y el botón de invitado, y **no** el botón de Google. *Causa raíz del caso reportado:* las líneas de `client/.env.local` seguían comentadas con los placeholders (`# AUTH_GOOGLE_ID=tu_client_id…`).
 **P-50 · CERRADO** · Diagnóstico de Storage opaco (reporte del usuario: "no me deja subir documentos"). Dos causas independientes, ambas invisibles desde la UI: (1) `SUPABASE_URL` local tenía un typo (`hhttps://…`), y `supabase==2.10.0` rechazaba la clave nueva `sb_secret_…` porque exigía un JWT — el cliente quedaba en `None` y `/upload` devolvía 503; (2) `/health` reportaba `not_configured` **aunque las dos variables estaban definidas**, y el log solo imprimía el tipo de excepción. *Corrección:* `supabase` 2.10.0 → **2.33.0** en `requirements.txt` (verificado que ya no valida la clave como JWT); `get_supabase_client()` registra un motivo estable (`invalid_url`, `invalid_api_key`, `client_init_failed`) sin credenciales y `probe_bucket()` lo publica en `/health`. *Evidencia:* 5 tests en `tests/test_storage_diagnostics.py` (incluye regresión de `sb_secret_…` y de JWT legacy, y que la clave no aparece en el log); suite **186 passed / 4 failed** (solo P-41); runtime `/health` → `connected:true` y `POST /upload` → **200 `persisted:true`**; verificado en el bucket el CSV cifrado (1.208 B) y la sesión (3.748 B). *Causa raíz del typo:* edición manual del `.env` local. *Verificado 2026-10-20:* Render responde `/health` → `connected:true` tras corregir `SUPABASE_URL`/clave y redesplegar.
 
@@ -970,6 +976,9 @@ un duplicado.
 | 2026-10-21 | **P-55 registrado (ALTO)**. El frontend `agente-bi-client-5nx4` apunta al backend Postgres `-zifr`, pero ese backend rechaza su origen con `400 Disallowed CORS origin`; las llamadas fallan como `Failed to fetch` y la UI queda en `0/10`. Además hay un segundo backend `-7nav` con SQLite no persistente y `render.yaml` describe ese, no el Postgres real. No se tocó configuración de producción; el cierre requiere corregir `ALLOWED_ORIGINS` en el servicio `-zifr` y reconciliar el Blueprint. |
 | 2026-10-21 | **Evolución de P-27: fuentes con alcance por conversación**. El sidebar ya no llama a `/data-sources` al iniciar sesión; una conversación nueva arranca sin fuentes y "Nuevo chat" limpia las activas. Al abrir un chat del historial se restaura su `data_source` con `GET /history/{id}`. Se retiró el botón global "Limpiar" porque `POST /clear-session` borraba **todas** las `DataSource` del usuario y habría roto el historial. Evidencia: `npx tsc --noEmit` limpio, `npx vitest run` → **40 passed** (`Sidebar.test.tsx` incluido), `npm run build` → OK. Limitación: `Chat.data_source_id` guarda una sola fuente; varios archivos por chat no se restauran completos y **P-34** sigue abierto porque el backend reconstruye el pool con todas las fuentes del usuario. |
 | 2026-10-22 | **Opción A implementada: auditoría automática al subir archivo.** Tras subir un CSV/Excel, el sidebar ejecuta la auditoría determinista (`POST /analyze/audit`) sobre el **primer archivo** y muestra las tarjetas `InsightCards` en el chat sin que el usuario pulse el botón "Auditoría". Si el dataset no es auditable, se muestra un toast informativo sin bloquear el chat. SQL y Google Sheets quedan para fase posterior: el endpoint devuelve 400 controlado si no es tipo `file` y el contrato `runAudit(chatId?, dataSourceId?)` no cambia. Evidencia: `npx tsc --noEmit` limpio, `npx vitest run` → **41 passed** (`Sidebar.test.tsx` incluido), `npm run build` → OK, `eslint` limpio. Limitación: solo el primer archivo de la tanda se audita automáticamente (ver **P-34** / multi-fuente). |
+| 2026-10-22 | **Auditoría de dependencias (ola oct-2026).** Registrados **P-57** (CRÍTICO, dompurify), **P-58** (ALTO, 16 paquetes Python) y **P-59** (ALTO, Node.js y `NODE_VERSION` en Render) antes de corregir (R5). P-06 queda con nota de reapertura parcial. Evidencia de la auditoría: `npm audit` (cliente) y consulta OSV de las 118 dependencias del venv `.venv-codex`. |
+| 2026-10-28 | **Ola de mejoras (P-09, P-34 multi-fuente, P-42, P-54 enrutado, P-65, CI).** **P-09 CERRADO:** gate de hidratación en `DashboardContext` — el autosync no persiste defaults hasta que la config del usuario hidrata (tests con carga lenta/fallo de red). **P-34 multi-fuente:** tabla `chat_data_sources` (N-a-N) + `PUT /history/{id}/sources` con ownership + `ensure_user_session` reconstruye solo las fuentes del chat (sin heredar la sesión activa de otro chat) + `/analyze` acepta `data_source_ids` validando pertenencia. **P-42 CERRADO:** simulación usa `resolve_keys()`+`chat()` unificado; solo `hybrid` tiene fallback explícito; fallo de proveedor → 502 (nunca grafo vacío silencioso); ontología usa el proveedor activo. **P-54 (enrutado):** preguntas factuales generales van al determinista; artefactos (gráfico/código/SQL/sim/export) excluidos antes de la intención explícita. **P-65 CERRADO (nuevo):** Node ≥24 exponía `localStorage` experimental y vitest excluía el de jsdom → polyfill en `setup.ts` + regresión `EnvProbe`. **CI:** `.github/workflows/ci.yml` (backend pytest+compileall; cliente tsc+vitest+build, Node 24.22.1). P-64 restaurado a CERRADO (coincide con `d9e02f20` ya desplegado). Verificación: backend **305 passed, 3 xfailed**; cliente **78 passed**, `tsc` 0, `npm run build` 0; `compileall src/` OK. |
+| 2026-10-28 | **Aplicada la remediación (Fases 1–3, sin cambios breaking).** **P-57 CERRADO**: `npm audit fix` → dompurify 3.4.17; build, tsc y vitest (64) OK. **P-58 PARCIAL**: `fastapi` 0.115→0.133 y `starlette` ≥1.3.1 (el primer `fastapi` que admite starlette 1.x); `cryptography` 49, `PyJWT` 2.15, `python-multipart` 0.0.31 y transitivos. `pillow` bloqueado por `google-genai` 0.2.0 (`pillow<12`). **P-59 PARCIAL**: `NODE_VERSION: 24.22.1` en `render.yaml`. **Regresión detectada y corregida:** con Starlette 1.x un `Form(...)` obligatorio rechaza el string vacío como "missing" (422). Los endpoints que resuelven la clave con `resolve_keys()` usaban `api_key: str = Form(...)`; ahora son `Optional[str] = Form(None)` (3 en `analysis.py`, 1 en `dashboard.py`, 1 en `data.py`, 1 en `visual_summary.py`), lo que evita un 422 en producción cuando el usuario usa la clave guardada. `auth.py:validate_key` queda como estaba a propósito: valida la clave escrita por el usuario, así que un vacío debe ser error de validación. Verificación: `pytest tests` → 293 passed, 3 xfailed. Nota: `test_analysis.py::test_analyze_no_data_source` depende del orden de ejecución (falla en subconjunto, pasa en suite completa). |
 
 ---
 
@@ -1286,13 +1295,50 @@ archivo contiene y muestre viñetas útiles.
 
 ---
 
+---
+
+### P-65 · Suite de cliente rota en Node >= 24: vitest no instala el `localStorage` de jsdom
+
+| Campo | Valor |
+|---|---|
+| **Severidad** | MEDIO (infraestructura de tests; bloqueaba toda la suite del cliente) |
+| **Estado** | ✅ CERRADO (2026-10-28) |
+| **Verificado** | 🧪 Sonda de entorno (`EnvProbe`) + suite completa `vitest run` → 78 passed |
+| **Archivos** | `client/src/tests/setup.ts` · `client/src/tests/EnvProbe.test.ts` |
+
+**Qué pasa.** Node >= 24 expone un `localStorage` **experimental** como global (vacío sin
+`--localstorage-file`; reproducido con Node v24.13.0: `'localStorage' in globalThis` → true,
+`typeof` → undefined + ExperimentalWarning). El `populateGlobal` de vitest **excluye** las claves
+de jsdom que ya existen en el global de Node, así que el `localStorage`/`sessionStorage` de jsdom no
+se copian al entorno: los tests ven `undefined` y componentes como `ThemeContext` o
+`DashboardContext` fallan con `Cannot read properties of undefined (reading 'getItem')`. La suite
+pasaba antes porque el entorno se evaluaba con estados de Node/caché distintos; se rompió de forma
+reproducible al ejecutar la suite completa (6 failed de golpe: ThemeToggle 3 + hidratación 3).
+
+**Corrección aplicada.** Polyfill en `client/src/tests/setup.ts`: si el entorno no tiene un
+`localStorage` utilizable, se instalan `localStorage` y `sessionStorage` en memoria con la interfaz
+completa del navegador (`getItem/setItem/removeItem/clear/key/length`). Portable a cualquier
+versión de Node y a CI, sin depender del flag `--no-experimental-webstorage`.
+
+**Evidencia de cierre.**
+- `npx vitest run` → **78 passed (78)**, exit code 0; antes del polyfill: 6 failed con
+  `typeof window.localStorage: undefined` (sonda `EnvProbe`).
+- `npm run build` → exit 0; `npx tsc --noEmit` → exit 0.
+- Regresión: `client/src/tests/EnvProbe.test.ts` verifica que ambos Storage existen y funcionan.
+
+**Regla anti-repetición.** El entorno de pruebas debe autoverificarse: un test de entorno
+(`EnvProbe`) es la alarma temprana cuando Node/vitest cambian qué globals expone. Los cambios de
+runtime de Node (globales experimentales) se detectan aquí antes de romper 15 suites.
+
+---
+
 ### P-64 · Cuota de subida 25 MB / 250 MB bloquea archivos que antes funcionaban
 
 | Campo | Valor |
 |---|---|
 | **Severidad** | ALTO |
 | **Estado** | ✅ CERRADO (2026-10-26) |
-| **Verificado** | 🧪 Cambio aplicado + `pytest tests -q` → 293 passed |
+| **Verificado** | 🔎 Lectura de `server/src/routers/data.py:23-24,81-84,104-109`; historial git muestra introducción en `768d67ad` (hardening) sin límite previo |
 | **Archivos** | `server/src/routers/data.py:23-24,81-84,104-109` |
 
 **Qué pasa.** Desde el hardening `768d67ad` el router impone `_QUOTA_MAX_FILE_MB = 25` y `_QUOTA_MAX_TOTAL_MB = 250`. El endpoint `/upload` rechaza con 400 si el archivo supera 25 MB o si la suma acumulada de `size_bytes` supera 250 MB por usuario. El usuario reporta que documentos que antes se leían ahora fallan y solicita quitar la restricción. El límite por archivo es arbitrario respecto a la protección real (OOM) que ya está cubierta por `_MAX_DF_MEMORY_MB = 80`, `MAX_CELLS = 1_000_000` y la validación de zip-bomb desde bytes.
@@ -1303,11 +1349,10 @@ archivo contiene y muestre viñetas útiles.
 - `_QUOTA_MAX_FILE_MB` 25 → **50 MB** (límite máximo Supabase Free, 50 MB por archivo).
 - `_QUOTA_MAX_TOTAL_MB` 250 → **800 MB** (< 1 GB de Supabase Free, deja margen de cuota de nube).
 - Protecciones conservadas: `_MAX_DF_MEMORY_MB = 80`, `MAX_CELLS = 1M`, validación zip-bomb desde bytes, cifrado en memoria.
-- Comentario actualizado a límite real.
 
 **Evidencia de cierre.**
-- `server/src/routers/data.py:23-24` muestra los nuevos valores.
 - `pytest tests -q` → **293 passed, 3 xfailed** (sin regresión).
-- Límite coherente con Supabase Free (max 50 MB por archivo, 1 GB storage) y Render Free (512 MB RAM). La protección OOM sigue siendo `_MAX_DF_MEMORY_MB`.
+- Límite coherente con Supabase Free (max 50 MB por archivo, 1 GB storage) y Render Free (512 MB RAM); la protección OOM sigue siendo `_MAX_DF_MEMORY_MB`.
+- Commit `d9e02f20` en `origin/main` (desplegado; `/health` de producción operativo).
 
 **Regla anti-repetición.** Las cuotas de tamaño de archivo/total deben derivarse de límites reales de infraestructura (RAM, memoria de DataFrame, almacenamiento de nube) y no anticiparse con valores fijos bajos que rompan el flujo. Si se mantiene una cuota, debe ser configurable y documentada, y nunca debe anular los guardrails existentes de memoria/ celdas.

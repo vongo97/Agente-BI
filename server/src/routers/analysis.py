@@ -5,7 +5,7 @@ import logging
 from datetime import datetime
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from sqlalchemy.orm import Session
-from typing import Optional
+from typing import List, Optional
 from src.database import get_db, Chat, Message, UserConfig, DataSource
 from src.engine.bi_analyst import analyze_data, execute_analysis, suggest_questions, validate_data_quality
 from src.engine.audit_agent import (
@@ -18,7 +18,13 @@ from src.engine.insight_auditor import AUDIT_MARKER, AuditError, build_audit
 from src.engine.executor import execute_sql_safe, validate_sql_safety
 from src.engine.prompts import SQL_ENGINEER_PROMPT
 from src.engine.providers import generate_ai_content
-from src.utils.common import check_authorization, get_user_data, get_authenticated_user, ensure_user_session
+from src.utils.common import (
+    check_authorization,
+    get_user_data,
+    get_authenticated_user,
+    ensure_user_session,
+    scope_session_to_sources,
+)
 from src.utils.security import decrypt_key
 
 from src.utils.limiter import limiter
@@ -56,6 +62,81 @@ def _save_audit_message(db: Session, chat_id: int, content: str, fig_json, paylo
     return assistant_msg
 
 
+def _resolve_chat_sources(
+    db: Session,
+    user_id: str,
+    chat: Optional[Chat],
+    data_source_id: Optional[int],
+    data_source_ids: Optional[List[int]],
+) -> list[DataSource]:
+    requested_ids = (
+        list(dict.fromkeys(data_source_ids))
+        if data_source_ids is not None
+        else ([data_source_id] if data_source_id is not None else None)
+    )
+    if (
+        data_source_ids is not None
+        and data_source_id is not None
+        and data_source_id not in requested_ids
+    ):
+        raise HTTPException(status_code=400, detail="La fuente principal debe estar en la lista de fuentes seleccionadas.")
+    if chat is not None:
+        linked = list(chat.data_sources or [])
+        if not linked and chat.data_source:
+            linked = [chat.data_source]
+        linked_by_id = {int(source.id): source for source in linked}
+        if requested_ids is None:
+            return linked
+        if not set(requested_ids).issubset(linked_by_id):
+            raise HTTPException(
+                status_code=400,
+                detail="Asocia las fuentes a esta conversación antes de analizarlas.",
+            )
+        return [linked_by_id[source_id] for source_id in requested_ids]
+
+    if requested_ids is None:
+        return []
+    sources = db.query(DataSource).filter(
+        DataSource.user_id == user_id,
+        DataSource.id.in_(requested_ids),
+    ).all()
+    if len(sources) != len(requested_ids):
+        raise HTTPException(status_code=404, detail="Una o más fuentes no existen o no son accesibles.")
+    source_order = {source_id: index for index, source_id in enumerate(requested_ids)}
+    sources.sort(key=lambda source: source_order[int(source.id)])
+    return sources
+
+
+def _persist_chat_source_pool(user_id: str, chat_id: int, sources: list[DataSource], session_data: dict) -> None:
+    if not sources or not session_data:
+        return
+    from src.utils.common import data_store, get_session_key, save_user_data
+
+    scoped = scope_session_to_sources(session_data, sources)
+    data_store[get_session_key(user_id, chat_id)] = scoped
+    save_user_data(user_id, scoped, chat_id=chat_id)
+
+
+def _sources_in_session(db: Session, user_id: str, session_data: dict) -> list[DataSource]:
+    ids = list(dict.fromkeys(session_data.get("sources", []) or []))
+    if session_data.get("source_id") is not None:
+        ids.append(int(session_data["source_id"]))
+    ids = list(dict.fromkeys(int(source_id) for source_id in ids))
+    if not ids:
+        return []
+    sources = db.query(DataSource).filter(
+        DataSource.user_id == user_id,
+        DataSource.id.in_(ids),
+    ).all()
+    if not isinstance(sources, list):
+        # Contrato del ORM: siempre lista. Un valor no lista (p. ej. un mock o
+        # un backend deprimido) se trata como "sin fuentes resueltas".
+        return []
+    order = {source_id: index for index, source_id in enumerate(ids)}
+    sources.sort(key=lambda source: order[int(source.id)])
+    return sources
+
+
 def _narrator_credentials(provider: str, api_key: Optional[str], mistral_key: Optional[str]):
     """Elige una sola credencial para el narrador; nunca mezcla proveedores."""
     if provider == "hybrid":
@@ -73,9 +154,10 @@ def _narrator_credentials(provider: str, api_key: Optional[str], mistral_key: Op
 async def analyze(
     request: Request,
     query: str = Form(...),
-    api_key: str = Form(...),
+    api_key: Optional[str] = Form(None),
     chat_id: Optional[int] = Form(None),
     data_source_id: Optional[int] = Form(None),
+    data_source_ids: Optional[List[int]] = Form(None),
     provider: str = Form("gemini"),
     mistral_key: Optional[str] = Form(None),
     db: Session = Depends(get_db)
@@ -88,15 +170,16 @@ async def analyze(
     user_config = db.query(UserConfig).filter(UserConfig.user_id == authenticated_user).first()
     user_temp = user_config.temperature if user_config and user_config.temperature is not None else 0.2
 
+    db_chat = None
     if chat_id:
-        chat = db.query(Chat).filter(Chat.id == chat_id, Chat.user_id == authenticated_user).first()
-        if not chat:
+        db_chat = db.query(Chat).filter(Chat.id == chat_id, Chat.user_id == authenticated_user).first()
+        if not db_chat:
             raise HTTPException(status_code=404, detail="Recurso no encontrado o sin acceso")
-
-    if data_source_id:
-        source = db.query(DataSource).filter(DataSource.id == data_source_id, DataSource.user_id == authenticated_user).first()
-        if not source:
-            raise HTTPException(status_code=404, detail="Recurso no encontrado o sin acceso")
+    selected_sources = _resolve_chat_sources(
+        db, authenticated_user, db_chat, data_source_id, data_source_ids
+    )
+    if selected_sources and data_source_id is None:
+        data_source_id = int(selected_sources[0].id)
     
     # --- AUTO-RECUPERACIÓN DE LLAVES CIFRADAS ---
     from src.engine.providers import resolve_keys, get_model, set_model_override
@@ -128,49 +211,41 @@ async def analyze(
         db.add(new_msg); db.commit()
         return {"analysis": msg, "chat_id": chat_id, "message_id": new_msg.id}
 
-    # Si no hay data_source_id pero hay chat_id, intentar recuperarlo del chat
-    if chat_id and not data_source_id:
-        db_chat = db.query(Chat).filter(Chat.id == chat_id, Chat.user_id == authenticated_user).first()
-        if db_chat and db_chat.data_source_id:
-            data_source_id = db_chat.data_source_id
- 
     # DIAGNÓSTICO — pasan por el filtro de secretos del logger
     logger.debug("Analyze Request: user=%s, chat=%s, source=%s, provider=%s",
                  authenticated_user, chat_id, data_source_id, provider)
     
     # Descifrar/unpicklear la sesión puede tardar; no debe bloquear el event loop.
-    session_data = await asyncio.to_thread(get_user_data, authenticated_user, chat_id)
-    logger.debug("Session Data found: %s", session_data is not None)
-    
-    # Verificar si la fuente solicitada está en el pool actual
-    is_source_in_pool = session_data is not None and data_source_id and (
-        session_data.get("source_id") == data_source_id or 
-        data_source_id in session_data.get("sources", [])
-    )
-    
-    if session_data is not None and data_source_id and not is_source_in_pool:
-        logger.debug("Source Mismatch: request=%s not in pool %s",
-                     data_source_id, session_data.get('sources', []))
-        # Solo descartar la sesión si el pool está completamente vacío.
-        has_data = bool(session_data.get("data"))
-        if not has_data:
-            session_data = None
-        # Si has_data == True, conservamos session_data para que la segunda pregunta
-        # pueda acceder a los archivos que ya estaban en el pool.
-
-    if session_data is None:
-        # Reconstruir el pool desde DB+nube (post-reinicio del contenedor);
-        # incluye la autocarga de la fuente solicitada si está registrada.
-        from src.utils.common import ensure_user_session
-        # Reconstruir el pool descarga/descifra/parsea archivos; se hace fuera
-        # del event loop para que /live siga respondiendo.
+    if chat_id:
         session_data = await asyncio.to_thread(
-            ensure_user_session, authenticated_user, db, chat_id
+            ensure_user_session,
+            authenticated_user,
+            db,
+            chat_id,
+            [int(source.id) for source in selected_sources] if selected_sources else None,
         )
-        
-        if not session_data:
-            logger.warning("No session data found or loaded for user (source=%s).", data_source_id)
-            raise HTTPException(status_code=400, detail="No hay datos cargados para analizar. Por favor selecciona una fuente de datos.")
+    else:
+        session_data = await asyncio.to_thread(get_user_data, authenticated_user, None)
+        if session_data is None:
+            session_data = await asyncio.to_thread(
+                ensure_user_session,
+                authenticated_user,
+                db,
+                None,
+                [int(source.id) for source in selected_sources] if selected_sources else None,
+            )
+        if selected_sources and session_data:
+            session_data = scope_session_to_sources(session_data, selected_sources)
+    logger.debug("Session Data found: %s", session_data is not None)
+
+    if not session_data:
+        logger.warning("No session data found or loaded for user (source=%s).", data_source_id)
+        raise HTTPException(status_code=400, detail="No hay datos cargados para analizar. Por favor selecciona una fuente de datos.")
+    if not chat_id and not selected_sources:
+        selected_sources = _sources_in_session(db, authenticated_user, session_data)
+        if selected_sources:
+            session_data = scope_session_to_sources(session_data, selected_sources)
+            data_source_id = int(selected_sources[0].id)
     
     try:
         # Determinar el tipo de dato y la variable
@@ -303,12 +378,18 @@ async def analyze(
                         user_id=authenticated_user,
                         title=query[:50] + "...",
                         data_source_id=data_source_id,
+                        data_sources=selected_sources,
                     )
                     db.add(db_chat)
                     db.commit()
                     db.refresh(db_chat)
-                    from src.utils.common import promote_active_session
-                    promote_active_session(authenticated_user, db_chat.id)
+                    await asyncio.to_thread(
+                        _persist_chat_source_pool,
+                        authenticated_user,
+                        db_chat.id,
+                        selected_sources,
+                        session_data,
+                    )
 
                 user_msg = Message(chat_id=db_chat.id, role="user", content=query)
                 db.add(user_msg)
@@ -388,14 +469,19 @@ async def analyze(
             db_chat = Chat(
                 user_id=authenticated_user, 
                 title=query[:50] + "...",
-                data_source_id=data_source_id
+                data_source_id=data_source_id,
+                data_sources=selected_sources,
             )
             db.add(db_chat)
             db.commit()
             db.refresh(db_chat)
-            # Promocionar los datos de la sesión activa al nuevo chat ID
-            from src.utils.common import promote_active_session
-            promote_active_session(authenticated_user, db_chat.id)
+            await asyncio.to_thread(
+                _persist_chat_source_pool,
+                authenticated_user,
+                db_chat.id,
+                selected_sources,
+                session_data,
+            )
         
         user_msg = Message(chat_id=db_chat.id, role="user", content=query)
         db.add(user_msg)
@@ -444,6 +530,7 @@ def analyze_audit(
     request: Request,
     chat_id: Optional[int] = Form(None),
     data_source_id: Optional[int] = Form(None),
+    data_source_ids: Optional[List[int]] = Form(None),
     db: Session = Depends(get_db)
 ):
     """Auditoría determinista y verificable (Fase 1 de P-54).
@@ -461,36 +548,46 @@ def analyze_audit(
         ).first()
         if not db_chat:
             raise HTTPException(status_code=404, detail="Recurso no encontrado o sin acceso")
-        if not data_source_id and db_chat.data_source_id:
-            data_source_id = db_chat.data_source_id
-
-    source_obj = None
-    if data_source_id:
-        source_obj = db.query(DataSource).filter(
-            DataSource.id == data_source_id, DataSource.user_id == authenticated_user
-        ).first()
-        if not source_obj:
-            raise HTTPException(status_code=404, detail="Recurso no encontrado o sin acceso")
+    selected_sources = _resolve_chat_sources(
+        db, authenticated_user, db_chat, data_source_id, data_source_ids
+    )
+    if selected_sources and data_source_id is None:
+        data_source_id = int(selected_sources[0].id)
+    source_obj = next(
+        (source for source in selected_sources if int(source.id) == data_source_id),
+        selected_sources[0] if selected_sources else None,
+    )
 
     try:
-        session_data = get_user_data(authenticated_user, chat_id)
-        if session_data is None:
-            session_data = ensure_user_session(authenticated_user, db, chat_id)
+        if chat_id:
+            session_data = ensure_user_session(
+                authenticated_user,
+                db,
+                chat_id,
+                [int(source.id) for source in selected_sources] if selected_sources else None,
+            )
+        else:
+            session_data = get_user_data(authenticated_user, None)
+            if session_data is None:
+                session_data = ensure_user_session(
+                    authenticated_user,
+                    db,
+                    None,
+                    [int(source.id) for source in selected_sources] if selected_sources else None,
+                )
+            if selected_sources and session_data:
+                session_data = scope_session_to_sources(session_data, selected_sources)
         if not session_data:
             raise HTTPException(
                 status_code=400,
                 detail="No hay datos cargados para auditar. Por favor selecciona una fuente de datos."
             )
-        pool_ids = set()
-        if session_data.get("source_id") is not None:
-            pool_ids.add(session_data.get("source_id"))
-        for source_id in session_data.get("sources", []) or []:
-            pool_ids.add(source_id)
-        if data_source_id and pool_ids and data_source_id not in pool_ids:
-            raise HTTPException(
-                status_code=400,
-                detail="La fuente solicitada no está cargada en esta conversación. Vuelve a seleccionarla antes de auditar."
-            )
+        if not chat_id and not selected_sources:
+            selected_sources = _sources_in_session(db, authenticated_user, session_data)
+            if selected_sources:
+                session_data = scope_session_to_sources(session_data, selected_sources)
+                data_source_id = int(selected_sources[0].id)
+                source_obj = selected_sources[0]
         if session_data.get("type") != "file":
             raise HTTPException(
                 status_code=400,
@@ -530,12 +627,14 @@ def analyze_audit(
                 user_id=authenticated_user,
                 title=f"Auditoría verificada: {title_source[:55]}",
                 data_source_id=data_source_id,
+                data_sources=selected_sources,
             )
             db.add(db_chat)
             db.commit()
             db.refresh(db_chat)
-            from src.utils.common import promote_active_session
-            promote_active_session(authenticated_user, db_chat.id)
+            _persist_chat_source_pool(
+                authenticated_user, db_chat.id, selected_sources, session_data
+            )
 
         from src.utils.common import json_serializable
         assistant_msg = _save_audit_message(
@@ -571,7 +670,7 @@ def analyze_audit(
 @limiter.limit("60/hour")
 def get_suggestions(
     request: Request,
-    api_key: str = Form(...),
+    api_key: Optional[str] = Form(None),
     chat_id: Optional[int] = Form(None), # AÑADIDO
     data_source_id: Optional[int] = Form(None),
     provider: str = Form("gemini"),
@@ -777,7 +876,7 @@ async def detect_anomalies(request: Request, db: Session = Depends(get_db)):
 def get_report_summary(
     request: Request,
     query: str = Form(...),
-    api_key: str = Form(...),
+    api_key: Optional[str] = Form(None),
     provider: str = Form("gemini"),
     mistral_key: Optional[str] = Form(None),
     db: Session = Depends(get_db)

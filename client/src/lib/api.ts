@@ -145,7 +145,7 @@ export async function uploadFile(file: File, userId: string) {
   return handleResponse(response);
 }
 
-export async function analyzeData(query: string, apiKey: string, userId: string, chatId?: number, dataSourceId?: number, provider?: string, mistralKey?: string): Promise<AnalyzeResponse> {
+export async function analyzeData(query: string, apiKey: string, userId: string, chatId?: number, dataSourceId?: number, provider?: string, mistralKey?: string, dataSourceIds?: number[]): Promise<AnalyzeResponse> {
   const formData = new FormData();
   formData.append("query", query);
   formData.append("api_key", apiKey);
@@ -154,6 +154,7 @@ export async function analyzeData(query: string, apiKey: string, userId: string,
   if (dataSourceId) formData.append("data_source_id", dataSourceId.toString());
   if (provider) formData.append("provider", provider);
   if (mistralKey) formData.append("mistral_key", mistralKey);
+  dataSourceIds?.forEach((id) => formData.append("data_source_ids", id.toString()));
 
   const response = await securedFetch(`${API_URL}/analyze`, {
     method: "POST",
@@ -162,16 +163,26 @@ export async function analyzeData(query: string, apiKey: string, userId: string,
   return handleResponse(response);
 }
 
-export async function runAudit(chatId?: number, dataSourceId?: number): Promise<AuditResponse> {
+export async function runAudit(chatId?: number, dataSourceId?: number, dataSourceIds?: number[]): Promise<AuditResponse> {
   const formData = new FormData();
   if (chatId) formData.append("chat_id", chatId.toString());
   if (dataSourceId) formData.append("data_source_id", dataSourceId.toString());
+  dataSourceIds?.forEach((id) => formData.append("data_source_ids", id.toString()));
 
   const response = await securedFetch(`${API_URL}/analyze/audit`, {
     method: "POST",
     body: formData,
   });
   return handleResponse(response) as Promise<AuditResponse>;
+}
+
+export async function setChatSources(chatId: number, sourceIds: number[]) {
+  const response = await securedFetch(`${API_URL}/history/${chatId}/sources`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ source_ids: sourceIds }),
+  });
+  return handleResponse(response);
 }
 
 export async function getHistory(userId: string) {

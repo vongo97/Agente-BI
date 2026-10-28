@@ -373,14 +373,6 @@ def get_user_data(user_id: str, chat_id: Optional[int] = None):
     except Exception as e:
         logger.error("Error cargando sesión persistente para %s (chat_id=%s): %s", mask_email(user_id), chat_id, e)
     
-    # 3. FALLBACK: Heredar de sesión activa
-    if chat_id:
-        active_key = get_session_key(user_id, None)
-        active_data = data_store.get(active_key)
-        if active_data is not None:
-            data_store[session_key] = active_data
-            return active_data
-            
     return None
 
 def save_user_data(user_id: str, data: dict, chat_id: Optional[int] = None):
@@ -545,34 +537,103 @@ def load_source_to_session(
     return False
 
 
-def ensure_user_session(user_id: str, db, chat_id: Optional[int] = None):
+def ensure_user_session(
+    user_id: str,
+    db,
+    chat_id: Optional[int] = None,
+    source_ids: Optional[list[int]] = None,
+):
     """Garantiza una sesión con datos, reconstruyéndola tras un reinicio.
 
-    Si la caché en memoria y el pickle local están vacíos (contenedor recién
-    levantado), reconstruye el pool desde la base de datos descargando cada
-    fuente de tipo archivo desde la nube. Es el mecanismo que hace que el
-    usuario NO tenga que volver a subir sus documentos tras un deploy.
+    Cuando se indica ``chat_id``, reconstruye exclusivamente las fuentes
+    asociadas a ese chat (o la fuente primaria de chats antiguos). Una sesión
+    activa de usuario nunca se hereda implícitamente por otro chat.
 
     Devuelve session_data o None si no hay fuentes recuperables.
     """
+    from src.database import Chat, DataSource  # import local: evita ciclos de imports
+
+    requested_ids = list(dict.fromkeys(source_ids or [])) if source_ids is not None else None
+    if chat_id is not None:
+        chat = db.query(Chat).filter(Chat.id == chat_id, Chat.user_id == user_id).first()
+        if not chat:
+            raise HTTPException(status_code=404, detail="Recurso no encontrado o sin acceso")
+        linked_sources = list(chat.data_sources or [])
+        if not linked_sources and chat.data_source:
+            linked_sources = [chat.data_source]
+        linked_by_id = {int(source.id): source for source in linked_sources}
+        if requested_ids is not None:
+            if not set(requested_ids).issubset(linked_by_id):
+                raise HTTPException(
+                    status_code=400,
+                    detail="Una o más fuentes no pertenecen a esta conversación.",
+                )
+            sources = [linked_by_id[source_id] for source_id in requested_ids]
+        else:
+            sources = linked_sources
+    elif requested_ids is not None:
+        sources = db.query(DataSource).filter(
+            DataSource.user_id == user_id,
+            DataSource.id.in_(requested_ids),
+        ).all() if requested_ids else []
+        if not isinstance(sources, list):
+            # Contrato: el ORM devuelve listas. Si la capa de DB no lo hace,
+            # se trata como "sin fuentes" en vez de propagar un objeto opaco.
+            sources = []
+        if len(sources) != len(requested_ids):
+            raise HTTPException(status_code=404, detail="Una o más fuentes no existen o no son accesibles.")
+        source_order = {source_id: index for index, source_id in enumerate(requested_ids)}
+        sources.sort(key=lambda source: source_order[int(source.id)])
+    else:
+        sources = db.query(DataSource).filter(DataSource.user_id == user_id).all()
+        if not isinstance(sources, list):
+            sources = []
+
     session_data = get_user_data(user_id, chat_id)
-    if session_data and session_data.get("data"):
+    expected_ids = {int(source.id) for source in sources}
+    current_ids = set(session_data.get("sources", []) or []) if session_data else set()
+    if session_data and session_data.get("source_id") is not None:
+        current_ids.add(int(session_data["source_id"]))
+    if (
+        session_data
+        and session_data.get("data")
+        and (chat_id is None and requested_ids is None or current_ids == expected_ids)
+    ):
         return session_data
 
-    from src.database import DataSource  # import local: evita ciclo de imports
-    sources = db.query(DataSource).filter(DataSource.user_id == user_id).all()
     if not sources:
-        return session_data  # None o vacío: no hay nada registrado para este usuario
+        if chat_id is not None:
+            empty_session = {"type": "file", "data": {}, "sources": []}
+            data_store[get_session_key(user_id, chat_id)] = empty_session
+            save_user_data(user_id, empty_session, chat_id=chat_id)
+            return empty_session
+        return None
+
+    source_types = {source.type for source in sources}
+    if len(source_types) > 1 and (chat_id is not None or requested_ids is not None):
+        raise HTTPException(
+            status_code=400,
+            detail="Una conversación solo puede reconstruir fuentes del mismo tipo.",
+        )
 
     logger.info(
-        "Reconstruyendo sesión desde DB+nube para %s (%d fuente(s)).",
-        mask_email(user_id), len(sources),
+        "Reconstruyendo sesión desde DB+nube para %s (chat_id=%s, %d fuente(s)).",
+        mask_email(user_id), chat_id, len(sources),
     )
+    session_key = get_session_key(user_id, chat_id)
+    rebuilt = {"type": sources[0].type, "data": {}, "sources": []}
+    if sources[0].type == "sql":
+        rebuilt = {"type": "file", "data": {}, "sources": []}
+    data_store[session_key] = rebuilt
+
     loaded_any = False
     for source in sources:
         if source.type in ("file", "gsheets"):
             # No persistir por cada fuente: con varias tablas, cada guardado
             # vuelve a serializar/cifrar/subir todo el pool y dispara la RAM.
+            if load_source_to_session(user_id, source, chat_id, persist=False):
+                loaded_any = True
+        elif source.type == "sql" and chat_id is not None:
             if load_source_to_session(user_id, source, chat_id, persist=False):
                 loaded_any = True
         # type == "sql" no se reconstruye automáticamente: crear engines para
@@ -582,4 +643,35 @@ def ensure_user_session(user_id: str, db, chat_id: Optional[int] = None):
     rebuilt = get_user_data(user_id, chat_id)
     if loaded_any and rebuilt:
         save_user_data(user_id, rebuilt, chat_id=chat_id)
-    return rebuilt
+        return rebuilt
+    data_store.pop(session_key, None)
+    return None
+
+
+def scope_session_to_sources(session_data: dict, sources: list) -> dict:
+    """Return a chat-scoped view of a loaded pool without mutating the user's pool."""
+    if not session_data or not sources:
+        raise HTTPException(status_code=400, detail="No hay fuentes seleccionadas para esta conversación.")
+    source_types = {source.type for source in sources}
+    if len(source_types) != 1:
+        raise HTTPException(status_code=400, detail="Selecciona fuentes del mismo tipo para una conversación.")
+    if sources[0].type != "file":
+        if len(sources) != 1 or session_data.get("type") != sources[0].type:
+            raise HTTPException(status_code=400, detail="El tipo de fuente no admite análisis multiarchivo.")
+        return session_data
+
+    pool = session_data.get("data") or {}
+    scoped_data = {}
+    for source in sources:
+        key = "".join(c if c.isalnum() else "_" for c in source.name.split(".")[0])
+        if key not in pool:
+            raise HTTPException(
+                status_code=400,
+                detail=f"La fuente '{source.name}' no está cargada en la sesión. Vuelve a seleccionarla.",
+            )
+        scoped_data[key] = pool[key]
+    return {
+        **session_data,
+        "data": scoped_data,
+        "sources": [int(source.id) for source in sources],
+    }

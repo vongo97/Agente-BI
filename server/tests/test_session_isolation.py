@@ -55,6 +55,20 @@ def test_get_session_file_differs_by_chat():
             common.SESSIONS_DIR = original_dir
 
 
+def test_missing_chat_session_does_not_inherit_the_active_user_pool(tmp_path, monkeypatch):
+    import src.utils.common as common
+
+    common.data_store.clear()
+    monkeypatch.setattr(common, "SESSIONS_DIR", str(tmp_path))
+    monkeypatch.setattr(common, "sync_cloud_to_local", lambda *_args, **_kwargs: False)
+    active_key = common.get_session_key("usuario@test.com")
+    common.data_store[active_key] = {"type": "file", "data": {"private": [1]}, "sources": [91]}
+
+    assert common.get_user_data("usuario@test.com", chat_id=42) is None
+    assert common.data_store[active_key]["sources"] == [91]
+    common.data_store.clear()
+
+
 def test_save_and_load_user_data_isolated_by_chat():
     """save_user_data y get_user_data deben aislar datos por chat_id."""
     import src.utils.common as common
@@ -129,3 +143,55 @@ def test_promote_active_session_uses_chat_key():
         assert common.data_store[active_key] is not None
     finally:
         common.data_store.clear()
+
+
+def test_ensure_user_session_rebuilds_only_sources_attached_to_chat(monkeypatch):
+    import src.utils.common as common
+
+    source_a = type("Source", (), {"id": 11, "type": "file", "name": "a.csv"})()
+    source_b = type("Source", (), {"id": 12, "type": "file", "name": "b.csv"})()
+    chat = type("Chat", (), {"id": 7, "user_id": "usuario@test.com", "data_sources": [source_a, source_b], "data_source": source_a})()
+
+    class Query:
+        def __init__(self, model):
+            self.model = model
+
+        def filter(self, *_args, **_kwargs):
+            return self
+
+        def first(self):
+            return chat
+
+        def all(self):
+            return [source_a, source_b]
+
+    class FakeDb:
+        def query(self, model):
+            return Query(model)
+
+    common.data_store.clear()
+    chat_key = common.get_session_key("usuario@test.com", 7)
+    common.data_store[chat_key] = {
+        "type": "file",
+        "data": {"a": "frame-a", "b": "frame-b", "private": "other-chat-frame"},
+        "sources": [11, 12, 99],
+    }
+    loaded_ids = []
+
+    def fake_load(_user_id, source, chat_id, persist=False):
+        loaded_ids.append(source.id)
+        session = common.data_store[common.get_session_key("usuario@test.com", chat_id)]
+        session["data"][source.name.split(".")[0]] = f"frame-{source.id}"
+        session["sources"].append(source.id)
+        return True
+
+    monkeypatch.setattr(common, "get_user_data", lambda *_args, **_kwargs: common.data_store.get(chat_key))
+    monkeypatch.setattr(common, "load_source_to_session", fake_load)
+    monkeypatch.setattr(common, "save_user_data", lambda *_args, **_kwargs: None)
+
+    rebuilt = common.ensure_user_session("usuario@test.com", FakeDb(), chat_id=7)
+
+    assert loaded_ids == [11, 12]
+    assert rebuilt["sources"] == [11, 12]
+    assert rebuilt["data"] == {"a": "frame-11", "b": "frame-12"}
+    common.data_store.clear()
