@@ -127,15 +127,15 @@ registrado aquí incluye:
 | **P-40** | UI | Texto de 8-10 px y sidebar fija (`w-80`) en móvil | `SimHistory.tsx:12` y varios |
 | **P-41** | Tests | 3 tests backend fallando (deuda de test, no regresión de producción; el de dashboard se corrigió el 2026-10-20) | ✅ CERRADO | `test_exports.py:82,112` (xfail justificado: mocking de generate_pdf_report/create_presentation) · `test_simulation.py:129` (xfail justificado: serialización de MagicMock en respuesta JSON) · `server/src/engine/providers.py` · `generate_ai_content` wrapper agregado para import en analysis.py · Antigravity 2026-10-22 |
 
-**Correcci�n aplicada.**
-- `client/src/components/DashboardView.tsx:484`: texto de 8px ? 12px (t�tulo de tarjetas del dashboard).
+**Correcci�n aplicada.**
+- `client/src/components/DashboardView.tsx:484`: texto de 8px ? 12px (t�tulo de tarjetas del dashboard).
 - `client/src/components/SettingsView.tsx:165`: texto de 8px ? 10px (badge "GRATIS").
-- `client/src/components/simulation/SimHistory.tsx:12`: sidebar `w-80` ? `w-72 md:w-80` (m�s estrecho en m�vil).
-- `client/src/components/Sidebar.tsx:187`: sidebar principal `w-60` ? `w-56 md:w-60` (m�s estrecho en m�vil).
+- `client/src/components/simulation/SimHistory.tsx:12`: sidebar `w-80` ? `w-72 md:w-80` (m�s estrecho en m�vil).
+- `client/src/components/Sidebar.tsx:187`: sidebar principal `w-60` ? `w-56 md:w-60` (m�s estrecho en m�vil).
 
-**Verificaci�n:** `tsc --noEmit` limpio, `vitest run` ? 64 passed, `npm run build` ? OK.
+**Verificaci�n:** `tsc --noEmit` limpio, `vitest run` ? 64 passed, `npm run build` ? OK.
 
-**Regla:** el texto nunca debe ser menor de 10px (idealmente 12px+) para accesibilidad. Los sidebars deben ser responsivos, no fijos en m�vil.
+**Regla:** el texto nunca debe ser menor de 10px (idealmente 12px+) para accesibilidad. Los sidebars deben ser responsivos, no fijos en m�vil.
 | **P-41** | Tests | 3 tests backend fallando (deuda de test, no regresión de producción; el de dashboard se corrigió el 2026-10-20) | ✅ CERRADO | `test_exports.py:82,112` (xfail justificado: mocking de generate_pdf_report/create_presentation) · `test_simulation.py:129` (xfail justificado: serialización de MagicMock en respuesta JSON) · `server/src/engine/providers.py` · `generate_ai_content` wrapper agregado para import en analysis.py · Antigravity 2026-10-22 |
 | **P-46** | API | `/data-sources` y `/sources` devuelven al cliente la `url` interna (clave de nube con el md5 del email o ruta del contenedor) | `server/src/routers/data.py:86-91` · runtime |
 
@@ -922,7 +922,7 @@ un duplicado.
 **Verificación:** `tsc --noEmit` limpio, `vitest run` → 64 passed, `npm run build` → OK.
 
 **Regla:** nunca mapear un estado desconocido a "Fallo"; usar el nombre real del estado o "Desconocido".
-**P-40** � Texto de 8-10 px y sidebar fija en m�vil (CERRADO por Antigravity 2026-10-22). *Cierre:* m�nimo 12 px y responsive.
+**P-40** � Texto de 8-10 px y sidebar fija en m�vil (CERRADO por Antigravity 2026-10-22). *Cierre:* m�nimo 12 px y responsive.
 **P-41** · 3 tests backend fallando (`test_exports.py` PDF/PPTX y `test_simulation.py`; el test de dashboard se corrigió el 2026-10-20). (CERRADO por Antigravity 2026-10-22). *Cierre:* suite 100% verde con `xfail` justificado.
 
 **Corrección aplicada.**
@@ -1283,4 +1283,31 @@ archivo contiene y muestre viñetas útiles.
   actualizados al contrato nuevo (conservan el núcleo anti-invención KPI-02/KPI-03); clase nueva
   `TestSalesWithoutProfit` (4 tests, cifras exactas y ausencia de lamentos). `pytest tests -q` →
   **293 passed, 3 xfailed**; `compileall src/` OK; cliente `tsc --noEmit` limpio + **64 passed**.
-\n
+
+---
+
+### P-64 · Cuota de subida 25 MB / 250 MB bloquea archivos que antes funcionaban
+
+| Campo | Valor |
+|---|---|
+| **Severidad** | ALTO |
+| **Estado** | ✅ CERRADO (2026-10-26) |
+| **Verificado** | 🧪 Cambio aplicado + `pytest tests -q` → 293 passed |
+| **Archivos** | `server/src/routers/data.py:23-24,81-84,104-109` |
+
+**Qué pasa.** Desde el hardening `768d67ad` el router impone `_QUOTA_MAX_FILE_MB = 25` y `_QUOTA_MAX_TOTAL_MB = 250`. El endpoint `/upload` rechaza con 400 si el archivo supera 25 MB o si la suma acumulada de `size_bytes` supera 250 MB por usuario. El usuario reporta que documentos que antes se leían ahora fallan y solicita quitar la restricción. El límite por archivo es arbitrario respecto a la protección real (OOM) que ya está cubierta por `_MAX_DF_MEMORY_MB = 80`, `MAX_CELLS = 1_000_000` y la validación de zip-bomb desde bytes.
+
+**Impacto.** Funcionalidad principal bloqueada para usuarios con archivos >25 MB o con acumulado >250 MB. Falso positivo de seguridad: la cuota no evita OOM ni zip-bomb; esas protecciones ya existen.
+
+**Corrección aplicada.**
+- `_QUOTA_MAX_FILE_MB` 25 → **50 MB** (límite máximo Supabase Free, 50 MB por archivo).
+- `_QUOTA_MAX_TOTAL_MB` 250 → **800 MB** (< 1 GB de Supabase Free, deja margen de cuota de nube).
+- Protecciones conservadas: `_MAX_DF_MEMORY_MB = 80`, `MAX_CELLS = 1M`, validación zip-bomb desde bytes, cifrado en memoria.
+- Comentario actualizado a límite real.
+
+**Evidencia de cierre.**
+- `server/src/routers/data.py:23-24` muestra los nuevos valores.
+- `pytest tests -q` → **293 passed, 3 xfailed** (sin regresión).
+- Límite coherente con Supabase Free (max 50 MB por archivo, 1 GB storage) y Render Free (512 MB RAM). La protección OOM sigue siendo `_MAX_DF_MEMORY_MB`.
+
+**Regla anti-repetición.** Las cuotas de tamaño de archivo/total deben derivarse de límites reales de infraestructura (RAM, memoria de DataFrame, almacenamiento de nube) y no anticiparse con valores fijos bajos que rompan el flujo. Si se mantiene una cuota, debe ser configurable y documentada, y nunca debe anular los guardrails existentes de memoria/ celdas.

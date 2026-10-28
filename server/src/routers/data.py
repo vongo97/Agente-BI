@@ -20,8 +20,8 @@ router = APIRouter(tags=["Data Management"])
 
 # ── Cuotas por usuario ──────────────────────────────────────────────────────────────
 _QUOTA_MAX_SOURCES   = 100             # Máx fuentes activas por usuario
-_QUOTA_MAX_FILE_MB   = 25             # Máx por archivo (MB)
-_QUOTA_MAX_TOTAL_MB  = 250            # Máx almacenamiento total por usuario (MB)
+_QUOTA_MAX_FILE_MB   = 50             # Máx por archivo (MB) — límite Supabase Free (50 MB) y compatible con _MAX_DF_MEMORY_MB
+_QUOTA_MAX_TOTAL_MB  = 800            # Máx almacenamiento total por usuario (MB) — < 1 GB de Supabase Free
 
 # Cuota de memoria por DataFrame (P-61): un CSV de texto puede ocupar 3-6x su
 # tamaño en RAM. En el plan gratuito (512 MB) aceptar cualquier archivo de
@@ -91,7 +91,7 @@ async def upload_file(request: Request, file: UploadFile = File(...), db: Sessio
                 detail=f"Límite alcanzado: máximo {_QUOTA_MAX_SOURCES} fuentes de datos por usuario. Elimina alguna antes de subir otra."
             )
 
-        # Validar cuota de almacenamiento total (250 MB por usuario)
+        # Validar cuota de almacenamiento total
         user_sources = db.query(DataSource).filter(
             DataSource.user_id == authenticated_user,
             DataSource.type == "file"
