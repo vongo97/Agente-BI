@@ -425,7 +425,7 @@ async def remove_session_source(request: Request, source_id: int = Form(...), db
 @limiter.limit("5/minute")
 async def clean_data(
     request: Request,
-    api_key: str = Form(...),
+    api_key: Optional[str] = Form(None),
     provider: str = Form("gemini"),
     mistral_key: Optional[str] = Form(None),
     db: Session = Depends(get_db)
