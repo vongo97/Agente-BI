@@ -1,6 +1,10 @@
 import os
 try:
-    from mistralai import Mistral
+    # 1.x expone Mistral en la raíz; 2.x en mistralai.client
+    try:
+        from mistralai import Mistral
+    except ImportError:
+        from mistralai.client import Mistral
     print("✅ Librería mistralai cargada correctamente.")
 except ImportError:
     print("❌ Librería mistralai NO encontrada.")

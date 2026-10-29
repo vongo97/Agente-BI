@@ -33,7 +33,11 @@ class SwarmEngine:
             
         if self.provider in ["mistral", "hybrid"]:
             try:
-                from mistralai import Mistral
+                # 1.x expone Mistral en la raíz; 2.x en mistralai.client
+                try:
+                    from mistralai import Mistral
+                except ImportError:
+                    from mistralai.client import Mistral
                 self.m_client = Mistral(api_key=self.mistral_key)
                 logger.info("[MISTRAL] Motor activo: %s", self.mistral_model)
             except ImportError:

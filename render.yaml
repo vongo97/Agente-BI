@@ -60,7 +60,7 @@ services:
     rootDir: client
     plan: free
     envVars:
-      # P-59: versión de Node con los parches de seguridad del 21-10-2026 (RCE Brotli, TLS).
+      # P-68: versión de Node con los parches de seguridad del 21-10-2026 (RCE Brotli, TLS).
       - key: NODE_VERSION
         value: 24.22.1
       # URL completa del backend. NOTA: fromService (property: host) inyecta solo

@@ -60,12 +60,15 @@ def validate_data_quality(data):
         
     return False, "Formato de datos no reconocido para validación."
 
-# Compatibilidad con mistralai
+# Compatibilidad con mistralai (1.x expone Mistral en la raíz; 2.x en mistralai.client)
 try:
     from mistralai import Mistral
 except ImportError:
-    Mistral = None
-    logger.warning("Mistralai no instalado.")
+    try:
+        from mistralai.client import Mistral
+    except ImportError:
+        Mistral = None
+        logger.warning("Mistralai no instalado.")
 
 # Caché global para evitar que el Garbage Collector destruya los clientes HTTPX (Error: Client has been closed)
 _clients = {}
@@ -131,7 +134,7 @@ def generate_ai_content(prompt, api_key, provider="gemini", temperature=0.7, mod
                     return response.text
                 elif provider == "mistral":
                     if not api_key: return "⚠️ Falta API Key de Mistral."
-                    from mistralai import Mistral
+                    if Mistral is None: return "⚠️ SDK de Mistral no instalada."
                     if clean_key not in _clients:
                         _clients[clean_key] = Mistral(api_key=clean_key)
                     client = _clients[clean_key]
