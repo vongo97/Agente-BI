@@ -148,9 +148,16 @@ async def live():
 @app.get("/")
 @app.get("/health")
 async def root():
+    # P-22: las sondas (inspección de esquema y probe contra Supabase) son I/O
+    # síncronas; se ejecutan en un hilo aparte para que /health no bloquee el
+    # event loop (y con él /live, que es lo que Render sondea para no reiniciar).
+    from fastapi.concurrency import run_in_threadpool
     from src.database import db_diagnostic, db_schema_diagnostic
     from src.engine.audit_agent import audit_agent_enabled
     from src.utils.supabase_storage import storage_diagnostic
+
+    schema = await run_in_threadpool(db_schema_diagnostic)
+    storage = await run_in_threadpool(storage_diagnostic)
     return {
         "status": "online",
         "message": "Agente BI API is running (Modular Mode)",
@@ -162,9 +169,9 @@ async def root():
         # expone host, usuario, bucket ni credenciales.
         "database": {
             **db_diagnostic(),
-            "schema": db_schema_diagnostic(),
+            "schema": schema,
         },
-        "storage": storage_diagnostic(),
+        "storage": {k: v for k, v in storage.items() if k != "bucket"},
     }
 
 if __name__ == "__main__":
