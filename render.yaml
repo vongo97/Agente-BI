@@ -47,6 +47,11 @@ services:
       # aleatorio seguro (mínimo 32 chars). Ej: openssl rand -hex 32
       - key: AUTH_SECRET
         sync: false  # NO poner el valor aquí; configurarlo en el Dashboard de Render
+      # P-33 (SSRF): hosts autorizados para POST /connect-sql, separados por coma.
+      # Si está vacía, el endpoint rechaza toda conexión saliente en producción
+      # (fail-closed). Configurar en el Dashboard con los hosts reales de tus BD.
+      - key: ALLOWED_SQL_HOSTS
+        sync: false
 
   # 3. Frontend (Next.js)
   # NOTA: si Render ya creo este servicio con sufijo (agente-bi-client-5nx4),

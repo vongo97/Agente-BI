@@ -51,9 +51,17 @@ def clean_sql_url(url):
     return url
 
 def get_sql_engine(url):
-    """Crea y devuelve el motor de SQLAlchemy asegurando una URL limpia."""
+    """Crea y devuelve el motor de SQLAlchemy asegurando una URL limpia.
+
+    Valida la URL contra SSRF en el punto único de creación de motores: cubre tanto
+    `/connect-sql` como las reconexiones de fuentes guardadas (`ensure_user_session`),
+    de modo que una URL persistida tampoco pueda apuntar a la red interna.
+    """
+    from src.utils.security import validate_external_url_host
+
     clean_url = clean_sql_url(url)
-    
+    validate_external_url_host(clean_url)
+
     if clean_url not in sql_engines:
         sql_engines[clean_url] = create_engine(clean_url)
     return sql_engines[clean_url]

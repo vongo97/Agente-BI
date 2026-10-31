@@ -17,6 +17,20 @@ def _is_development_environment() -> bool:
     env = os.getenv("ENVIRONMENT", "production").lower()
     return env in ("development", "dev", "local", "test")
 
+
+def _is_production_environment() -> bool:
+    """True salvo que el entorno se declare explícitamente como desarrollo local."""
+    return not _is_development_environment()
+
+
+# Esquemas de conexión SQL permitidos (allowlist). Cualquier otro (`sqlite:///`,
+# `file://`, `duckdb://`…) permitiría leer archivos locales en lugar de una BD remota.
+ALLOWED_SQL_SCHEMES = {
+    "postgres", "postgresql", "postgresql+psycopg2", "postgresql+psycopg",
+    "mysql", "mysql+pymysql", "mariadb", "mariadb+pymysql",
+    "mssql", "mssql+pyodbc", "oracle", "oracle+oracledb",
+}
+
 ENCRYPTION_KEY = os.getenv("ENCRYPTION_KEY")
 
 if not ENCRYPTION_KEY:
@@ -118,15 +132,28 @@ def encrypt_bytes(data: bytes) -> bytes:
 def validate_external_url_host(url: str) -> None:
     """Valida que la URL (ej. conexión SQLAlchemy) no apunte a hosts internos/privados.
 
-    Mitiga SSRF: rechaza loopback, RFC1918, link-local, metadata cloud y
-    cualquier host que no esté en la allowlist opcional ALLOWED_SQL_HOSTS.
-    Raises ValueError si la URL no es válida.
+    Mitiga SSRF con tres capas:
+      1. Solo esquemas de red explícitamente permitidos (nada de `sqlite:///` o `file://`).
+      2. En producción, `ALLOWED_SQL_HOSTS` es obligatoria (fail-closed): sin allowlist no
+         se permiten conexiones salientes, para que un despliegue mal configurado no quede
+         expuesto a SSRF por defecto.
+      3. Se validan **todas** las direcciones que devuelve el DNS (no solo la primera) y se
+         rechaza cualquier IP privada, loopback, link-local, reservada, multicast o sin
+         especificar.
+    Raises ValueError si la URL no es válida o no pasa el filtro.
     """
     import ipaddress
     from urllib.parse import urlparse
     import socket
 
     parsed = urlparse(url)
+    scheme = (parsed.scheme or "").lower()
+    if scheme not in ALLOWED_SQL_SCHEMES:
+        raise ValueError(
+            f"Esquema '{scheme or '(vacío)'}' no permitido. Usa uno de: "
+            f"{', '.join(sorted(ALLOWED_SQL_SCHEMES))}."
+        )
+
     host = parsed.hostname
     if not host:
         raise ValueError("URL sin host válido.")
@@ -135,22 +162,37 @@ def validate_external_url_host(url: str) -> None:
     if allowed:
         if host.lower() not in allowed:
             raise ValueError(f"El host '{host}' no está en la lista de hosts permitidos (ALLOWED_SQL_HOSTS).")
+        # Un host explícitamente autorizado por el operador se acepta tal cual.
         return
+
+    if _is_production_environment():
+        raise ValueError(
+            "Las conexiones SQL externas están deshabilitadas: configura ALLOWED_SQL_HOSTS "
+            "con los hosts autorizados."
+        )
 
     blocked_names = {"localhost", "localhost.localdomain"}
     if host.lower() in blocked_names:
         raise ValueError("No se permiten conexiones a hosts locales.")
 
-    # Resolver a IP y bloquear rangos privados
+    # Resolver TODAS las direcciones (A y AAAA): un solo registro privado basta para bloquear.
     try:
-        addr_info = socket.getaddrinfo(host, None)
-        ip = ipaddress.ip_address(addr_info[0][4][0])
+        addr_info = socket.getaddrinfo(host, None, proto=socket.IPPROTO_TCP)
     except Exception as e:
         raise ValueError(f"No se pudo resolver el host: {type(e).__name__}")
 
-    if (ip.is_private or ip.is_loopback or ip.is_link_local or
-            ip.is_reserved or ip.is_multicast or ip.is_unspecified):
-        raise ValueError("No se permiten conexiones a direcciones IP privadas, locales o reservadas.")
+    ips = {info[4][0].split("%")[0] for info in addr_info if info[4]}
+    if not ips:
+        raise ValueError("El host no resolvió a ninguna dirección IP.")
+
+    for ip_str in ips:
+        try:
+            ip = ipaddress.ip_address(ip_str)
+        except ValueError:
+            raise ValueError(f"Dirección IP no válida devuelta por el DNS: {ip_str}")
+        if (ip.is_private or ip.is_loopback or ip.is_link_local or
+                ip.is_reserved or ip.is_multicast or ip.is_unspecified):
+            raise ValueError("No se permiten conexiones a direcciones IP privadas, locales o reservadas.")
 
 
 def decrypt_file_to_bytes(file_path: str) -> bytes:
