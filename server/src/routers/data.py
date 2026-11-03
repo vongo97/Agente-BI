@@ -481,7 +481,25 @@ async def clean_data(
         logger.error("Error al limpiar datos con IA: %s", safe_error_message(e))
         raise HTTPException(status_code=500, detail="Error interno del servidor al limpiar datos.")
 
-# --- GESTIÃ“N DE FUENTES GUARDADAS ---
+# --- GESTIÓN DE FUENTES GUARDADAS ---
+
+def _serialize_source(source: DataSource) -> dict:
+    """Representación pública de una fuente guardada (P-46).
+
+    `url` NO se devuelve al cliente: para archivos es la clave de nube
+    (`data_sources/<md5(email)>/...`) o la ruta del contenedor, y para SQL es la
+    cadena de conexión cifrada. El backend la usa internamente
+    (`ensure_user_session`), pero no es necesaria en la UI.
+    """
+    return {
+        "id": source.id,
+        "name": source.name,
+        "type": source.type,
+        "columns": source.columns,
+        "is_encrypted": source.is_encrypted,
+        "size_bytes": source.size_bytes,
+        "created_at": source.created_at,
+    }
 
 @router.get("/data-sources")
 @limiter.limit("15/minute")
@@ -490,7 +508,7 @@ async def get_data_sources(request: Request, db: Session = Depends(get_db)):
     check_authorization(authenticated_user)
     try:
         sources = db.query(DataSource).filter(DataSource.user_id == authenticated_user).all()
-        return sources
+        return [_serialize_source(s) for s in sources]
     except Exception as e:
         from src.utils.logging_config import safe_error_message
         logger.error("Error al listar data-sources: %s", safe_error_message(e))
@@ -528,7 +546,7 @@ async def save_data_source(
         db.add(new_source)
         db.commit()
         db.refresh(new_source)
-        return new_source
+        return _serialize_source(new_source)
     except Exception as e:
         from src.utils.logging_config import safe_error_message
         logger.error("Error al guardar data-source: %s", safe_error_message(e))
@@ -572,7 +590,8 @@ async def list_data_sources(request: Request, db: Session = Depends(get_db)):
     authenticated_user = get_authenticated_user()
     check_authorization(authenticated_user)
     try:
-        return db.query(DataSource).filter(DataSource.user_id == authenticated_user).order_by(DataSource.created_at.desc()).all()
+        sources = db.query(DataSource).filter(DataSource.user_id == authenticated_user).order_by(DataSource.created_at.desc()).all()
+        return [_serialize_source(s) for s in sources]
     except Exception as e:
         from src.utils.logging_config import safe_error_message
         logger.error("Error al obtener sources: %s", safe_error_message(e))
