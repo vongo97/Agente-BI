@@ -23,7 +23,10 @@ jobs:
           cache: pip
 
       - name: Install dependencies
-        run: pip install -r requirements.txt
+        # requirements-dev.txt añade pytest: requirements.txt es solo runtime
+        # (lo que Render despliega); sin esto, `python -m pytest` muere con
+        # "No module named pytest" en <1s (causa de CI #1..#4 en rojo).
+        run: pip install -r requirements.txt -r requirements-dev.txt
 
       - name: Compile sources (P-60 rule)
         run: python -m compileall src -q

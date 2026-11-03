@@ -1,0 +1,4 @@
+# Dependencias de desarrollo/pruebas (no se despliegan a producción).
+# CI (.github/workflows/ci.yml) instala requirements.txt + este archivo.
+# httpx ya vive en requirements.txt (lo usa TestClient de FastAPI en runtime).
+pytest>=8.0
