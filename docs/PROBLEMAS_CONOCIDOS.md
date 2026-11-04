@@ -51,7 +51,7 @@ registrado aquí incluye:
 
 ## 2. Resumen (ordenado de mayor a menor)
 
-**Totales:** 4 críticos · 22 altos · 27 medios · 8 bajos (filas del resumen) · **69 IDs registrados**.
+**Totales:** 4 críticos · 23 altos · 27 medios · 8 bajos (filas del resumen) · **70 IDs registrados**.
 Deuda de registro conocida: **P-57–P-65** solo tienen sección de detalle (sin fila en el resumen) y **P-42** se cita en commits pero no está registrado.
 
 ### 🔴 CRÍTICOS
@@ -88,6 +88,7 @@ Deuda de registro conocida: **P-57–P-65** solo tienen sección de detalle (sin
 | **P-67** | Dependencias Python | 16 de 118 paquetes del backend con advisories publicados tras el cierre de P-06: `python-multipart` 0.0.12 (16), `PyJWT` 2.13.0 (29, auth), `cryptography` 43.0.1 (10, Fernet), `pillow` 11.3.0 (74), `starlette` 0.38.6 (14), `oauthlib` 3.3.1 (timing attack PKCE), `certifi` 2026.5.20 (CA emSign comprometido), `urllib3`, `anyio`, `h2`, `hpack`, `httplib2`, `mako`, `pyasn1`, `python-dotenv`, `pip` | ✅ CERRADO | `server/requirements.txt`: `fastapi` 0.133.0 (starlette ≥1.3.1), `python-multipart` 0.0.31, `PyJWT` 2.15.0, `cryptography` 50.0.2, `google-genai` 2.33.0 (desbloquea `pillow` 13.0.0), `mistralai` 2.10.1, `httpx` 0.28.1 y transitivos. Re-auditoría OSV (129 paquetes): **0 vulnerables**; `pip` quedó actualizado a 26.2.2 en el venv (herramienta de instalación, no se importa en runtime). `pip check` OK · `pytest tests` → 305 passed, 3 xfailed |
 | **P-68** | Infra / Node.js | Node.js local v24.13.0 afectado por el release de seguridad del 21-10-2026 (RCE Brotli CVE-2026-111497, bypass TLS hostname CVE-2026-105483/106069, `dns.resolve` CVE-2026-105482). `render.yaml` no fija `NODE_VERSION` del servicio cliente | 🟡 PARCIAL | `render.yaml` (servicio cliente) fija `NODE_VERSION: 24.22.1`, pendiente de verificar en el próximo deploy. **Pendiente usuario:** actualizar Node local (`node --version` → v24.13.0) a v24.22.1 |
 | **P-69** | Dependencias Python | Advisories nuevos detectados en la re-auditoría OSV del 2026-10-29: `cryptography` 49.0.0 (GHSA-g6cj-pr64-35w5 / PYSEC-2026-3552, oráculo Bleichenbacher en PKCS#7 EnvelopedData, fix 50.0.0), `fpdf2` 2.8.1 (GHSA-rw7v-4hrq-x6r9 SSRF por carga implícita de URLs/imágenes y GHSA-wqw6-wpr3-45rh bomba SVG `<use>`, fix 2.8.8), `opentelemetry-api` 1.39.1 (GHSA-xcq7-p3pf-p88h `tracestate` sin límite, fix 1.45.1) | ✅ CERRADO | `server/requirements.txt`: `cryptography==50.0.2`, `fpdf2==2.8.9`, `opentelemetry-api>=1.45.1` + `opentelemetry-semantic-conventions>=0.66b1` (0.66b1 fija api 1.45.1; obligó a `mistralai` 2.10.1, el primer 2.x sin tope `<0.61` en semantic-conventions). Re-auditoría OSV del venv `.venv-codex`: **0 vulnerables** · `pytest tests` → 305 passed, 3 xfailed |
+| **P-71** | IA/BI | La auditoría narra tarjetas, no interpreta: el usuario necesita el relato natural ("la primera ola fue una meseta", "el -100% es truncado") y hoy se lo da un humano u otra IA → el producto falla en su propuesta de valor | ✅ CERRADO (2026-11-04) | `insight_auditor.py`: nueva `TIME-G03` cobertura por año con días, meseta en `TIME-G01`, caveat en `TIME-G02`, `MET-G04` rango típico, `CAT-G03` estado/resultado reservado antes de CAT-G02, calidad explicada · `audit_agent.py`: narrador natural (`narration` + `fact_ids`) con verificación de CADA cifra contra el paquete (separadores, magnitudes, variaciones derivadas del mismo enunciado); una cifra ajena → determinista · COVID real: 2020/2021/2022 con días, Fallecido 3.0%, edad 27-53, calidad explicada · narrativa natural ACEPTADA y `31.7%` RECHAZADA · `TestNarrativeInterpretation` (6) + `TestNaturalNarrationValidation` (11) · backend **332 passed, 3 xfailed**; cliente **88 passed**, tsc 0 |
 | **P-43** | API | `except Exception` de los endpoints de simulación se traga los `HTTPException` accionables → todo error se ve como 500 "Error interno" | ✅ CERRADO | `simulation.py` (4 endpoints) · `dashboard.py` (auto_dashboard) · `exports.py` (chart, pptx) · `tests/test_http_exception_passthrough*.py` |
 
 ### 🟡 MEDIOS
@@ -997,6 +998,8 @@ un duplicado.
 | 2026-11-03 | **P-46 CERRADO (URL interna al cliente).** `GET /data-sources`, `POST /data-sources` y `GET /sources` devolvían los objetos ORM tal cual, incluida la columna `url`: para archivos es la clave de nube `data_sources/<md5(email)>/...` (ruta adivinable), para SQL la cadena de conexión cifrada y para legacy la ruta del contenedor. Ahora los tres endpoints usan `_serialize_source()` (mismo patrón que `dashboard.py:_serialize_chat_source` ya aplicaba en el historial): la respuesta pública pierde `url` y el backend la sigue usando internamente para reconectar la sesión. Verificado que el cliente no consume ese campo (en `api.ts` solo hay POST/DELETE para fuentes). Evidencia: `tests/test_source_serialization.py` (3 passed) · suite completa **318 passed, 3 xfailed**. |
 | 2026-11-04 | **P-61 ampliado (timeout LLM) + P-70 registrado.** El usuario reprodujo en producción el timeout del chat: auditoría determinista OK, pero `/analyze` (LLM, 30-90 s) abortó a los 30 s con "Tiempo de espera agotado" y 2 reintentos duplicando el trabajo. Fix: `LLM_TIMEOUT_MS=180 s` + `retries: 0` en las 8 llamadas LLM de `api.ts` (`LLM_NETWORK_OPTIONS`); regresión `LlmTimeouts.test.ts` (10 passed). Mismo análisis del dataset INE reveló **P-70**: MET-G01/G02 promedian tasas (21.03/22.53) con brechas (1.52 pp) en la misma columna y muestran 15.03 como si fuera la tasa; registrado ABIERTO con tres opciones de diseño. Análisis verificado del dataset (2009-2025): paro juvenil 16-24 promedio 39.3% (vs 17.7% total), mejora 2009→2025 de -12.65 pp juvenil vs -7.25 pp total, brecha de género 0 pp (2009) → ~2.6 pp (2025). |
 | 2026-11-04 | **P-70 CERRADO (opción 2 + red de seguridad).** El usuario aprobó el detector de filas de diferencia: MET-G01/G02 excluyen las filas de brecha (con la exclusión documentada en su definición) y la brecha recibe tarjeta propia MET-G03 en pp con narrativa aparte; sin etiquetas pero con mezcla de magnitudes extrema, nota de calidad sin alterar el cálculo. INE real: 15.03 mezclado → **21.78 tasa + 1.52 pp brecha**. La opción 1 (promedio por grupo) queda como mejora futura opcional (redundante con la 2 para este patrón). `TestMetricSemanticSplit` (5) · suite 323 passed. |
+| 2026-11-04 | **P-71 registrado (ALTO).** Feedback del usuario: la interpretación natural de sus datos se la dio el agente, no Vektra — "un cliente no puede necesitar varias IAs para esto". Dos causas: faltan hechos (meseta, cobertura por año, rango típico, estado/resultado, calidad explicada) y el narrador de P-54 Fase 2 está limitado a seleccionar IDs sin cifras. Corrección en dos capas: hechos deterministas nuevos + narrador natural con verificación automática de cada cifra contra el paquete (una cifra ajena → fallback determinista). |
+| 2026-11-04 | **P-71 CERRADO (dos capas).** Capa A: `TIME-G03` cobertura por año con días, meseta en `TIME-G01`, caveat de truncado en `TIME-G02`, `MET-G04` rango típico, `CAT-G03` estado/resultado (prioridad semántica, reservado antes de CAT-G02) y calidad explicada; `_composition_display` oculta participaciones que redondean a 0.0%. Capa B: el narrador pasa de seleccionar IDs a escribir prosa natural (`narration` + `fact_ids`) y el servidor verifica **cada cifra** contra el paquete determinista (separadores, magnitudes y variaciones derivadas de dos cifras del mismo enunciado); una cifra ajena → determinista. COVID real: 2020/2021/2022 con días, Fallecido 3.0%, edad 27-53, calidad explicada; narración natural con las cifras reales ACEPTADA y con `31.7%` RECHAZADA. `TestNarrativeInterpretation` (6) + `TestNaturalNarrationValidation` (11) · backend **332 passed, 3 xfailed**; cliente **88 passed**, tsc 0. |
 
 ---
 
@@ -1430,3 +1433,83 @@ determinista.
 **Regla anti-repetición.** Un promedio solo es una métrica si todas las filas miden la misma cosa;
 cuando una columna numérica convive con categorías que la reinterpretan (tasa vs brecha), el auditor
 debe mostrar la descomposición o avisar, nunca un solo número agregado.
+
+
+---
+
+### P-71 · La auditoría no interpreta: el relato natural lo pone un humano (u otra IA)
+
+| Campo | Valor |
+|---|---|
+| **Severidad** | ALTO (propuesta de valor del producto: el análisis lo debe dar Vektra) |
+| **Estado** | ✅ CERRADO (2026-11-04; dos capas implementadas y verificadas con el dataset real) |
+| **Verificado** | 🧪 Reproducido con `colombia_covid_50k.csv`: el usuario pidió "decirme en forma más natural qué dicen estos números" y el narrador devolvió los mismos hechos con un envoltorio genérico ("Los hallazgos sugieren una población con un perfil estable…") |
+| **Archivos** | `server/src/engine/insight_auditor.py` · `server/src/engine/audit_agent.py` |
+
+**Qué pasa.** Dos causas encadenadas:
+1. **Faltan hechos**: el paquete determinista no calcula la meseta temporal (top-2 meses casi iguales),
+   la cobertura por año (2021 queda invisible entre 2020 y un 2022 de 25 días → el "-100%" es una
+   ilusión de truncado), el rango típico (p25-p75 de la métrica), la composición de la columna de
+   estado/resultado ("Leve 97% / Fallecido 3%" — el número más duro del dataset no está en ninguna
+   tarjeta) ni la explicación de la calidad ("17.1% de celdas vacías" sin decir que está concentrada
+   en columnas casi inútiles).
+2. **El narrador está amordazado**: P-54 Fase 2 solo deja al LLM seleccionar IDs y escribir textos
+   SIN cifras; el servidor inserta los valores. Garantiza cero alucinación pero produce prosa vacía:
+   no puede tejer "Bogotá concentra el 27.3%", ni comparar, ni interpretar.
+
+**Impacto.** El usuario (y cualquier cliente) necesita "otra IA" para interpretar sus propios datos:
+el análisis natural debe salir de Vektra o el producto no cumple su promesa.
+
+**Corrección propuesta (dos capas).**
+- Capa A (hechos nuevos, deterministas): TIME-G03 "Cobertura por año" (recuento por año con días de
+  cobertura en parciales;uelve visible el año intermedio y expone el truncado), meseta en la
+  definición de TIME-G01 (top-2 meses a <15% y >=3 meses sobre la mitad del pico), caveat de cobertura
+  parcial en TIME-G02, MET-G04 "Rango típico" (p25-p75), CAT-G03 composición de la columna de
+  estado/resultado (heurística por nombre), y nota de calidad explicada (vacíos concentrados en
+  columnas mayormente vacías vs columnas informativas completas).
+- Capa B (narrador natural verificado): el LLM escribe el relato natural en español —debe usar SOLO
+  cifras existentes en los hechos, puede nombrar entidades de los hechos y comparar/interpretar,
+  prohibido conocimiento externo— y el servidor VERIFICA cada número del texto contra el paquete
+  (display_value/value/sample_size/evidence, normalizados); una sola cifra ajena → fallback a la
+  narrativa determinista. Evolución del contrato de P-54 Fase 2 (selección de IDs → prosa verificada):
+  los tests de selección se actualizan en el mismo cambio.
+
+**Criterio de cierre.** Con `colombia_covid_50k.csv`: la respuesta de Vektra incluye meseta, años
+completos (2020/2021/2022 con días), rango típico de edad, estado (3% fallecido) y calidad explicada;
+con clave LLM activa la narrativa es natural y toda cifra pasa la verificación; sin clave o con una
+cifra inventada, cae al determinista. Suite backend en verde.
+
+**Corrección aplicada (2026-11-04).**
+- **Capa A (hechos):** `TIME-G03` cobertura por año con días de los años parciales; meseta declarada en
+  la definición de `TIME-G01` ("No es un pico aislado: 7 meses superan la mitad del máximo…"); caveat
+  de cobertura parcial en `TIME-G02`; `MET-G04` rango típico (p25-p75); `CAT-G03` composición de la
+  columna de estado/resultado (prioridad semántica `estado` > `resultado` > `recuperado` > `ubicacion`,
+  reservada antes de CAT-G02 para que no se la robe la segunda composición); nota de calidad
+  explicada ("Concentradas en 'pais_viajo_1_cod', … mayormente vacías; el resto de columnas está
+  prácticamente completo"). Se añadió `_composition_display` para omitir participaciones que
+  redondean a 0.0% (evita "Casa 97.0%, Fallecido 3.0%, casa 0.0%"). Definiciones nuevas: "Cobertura
+  por año" y "Rango típico".
+- **Capa B (narrador):** contrato nuevo `{"narration", "fact_ids"}`. El LLM escribe 2-4 párrafos
+  naturales; el servidor verifica **cada cifra** del texto contra todos los números del paquete
+  determinista (incluido el perfil y la calidad), con interpretaciones de separadores (miles/decimal),
+  magnitudes (`-8.8` se acepta como `8.8`) y una variación porcentual derivada de dos cifras del mismo
+  enunciado (p. ej. "de 44.584 a 5.397, una caída del 88%"). Una sola cifra no respaldada, un ID
+  desconocido, un JSON inválido o un fallo de proveedor → narrativa determinista. La prosa ya no
+  repite el bloque "Hechos verificados" (las tarjetas se muestran debajo); el badge del cliente pasa a
+  "narración IA con cifras verificadas".
+
+**Evidencia de cierre (2026-11-04).**
+- `colombia_covid_50k.csv`: nuevas tarjetas `TIME-G03` (2020: 44,584 con 230 días · 2021: 5,397 ·
+  2022: 19 con 22 días), `CAT-G03` (Leve 97.0%, Fallecido 3.0%), `MET-G04` (entre 27.00 y 53.00),
+  meseta en `TIME-G01` y calidad explicada. La narrativa determinista ya relata la cobertura por año,
+  la meseta y el resultado.
+- Prueba de aceptación del verificador: la narración natural escrita con las cifras reales del COVID
+  es **ACEPTADA**; la misma con `31.7%` en lugar de `27.3%` es **RECHAZADA** (`cifra no verificada:
+  31.7`).
+- Tests: `TestNarrativeInterpretation` (6) + `TestNaturalNarrationValidation` (11 renovados).
+  Backend **332 passed, 3 xfailed**; `compileall` OK. Cliente **88 passed**, `tsc --noEmit` 0.
+  Regresión retail/gov intacta (sin columna de estado no aparece CAT-G03; sin año parcial no hay
+  caveat).
+
+**Regla anti-repetición.** El techo de calidad del narrador es el paquete de hechos: antes de exigirle
+interpretación, hay que calcularla. Y ninguna prosa LLM sale sin verificación automática de cifras.

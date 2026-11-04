@@ -1,9 +1,10 @@
-"""Regresión Fase 2 de P-54: el narrador nunca inventa ni mezcla cifras.
+"""Regresión P-71 (evolución de la Fase 2 de P-54): relato natural verificado.
 
-El contrato es intencionalmente estricto: el LLM solo selecciona IDs y escribe
-un marco sin números; el servidor renderiza cada valor exacto junto a su
-título y definición. Cualquier cifra literal, ID desconocido o JSON inválido
-cae a la narrativa determinista.
+El contrato es: el LLM escribe la interpretación en lenguaje natural y puede
+usar las cifras exactas de los hechos (o derivar una variación de dos cifras
+del mismo enunciado), pero cualquier cifra que no esté respaldada por el
+paquete determinista hace que se use esa narrativa determinista. El cálculo
+nunca lo hace el modelo.
 """
 import json
 import os
@@ -19,8 +20,7 @@ from src.engine.audit_agent import (
     build_audit_payload,
     generate_audit_narrative,
     is_audit_query,
-    render_verified_answer,
-    validate_fact_selection,
+    validate_natural_narration,
 )
 from src.engine.insight_auditor import build_audit
 
@@ -55,6 +55,13 @@ def _audit() -> dict:
 
 def _fact(audit: dict, fact_id: str) -> dict:
     return next(item for item in audit["insights"] if item["id"] == fact_id)
+
+
+def _payload(narration: str, fact_ids: list[str] | None = None) -> dict:
+    return {
+        "narration": narration,
+        "fact_ids": fact_ids or ["KPI-03", "DISC-04"],
+    }
 
 
 class TestFeatureFlag:
@@ -105,67 +112,76 @@ class TestAuditIntent:
         assert not is_audit_query("Exporta los hallazgos a PDF")
 
 
-class TestFactSelection:
-    def test_valid_selection_renders_title_value_and_definition(self):
+class TestNaturalNarrationValidation:
+    def test_numbers_from_facts_are_accepted(self):
         audit = _audit()
-        selection = {
-            "intro": "La auditoría apunta al margen y al tramo profundo.",
-            "fact_ids": ["KPI-03", "DISC-04"],
-            "conclusion": "Revisa la definición de cada hecho.",
-        }
+        payload = _payload(
+            "El margen agregado es **-8.8%** y el tramo profundo de descuento "
+            "concentra el **50.0%** de las ventas.",
+        )
 
-        valid, reason = validate_fact_selection(selection, audit)
+        valid, reason = validate_natural_narration(payload, audit)
         assert valid, reason
 
-        rendered = render_verified_answer(selection, audit)
-        assert selection["intro"] in rendered
-        assert _fact(audit, "KPI-03")["display_value"] in rendered
-        assert _fact(audit, "KPI-03")["title"] in rendered
-        assert _fact(audit, "DISC-04")["definition"] in rendered
-
-    def test_literal_number_in_intro_is_rejected(self):
+    def test_invented_number_is_rejected(self):
         audit = _audit()
-        selection = {
-            "intro": "El margen es 12.5%.",
-            "fact_ids": ["KPI-03", "DISC-04"],
-            "conclusion": "",
-        }
+        payload = _payload("El margen agregado es **12.5%** y el resto está sano.")
 
-        valid, reason = validate_fact_selection(selection, audit)
+        valid, reason = validate_natural_narration(payload, audit)
         assert not valid
-        assert "cifra literal" in reason
+        assert "cifra no verificada" in reason
+
+    def test_percentage_derived_from_two_numbers_in_same_sentence_is_accepted(self):
+        """El analista puede cerrar con una variación calculada de dos hechos."""
+        audit = _audit()
+        payload = _payload(
+            "El profit pasó de **100** a **-450**: una caída del **550%**.",
+            fact_ids=["DISC-01", "DISC-02"],
+        )
+
+        valid, reason = validate_natural_narration(payload, audit)
+        assert valid, reason
+
+    def test_derived_number_outside_its_sentence_is_rejected(self):
+        """La derivación solo vale con las cifras que el analista tiene delante."""
+        audit = _audit()
+        payload = _payload(
+            "El profit neto es **-350**. En otro orden de ideas, la caída fue del **550%**.",
+        )
+
+        valid, reason = validate_natural_narration(payload, audit)
+        assert not valid
+        assert "cifra no verificada" in reason
 
     def test_citation_outside_selection_is_rejected(self):
         audit = _audit()
-        selection = {
-            "intro": "El detalle está en [KPI-01].",
-            "fact_ids": ["KPI-03", "DISC-04"],
-            "conclusion": "",
-        }
+        payload = _payload("El detalle está en KPI-01.", fact_ids=["KPI-03", "DISC-04"])
 
-        valid, reason = validate_fact_selection(selection, audit)
+        valid, reason = validate_natural_narration(payload, audit)
         assert not valid
-        assert "no seleccionada" in reason
+        assert "cita no respaldada" in reason
 
     def test_unknown_fact_is_rejected(self):
         audit = _audit()
-        selection = {
-            "intro": "Resumen.",
-            "fact_ids": ["KPI-03", "FAKE-01"],
-            "conclusion": "",
-        }
+        payload = _payload("Resumen del margen.", fact_ids=["KPI-03", "FAKE-01"])
 
-        valid, reason = validate_fact_selection(selection, audit)
+        valid, reason = validate_natural_narration(payload, audit)
         assert not valid
         assert "desconocidos" in reason
 
     def test_too_few_facts_are_rejected(self):
         audit = _audit()
-        selection = {"intro": "Resumen.", "fact_ids": ["KPI-03"], "conclusion": ""}
+        payload = _payload("Resumen del margen.", fact_ids=["KPI-03"])
 
-        valid, reason = validate_fact_selection(selection, audit)
+        valid, reason = validate_natural_narration(payload, audit)
         assert not valid
         assert "dos" in reason
+
+    def test_empty_narration_is_rejected(self):
+        audit = _audit()
+        valid, reason = validate_natural_narration(_payload("   "), audit)
+        assert not valid
+        assert "ausente" in reason
 
 
 class TestNarrativeFallback:
@@ -177,17 +193,18 @@ class TestNarrativeFallback:
         assert reason == "sin_api_key"
         assert text == audit["analysis"]
 
-    def test_valid_llm_selection_becomes_verified_answer(self):
+    def test_valid_natural_narration_is_returned_without_duplicating_facts(self):
+        """P-71: la prosa va sola; las tarjetas verificadas ya se muestran debajo."""
         audit = _audit()
-        selection = {
-            "intro": "La auditoría apunta al margen y al tramo profundo.",
-            "fact_ids": ["KPI-03", "DISC-04"],
-            "conclusion": "Revisa la definición de cada hecho.",
-        }
+        narration = (
+            "El margen agregado es **-8.8%** y el tramo profundo de descuento "
+            "concentra el **50.0%** de las ventas. La pérdida se concentra en "
+            "las líneas con descuento."
+        )
 
         with patch(
             "src.engine.audit_agent.generate_ai_content",
-            return_value=json.dumps(selection, ensure_ascii=False),
+            return_value=json.dumps(_payload(narration), ensure_ascii=False),
         ):
             text, mode, reason = generate_audit_narrative(
                 "¿Qué margen hay?", audit, api_key="test-key", provider="gemini"
@@ -195,21 +212,16 @@ class TestNarrativeFallback:
 
         assert mode == "llm"
         assert reason is None
-        assert _fact(audit, "DISC-04")["display_value"] in text
-        assert _fact(audit, "KPI-03")["title"] in text
-        assert "**Hechos verificados**" in text
+        assert text == narration
+        assert "**Hechos verificados**" not in text
 
-    def test_llm_selection_with_literal_number_falls_back(self):
+    def test_narration_with_invented_number_falls_back(self):
         audit = _audit()
-        selection = {
-            "intro": "El margen es 12.5%.",
-            "fact_ids": ["KPI-03", "DISC-04"],
-            "conclusion": "",
-        }
+        narration = "El margen agregado es **12.5%** y el resto está sano."
 
         with patch(
             "src.engine.audit_agent.generate_ai_content",
-            return_value=json.dumps(selection, ensure_ascii=False),
+            return_value=json.dumps(_payload(narration), ensure_ascii=False),
         ):
             text, mode, reason = generate_audit_narrative(
                 "¿Qué margen hay?", audit, api_key="test-key", provider="gemini"
@@ -217,7 +229,7 @@ class TestNarrativeFallback:
 
         assert mode == "deterministic"
         assert text == audit["analysis"]
-        assert reason
+        assert reason and "cifra no verificada" in reason
 
     def test_invalid_json_falls_back(self):
         audit = _audit()

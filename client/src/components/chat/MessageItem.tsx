@@ -95,7 +95,7 @@ export function MessageItem({ msg, userId, handleExportPng, handlePin, handleSen
                             <ShieldCheck className="w-3.5 h-3.5 flex-shrink-0" />
                             <span className="text-[10px] font-semibold uppercase tracking-wider">
                                 {msg.audit.narrative_mode === "llm"
-                                    ? "Auditoría verificada · narración IA con cifras inyectadas"
+                                    ? "Auditoría verificada · narración IA con cifras verificadas"
                                     : "Auditoría verificada · sin LLM"}
                             </span>
                         </div>

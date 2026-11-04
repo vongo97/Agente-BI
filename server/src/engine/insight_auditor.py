@@ -163,6 +163,14 @@ GENERIC_DEFINITIONS = [
         "definition": "Top 3 valores de una columna categórica, ordenados por número de registros. El porcentaje es su participación sobre el total.",
     },
     {
+        "term": "Cobertura por año",
+        "definition": "Registros de cada año con datos, indicando los días de cobertura en los años parciales. Evita confundir un año truncado con una caída real.",
+    },
+    {
+        "term": "Rango típico",
+        "definition": "Rango intercuartílico (p25-p75) de la columna métrica: la mitad central de los valores está entre esos dos números.",
+    },
+    {
         "term": "Promedio y mediana",
         "definition": "Estadísticos de la columna métrica indicada, calculados solo con valores numéricos no vacíos. Si el dataset mezcla filas de diferencia (brecha), estas se excluyen y se muestran aparte.",
     },
@@ -221,6 +229,23 @@ def _fmt_signed_pct(value: float, digits: int = 1) -> str:
     if value is None or not math.isfinite(float(value)):
         return "no medible"
     return f"{float(value) * 100:+.{digits}f}%"
+
+
+def _composition_display(counts: "pd.Series", total: int, limit: int = 3) -> str:
+    """Top valores de una composición, omitiendo participaciones ~0.
+
+    P-71: un valor residual que redondea a 0.0% (p. ej. una variante de
+    mayúsculas de otra etiqueta) no aporta información y ensucia la lectura.
+    Se omite mientras queden al menos dos valores visibles.
+    """
+    visible = [
+        (name, int(n))
+        for name, n in counts.head(limit).items()
+        if total and int(n) / total >= 0.005
+    ]
+    if len(visible) < 2:
+        visible = [(name, int(n)) for name, n in counts.head(limit).items()]
+    return ", ".join(f"{name} {_fmt_pct(n / total)}" for name, n in visible)
 
 
 def _fmt_count(value: float) -> str:
@@ -438,7 +463,26 @@ def _prepare_frame(
 
     missing_share = float(work.drop(columns=["__row"], errors="ignore").isna().mean().mean())
     if missing_share > 0.02:
-        quality.append(f"{missing_share * 100:.1f}% de las celdas están vacías.")
+        note = f"{missing_share * 100:.1f}% de las celdas están vacías."
+        # P-71: un porcentaje global asusta más de lo que duele si los vacíos
+        # se concentran en columnas mayormente vacías (p. ej. 'pais_viajo' en
+        # una pandemia). Se explica dónde están y se protege al resto.
+        if missing_share > 0.10:
+            frame = work.drop(columns=["__row"], errors="ignore")
+            nulls = frame.isna().sum()
+            total_nulls = int(nulls.sum())
+            if total_nulls:
+                emptiest = nulls.sort_values(ascending=False).head(3)
+                if (
+                    bool((emptiest >= 0.8 * len(frame)).all())
+                    and int(emptiest.sum()) >= 0.6 * total_nulls
+                ):
+                    names = ", ".join(f"'{str(c)}'" for c in emptiest.index)
+                    note += (
+                        f" Concentradas en {names}, mayormente vacías; "
+                        "el resto de columnas está prácticamente completo."
+                    )
+        quality.append(note)
     duplicate_rows = int(work.drop(columns=["__row"], errors="ignore").duplicated().sum())
     if duplicate_rows:
         row_word = "fila duplicada" if duplicate_rows == 1 else "filas duplicadas"
@@ -1478,6 +1522,7 @@ def _pick_secondary_categoric_column(
     work: pd.DataFrame,
     roles: dict[str, Optional[str]],
     used: Optional[str],
+    extra_excluded: Optional[set[str]] = None,
 ) -> Optional[str]:
     """Segunda columna para composición (P-62): tras la primera tarjeta queda
     información sin explotar en datasets de muchas columnas. Candidatas:
@@ -1494,6 +1539,8 @@ def _pick_secondary_categoric_column(
     excluded.discard(None)
     if used:
         excluded.add(used)
+    if extra_excluded:
+        excluded.update(name for name in extra_excluded if name)
     best: Optional[str] = None
     best_key: Optional[tuple] = None
     for column in work.columns:
@@ -1518,6 +1565,43 @@ def _pick_secondary_categoric_column(
         if best_key is None or key < best_key:
             best, best_key = str(column), key
     return best
+
+
+# P-71: columnas que declaran el resultado/estado de cada registro. Su
+# composición suele contener el dato más duro del dataset ("Fallecido 3%").
+_OUTCOME_TOKENS = (
+    "estado", "status", "resultado", "recuperacion", "recuperado",
+    "ubicacion", "situacion", "gravedad", "clasificacion",
+)
+
+
+def _pick_outcome_column(
+    work: pd.DataFrame,
+    roles: dict[str, Optional[str]],
+    exclude: set[str],
+) -> Optional[str]:
+    excluded = {
+        roles.get(role_name)
+        for role_name in ("order_id", "date", "ship_date", "sales", "profit", "discount")
+    }
+    excluded.discard(None)
+    excluded.update(name for name in exclude if name)
+    # Prioridad semántica: 'estado' describe mejor el resultado que
+    # 'ubicación' (que en COVID repite la misma información como lugar).
+    for token in _OUTCOME_TOKENS:
+        for column in work.columns:
+            if column.startswith("__") or column in excluded:
+                continue
+            normalized = _norm_name(column)
+            if token not in normalized:
+                continue
+            if not _looks_categoric(work[column]):
+                continue
+            counts = work[column].dropna().astype(str).value_counts()
+            if len(counts) < 2 or int(counts.iloc[0]) >= 0.98 * int(counts.sum()):
+                continue
+            return str(column)
+    return None
 
 
 def _sales_share_fact(work: pd.DataFrame, roles: dict[str, Optional[str]]) -> Optional[AuditFact]:
@@ -1602,6 +1686,19 @@ def _generic_facts(
         if len(dates):
             month_counts = dates.dt.to_period("M").value_counts().sort_index()
             day_counts = dates.dt.to_period("D").value_counts().sort_index()
+            # P-71: distinguir pico aislado de meseta sostenida. Si varios
+            # meses quedan cerca del máximo, "el mes con más registros" no
+            # cuenta la historia: se explicita en la definición.
+            plateau_note = ""
+            if len(month_counts) >= 2:
+                peak_n = int(month_counts.max())
+                months_above_half = int((month_counts >= 0.5 * peak_n).sum())
+                second_peak = int(month_counts.sort_values(ascending=False).iloc[1])
+                if months_above_half >= 3 and second_peak >= 0.85 * peak_n:
+                    plateau_note = (
+                        f" No es un pico aislado: {months_above_half} meses superan la mitad "
+                        "del máximo y el segundo mes más activo queda a menos del 15% del pico."
+                    )
             # P-62: la agrupación depende del alcance. Con un solo año-mes en
             # los datos, "mes con más registros" es tautológico (100%): se
             # recalcula por día y, si tampoco hay variedad de días, la
@@ -1641,7 +1738,7 @@ def _generic_facts(
                     direction="neutral",
                     definition=(
                         "Año-mes con mayor número de registros. La participación se calcula "
-                        f"sobre las {_fmt_count(len(dates))} fechas válidas."
+                        f"sobre las {_fmt_count(len(dates))} fechas válidas.{plateau_note}"
                     ),
                     evidence=f"value_counts por año-mes sobre '{roles.get('date')}'",
                     sample_size=len(dates),
@@ -1655,6 +1752,28 @@ def _generic_facts(
                     f"{first_year}: {_fmt_count(first_n)} → {last_year}: {_fmt_count(last_n)}"
                     + (f" ({_fmt_signed_pct(growth)})" if growth is not None else "")
                 )
+
+                def _year_days(year: int) -> int:
+                    y_dates = dates[dates.dt.year == year]
+                    if len(y_dates) <= 1:
+                        return 1
+                    return int((y_dates.max() - y_dates.min()).days) + 1
+
+                # P-71: si un año extremo está truncado, el porcentaje primero
+                # vs último compara cobertura desigual y se presta a leer un
+                # truncado como caída real. Se avisa y TIME-G03 da el detalle.
+                coverage_note = ""
+                partial_years = [
+                    f"{year} ({_year_days(year)} días)"
+                    for year in (first_year, last_year)
+                    if _year_days(year) < 90
+                ]
+                if partial_years:
+                    coverage_note = (
+                        f" Atención: {' y '.join(partial_years)} tiene cobertura parcial; el "
+                        "porcentaje compara años con cobertura desigual (ver Cobertura por año)."
+                    )
+
                 _add_fact(
                     facts,
                     fact_id="TIME-G02",
@@ -1667,7 +1786,35 @@ def _generic_facts(
                     direction="neutral",
                     definition=(
                         "Comparación solo entre el primer y el último año con datos; "
-                        "no se afirma una tendencia intermedia sin calcularla."
+                        f"no se afirma una tendencia intermedia sin calcularla.{coverage_note}"
+                    ),
+                    evidence=f"count por año sobre '{roles.get('date')}'",
+                    sample_size=len(dates),
+                )
+                # P-71: la cobertura por año hace visibles los años intermedios
+                # y los truncados: sin esta tarjeta, 2021 desaparecía entre un
+                # 2020 completo y un 2022 de 25 días y el "-100%" parecía real.
+                parts = []
+                for year, n in year_counts.items():
+                    label = f"{int(year)}: {_fmt_count(int(n))}"
+                    days = _year_days(int(year))
+                    if days < 350:
+                        label += f" ({days} días)"
+                    parts.append(label)
+                _add_fact(
+                    facts,
+                    fact_id="TIME-G03",
+                    title="Cobertura por año",
+                    value=float(year_counts.max() / year_counts.sum()),
+                    display_value=" · ".join(parts),
+                    unit="%",
+                    category="actividad",
+                    severity="info",
+                    direction="neutral",
+                    definition=(
+                        "Registros de cada año con datos; los años con cobertura parcial muestran "
+                        "sus días de datos. Hace visibles los años intermedios y los truncados que "
+                        "la comparación primero-vs-último no enseña."
                     ),
                     evidence=f"count por año sobre '{roles.get('date')}'",
                     sample_size=len(dates),
@@ -1677,13 +1824,12 @@ def _generic_facts(
     if categoric_column:
         counts = work[categoric_column].dropna().astype(str).value_counts()
         total = int(counts.sum())
-        top3 = counts.head(3)
-        display = ", ".join(f"{name} {_fmt_pct(int(n) / total)}" for name, n in top3.items())
+        display = _composition_display(counts, total)
         _add_fact(
             facts,
             fact_id="CAT-G01",
             title=f"Composición por '{categoric_column}'",
-            value=float(int(top3.iloc[0]) / total),
+            value=float(int(counts.iloc[0]) / total),
             display_value=display,
             unit="%",
             category="composición",
@@ -1697,18 +1843,27 @@ def _generic_facts(
             sample_size=total,
         )
 
+    # P-71: el estado/resultado se reserva antes de la segunda composición
+    # genérica, para que no se lo robe CAT-G02 y desaparezca el dato más duro.
+    outcome_column = _pick_outcome_column(
+        work, roles, {categoric_column} if categoric_column else set()
+    )
     # P-62: una sola composición desperdicia datasets de muchas columnas.
-    secondary_column = _pick_secondary_categoric_column(work, roles, categoric_column)
+    secondary_column = _pick_secondary_categoric_column(
+        work,
+        roles,
+        categoric_column,
+        extra_excluded={outcome_column} if outcome_column else None,
+    )
     if secondary_column:
         counts = work[secondary_column].dropna().astype(str).value_counts()
         total = int(counts.sum())
-        top3 = counts.head(3)
-        display = ", ".join(f"{name} {_fmt_pct(int(n) / total)}" for name, n in top3.items())
+        display = _composition_display(counts, total)
         _add_fact(
             facts,
             fact_id="CAT-G02",
             title=f"Composición por '{secondary_column}'",
-            value=float(int(top3.iloc[0]) / total),
+            value=float(int(counts.iloc[0]) / total),
             display_value=display,
             unit="%",
             category="composición",
@@ -1720,6 +1875,31 @@ def _generic_facts(
                 f"Segunda categoría legible del dataset (si lo hubiere), excluida la usada por CAT-G01."
             ),
             evidence=f"value_counts de '{secondary_column}'",
+            sample_size=total,
+        )
+
+    # P-71: columna de estado/resultado (tercera composición). El número más
+    # duro de muchos datasets (p. ej. "Fallecido 3%") vive aquí y sin esta
+    # tarjeta no aparece en ninguna parte.
+    if outcome_column:
+        counts = work[outcome_column].dropna().astype(str).value_counts()
+        total = int(counts.sum())
+        display = _composition_display(counts, total)
+        _add_fact(
+            facts,
+            fact_id="CAT-G03",
+            title=f"Composición por '{outcome_column}'",
+            value=float(int(counts.iloc[0]) / total),
+            display_value=display,
+            unit="%",
+            category="composición",
+            severity="info",
+            direction="neutral",
+            definition=(
+                f"Columna de estado/resultado del dataset: el porcentaje es la participación "
+                f"de cada valor sobre {_fmt_count(total)} filas con valor."
+            ),
+            evidence=f"value_counts de '{outcome_column}'",
             sample_size=total,
         )
 
@@ -1792,6 +1972,29 @@ def _generic_facts(
                 evidence=f"median de '{metric_column}'",
                 sample_size=len(valid),
             )
+            # P-71: el rango típico evita leer la media como "el valor normal"
+            # cuando la distribución es ancha (edad 40 de media, pero la mitad
+            # central entre 27 y 53).
+            if len(valid) >= 20:
+                q25 = float(valid.quantile(0.25))
+                q75 = float(valid.quantile(0.75))
+                _add_fact(
+                    facts,
+                    fact_id="MET-G04",
+                    title=f"Rango típico de '{metric_column}'",
+                    value=q75 - q25,
+                    display_value=f"entre {_fmt_number(q25)} y {_fmt_number(q75)}",
+                    unit=str(work[metric_column].name or metric_column),
+                    category="perfil",
+                    severity="info",
+                    direction="neutral",
+                    definition=(
+                        "Rango intercuartílico: la mitad central de los valores está entre estos "
+                        "dos números. Complementa al promedio cuando la distribución es ancha."
+                    ),
+                    evidence=f"quantile(0.25/0.75) de '{metric_column}'",
+                    sample_size=len(valid),
+                )
         if valid_gaps is not None and len(valid_gaps) >= 3:
             gap_word_match = _GAP_WORD_RE.search(gap_label)
             gap_word = (gap_word_match.group(0).lower() if gap_word_match else "diferencia")
@@ -1930,6 +2133,13 @@ def _render_narrative(
                 lines.append(f"El periodo con más registros es **{generic_peak.display_value}**.")
         if generic_trend:
             lines.append(f"Al comparar el primer y el último año con datos: **{generic_trend.display_value}**.")
+        # P-71: la cobertura por año cuenta la historia completa (años
+        # intermedios y truncados) que el primero-vs-último oculta.
+        generic_coverage = by_id.get("TIME-G03")
+        if generic_coverage:
+            lines.append(f"Por año: **{generic_coverage.display_value}**.")
+        if generic_peak and "No es un pico aislado" in generic_peak.definition:
+            lines.append("La actividad no fue un pico aislado: varios meses se sostuvieron cerca del máximo.")
         if generic_composition:
             composition_label = generic_composition.title.split("'", 1)[-1].rstrip("'")
             lines.append(
@@ -1941,11 +2151,22 @@ def _render_narrative(
             lines.append(
                 f"Por **{composition_label_2}**, los valores más frecuentes son: {generic_composition_2.display_value}."
             )
+        # P-71: el estado/resultado suele contener el número más duro del
+        # dataset (p. ej. "Fallecido 3%"): se narra explícitamente.
+        generic_outcome = by_id.get("CAT-G03")
+        if generic_outcome:
+            outcome_label = generic_outcome.title.split("'", 1)[-1].rstrip("'")
+            lines.append(
+                f"Por **{outcome_label}**, el resultado es: {generic_outcome.display_value}."
+            )
         if generic_mean and generic_median:
             lines.append(
                 f"La columna métrica detectada tiene promedio **{generic_mean.display_value}** "
                 f"y mediana **{generic_median.display_value}**."
             )
+        generic_range = by_id.get("MET-G04")
+        if generic_range:
+            lines.append(f"La mitad central de la métrica está **{generic_range.display_value}**.")
         # P-70: la diferencia (brecha) se cuenta aparte, nunca promediada.
         generic_gap = by_id.get("MET-G03")
         if generic_gap:

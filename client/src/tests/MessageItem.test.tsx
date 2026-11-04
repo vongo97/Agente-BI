@@ -106,7 +106,7 @@ describe('MessageItem', () => {
       audit: { narrative_mode: 'llm' } as AuditPayload,
     };
     render(<MessageItem msg={msg} {...defaultProps} />);
-    expect(screen.getByText('Auditoría verificada · narración IA con cifras inyectadas')).toBeInTheDocument();
+    expect(screen.getByText('Auditoría verificada · narración IA con cifras verificadas')).toBeInTheDocument();
     expect(screen.getByTestId('insight-cards')).toBeInTheDocument();
   });
 });

@@ -319,21 +319,26 @@ class TestGenericFactsWithoutSales:
         assert "CAT-G01" in ids
 
     def test_second_composition_exact_values(self):
-        """P-62: CAT-G02 existe, usa la segunda categoría legible y sus
-        cifras son exactas."""
+        """P-62: CAT-G02 existe, usa una segunda categoría legible y sus
+        cifras son exactas. P-71: el estado/resultado se reserva para CAT-G03."""
         df = pd.DataFrame({
             "fecha": [f"2024-{m:02d}-10" for m in range(1, 11)],
             "region": ["Norte"] * 4 + ["Sur"] * 3 + ["Este"] * 2 + ["Oeste"] * 1,
+            "canal": ["Web"] * 6 + ["Tienda"] * 4,
             "estado": ["OK"] * 5 + ["KO"] * 3 + ["NA"] * 2,
         })
         audit = build_audit(df, source_name="dos_cat.csv")
         c1 = _fact(audit, "CAT-G01")
         c2 = _fact(audit, "CAT-G02")
+        c3 = _fact(audit, "CAT-G03")
         assert "'region'" in c1["title"]
-        assert "'estado'" in c2["title"]
         assert c1["display_value"] == "Norte 40.0%, Sur 30.0%, Este 20.0%"
-        assert c2["display_value"] == "OK 50.0%, KO 30.0%, NA 20.0%"
+        assert "'canal'" in c2["title"]
+        assert c2["display_value"] == "Web 60.0%, Tienda 40.0%"
         assert c2["display_value"] in audit["analysis"]
+        assert "'estado'" in c3["title"]
+        assert c3["display_value"] == "OK 50.0%, KO 30.0%, NA 20.0%"
+        assert "el resultado es" in audit["analysis"]
 
     def test_no_second_composition_without_candidates(self):
         """P-62: si no hay una segunda categoría legible, no se emite
@@ -474,6 +479,92 @@ class TestMetricSemanticSplit:
         quality = " ".join(audit["profile"]["quality"])
         assert "magnitudes muy distintas" in quality
         assert "'grupo'" in quality
+
+
+class TestNarrativeInterpretation:
+    """P-71: la auditoría calcula lo que necesita el relato natural (meseta,
+    cobertura por año, rango típico, estado/resultado, calidad explicada)."""
+
+    @staticmethod
+    def make_temporal_df() -> pd.DataFrame:
+        dates: list[str] = []
+        for month in range(7, 13):
+            dates += [f"2020-{month:02d}-{day:02d}" for day in range(1, 7)]
+        dates += [f"2021-{month:02d}-01" for month in range(1, 13)]
+        dates += ["2022-01-01", "2022-01-02"]
+        return pd.DataFrame(
+            {
+                "fecha": dates,
+                "departamento": ["Bogotá"] * 40 + ["Antioquia"] * 10,
+                "sexo": ["F", "M"] * 25,
+                "estado": ["Leve"] * 45 + ["Fallecido"] * 5,
+                "valor": [float(index) for index in range(50)],
+            }
+        )
+
+    def test_coverage_by_year_makes_middle_year_and_truncation_visible(self):
+        audit = build_audit(self.make_temporal_df(), source_name="temporal.csv")
+
+        coverage = _fact(audit, "TIME-G03")
+        assert "2020:" in coverage["display_value"]
+        assert "2021:" in coverage["display_value"]
+        assert "2022:" in coverage["display_value"]
+        # El año truncado declara sus días de datos.
+        assert "2 días" in coverage["display_value"]
+        # La comparación primero-vs-último avisa de la cobertura desigual.
+        assert "cobertura parcial" in _fact(audit, "TIME-G02")["definition"]
+
+    def test_plateau_is_distinguished_from_isolated_peak(self):
+        audit = build_audit(self.make_temporal_df(), source_name="temporal.csv")
+
+        peak = _fact(audit, "TIME-G01")
+        assert "No es un pico aislado" in peak["definition"]
+        assert "No es un pico aislado" in audit["analysis"]
+
+    def test_typical_range_complements_mean_and_median(self):
+        audit = build_audit(self.make_temporal_df(), source_name="temporal.csv")
+
+        typical = _fact(audit, "MET-G04")
+        assert typical["display_value"].startswith("entre ")
+        assert typical["display_value"].endswith(" y 24.00") or " y " in typical["display_value"]
+        assert "mitad central" in typical["definition"]
+
+    def test_outcome_column_is_composed(self):
+        audit = build_audit(self.make_temporal_df(), source_name="temporal.csv")
+
+        outcome = _fact(audit, "CAT-G03")
+        assert "'estado'" in outcome["title"]
+        assert "Fallecido" in outcome["display_value"]
+        assert "el resultado es:" in audit["analysis"]
+
+    def test_explained_quality_concentrates_nulls(self):
+        df = pd.DataFrame(
+            {
+                "fecha": ["2024-01-01"] * 10,
+                "region": ["Norte"] * 10,
+                "a": [None] * 9 + ["x"],
+                "b": [None] * 9 + ["y"],
+                "c": [None] * 9 + ["z"],
+            }
+        )
+        audit = build_audit(df, source_name="vacios.csv")
+
+        quality = " ".join(audit["profile"]["quality"])
+        assert "celdas están vacías" in quality
+        assert "Concentradas en" in quality
+        assert "prácticamente completo" in quality
+
+    def test_zero_share_values_do_not_pollute_composition(self):
+        rows = (
+            [{"grupo": "Casa", "valor": 1.0}] * 900
+            + [{"grupo": "Fallecido", "valor": 2.0}] * 99
+            + [{"grupo": "casa", "valor": 3.0}] * 1
+        )
+        audit = build_audit(pd.DataFrame(rows), source_name="composicion.csv")
+
+        composition = _fact(audit, "CAT-G01")
+        assert "Casa" in composition["display_value"]
+        assert "casa 0.1%" not in composition["display_value"]
 
 
 class TestSalesWithoutProfit:
