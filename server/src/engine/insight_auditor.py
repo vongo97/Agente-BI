@@ -164,7 +164,11 @@ GENERIC_DEFINITIONS = [
     },
     {
         "term": "Promedio y mediana",
-        "definition": "Estadísticos de la columna métrica indicada, calculados solo con valores numéricos no vacíos.",
+        "definition": "Estadísticos de la columna métrica indicada, calculados solo con valores numéricos no vacíos. Si el dataset mezcla filas de diferencia (brecha), estas se excluyen y se muestran aparte.",
+    },
+    {
+        "term": "Diferencia (brecha)",
+        "definition": "Media de la columna métrica en las filas cuya etiqueta declara una diferencia (brecha, gap, saldo). Se expresa en puntos (pp), no en porcentaje, y se calcula aparte del promedio porque mide otra cosa.",
     },
     {
         "term": "Columna métrica",
@@ -1380,6 +1384,53 @@ METRIC_TOKENS = (
 )
 
 
+# P-70: etiquetas categóricas que declaran una DIFERENCIA en vez de una
+# magnitud (tasa, precio, conteo...). Promediar peras con manzanas: una
+# brecha en puntos no se promedia con la magnitud que la origina.
+# Sin grupo de captura: se usa con str.contains (pandas advierte si tiene).
+_GAP_LABEL_RE = re.compile(
+    r"\b(?:brecha|diferencias?|gaps?|desviaci[oó]n|saldo)\b", re.IGNORECASE
+)
+# Con captura, solo para extraer la palabra de la etiqueta detectada.
+_GAP_WORD_RE = re.compile(r"brecha|diferencias?|gaps?|desviaci[oó]n|saldo", re.IGNORECASE)
+
+
+def _gap_row_split(
+    work: pd.DataFrame,
+    roles: dict[str, Optional[str]],
+    metric_column: str,
+) -> Optional[tuple[pd.Series, str, str]]:
+    """P-70: detecta filas cuya etiqueta categórica declara una diferencia.
+
+    Devuelve ``(mascara_de_filas_de_diferencia, columna, etiqueta)`` cuando el
+    dataset MEZCLA filas de magnitud y de diferencia; ``None`` si no hay
+    mezcla (todo magnitud, o todo diferencia: semánticas consistentes que se
+    promedian tal cual, sin separar).
+    """
+    excluded = {
+        roles.get(role_name)
+        for role_name in ("order_id", "date", "ship_date", "sales", "profit", "discount")
+    }
+    excluded.discard(None)
+    for column in work.columns:
+        if column.startswith("__") or column == metric_column or column in excluded:
+            continue
+        if not _looks_categoric(work[column]):
+            continue
+        values = work[column].dropna().astype(str).str.strip()
+        if not len(values) or not bool(values.str.contains(_GAP_LABEL_RE).any()):
+            continue
+        full_mask = (
+            work[column].astype(str).str.strip()
+            .str.contains(_GAP_LABEL_RE, na=False)
+        )
+        # Solo tiene sentido separar si conviven filas de ambos tipos.
+        if bool(full_mask.any()) and not bool(full_mask.all()):
+            gap_label = str(values[values.str.contains(_GAP_LABEL_RE)].iloc[0])
+            return full_mask, str(column), gap_label
+    return None
+
+
 def _pick_metric_column(work: pd.DataFrame, roles: dict[str, Optional[str]]) -> Optional[str]:
     """Columna numérica utilizable como métrica, con reglas conservadoras:
     - El nombre debe parecer una medida (lista blanca METRIC_TOKENS).
@@ -1676,9 +1727,34 @@ def _generic_facts(
     if metric_column:
         column_data = work[metric_column]
         if pd.api.types.is_numeric_dtype(column_data):
-            valid = pd.to_numeric(column_data, errors="coerce").dropna()
+            numeric_all = pd.to_numeric(column_data, errors="coerce")
         else:
-            valid = _to_numeric(column_data).dropna()
+            numeric_all = _to_numeric(column_data)
+
+        # P-70: no promediar tasas con brechas. Si una categoría declara
+        # filas de diferencia (p. ej. "Brecha de género (mujeres - hombres)"
+        # del INE), esas filas se excluyen del promedio/mediana y se emiten
+        # como tarjeta propia: son puntos (pp), no magnitud.
+        split = _gap_row_split(work, roles, metric_column)
+        if split is not None:
+            gap_mask, gap_column, gap_label = split
+            valid = numeric_all[~gap_mask].dropna()
+            valid_gaps = numeric_all[gap_mask].dropna()
+            rate_definition_suffix = (
+                f" Se excluyen las {_fmt_count(len(valid_gaps))} filas de '{gap_label}': "
+                "una diferencia en puntos no se promedia con la magnitud que la origina."
+            )
+        else:
+            valid = numeric_all.dropna()
+            valid_gaps = None
+            rate_definition_suffix = ""
+        if not len(valid) and valid_gaps is not None and len(valid_gaps):
+            # Todas las filas válidas son de diferencia: semántica única,
+            # se promedian tal cual (no hay mezcla que separar).
+            valid = valid_gaps
+            valid_gaps = None
+            rate_definition_suffix = ""
+
         if len(valid):
             _add_fact(
                 facts,
@@ -1693,6 +1769,7 @@ def _generic_facts(
                 definition=(
                     f"Media aritmética de '{metric_column}' calculada con las "
                     f"{_fmt_count(len(valid))} filas con valor numérico."
+                    f"{rate_definition_suffix}"
                 ),
                 evidence=f"mean de '{metric_column}'",
                 sample_size=len(valid),
@@ -1710,10 +1787,56 @@ def _generic_facts(
                 definition=(
                     f"Valor central de '{metric_column}': la mitad de las filas está por debajo "
                     "y la otra mitad por encima. Menos sensible a valores extremos que el promedio."
+                    f"{rate_definition_suffix}"
                 ),
                 evidence=f"median de '{metric_column}'",
                 sample_size=len(valid),
             )
+        if valid_gaps is not None and len(valid_gaps) >= 3:
+            gap_word_match = _GAP_WORD_RE.search(gap_label)
+            gap_word = (gap_word_match.group(0).lower() if gap_word_match else "diferencia")
+            gap_mean = float(valid_gaps.mean())
+            _add_fact(
+                facts,
+                fact_id="MET-G03",
+                title=f"{gap_word.capitalize()} media de '{metric_column}'",
+                value=gap_mean,
+                display_value=f"{_fmt_number(gap_mean)} pp",
+                unit="pp",
+                category="perfil",
+                severity="info",
+                direction="negative" if gap_mean < 0 else ("positive" if gap_mean > 0 else "neutral"),
+                definition=(
+                    f"Media de '{metric_column}' en las {_fmt_count(len(valid_gaps))} filas de "
+                    f"'{gap_column}' con etiqueta de {gap_word} (p. ej. '{gap_label}'). Es una "
+                    "diferencia en puntos (pp), no un porcentaje; por eso se calcula aparte del "
+                    "promedio y nunca se promedia con la magnitud que la origina."
+                ),
+                evidence=f"mean de '{metric_column}' donde '{gap_column}' declara {gap_word}",
+                sample_size=len(valid_gaps),
+            )
+
+        # P-70 (red de seguridad): sin etiquetas de diferencia pero con grupos
+        # de magnitudes extremadamente distintas, el promedio global puede
+        # estar mezclando conceptos. No se altera el cálculo: se avisa.
+        if split is None and categoric_column is not None:
+            valid_all = numeric_all.dropna()
+            if len(valid_all) >= 10:
+                cat_values = work.loc[valid_all.index, categoric_column].astype(str)
+                grouped = valid_all.groupby(cat_values)
+                means = grouped.mean()
+                sizes = grouped.size()
+                eligible = means[sizes >= 5]
+                if len(eligible) >= 2:
+                    lo, hi = float(eligible.min()), float(eligible.max())
+                    if abs(hi) > 0 and abs(lo) < 0.1 * abs(hi):
+                        quality_notes = profile.setdefault("quality", [])
+                        quality_notes.append(
+                            f"La columna '{metric_column}' combina grupos con magnitudes muy "
+                            f"distintas por '{categoric_column}' ({_fmt_number(lo)} frente a "
+                            f"{_fmt_number(hi)}); el promedio global puede mezclar conceptos "
+                            "diferentes."
+                        )
 
     if not facts:
         _add_fact(
@@ -1822,6 +1945,14 @@ def _render_narrative(
             lines.append(
                 f"La columna métrica detectada tiene promedio **{generic_mean.display_value}** "
                 f"y mediana **{generic_median.display_value}**."
+            )
+        # P-70: la diferencia (brecha) se cuenta aparte, nunca promediada.
+        generic_gap = by_id.get("MET-G03")
+        if generic_gap:
+            gap_label = generic_gap.title.split(" ", 1)[0].lower()
+            lines.append(
+                f"Las filas de {gap_label} promedian **{generic_gap.display_value}** y se "
+                "calculan aparte: son puntos de diferencia, no magnitud."
             )
     else:
         lines.append("No se detectaron columnas de ventas ni de profit; la auditoría se limita al perfil y la calidad del dataset.")

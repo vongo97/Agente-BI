@@ -120,7 +120,7 @@ Deuda de registro conocida: **P-57–P-65** solo tienen sección de detalle (sin
 | **P-48** | API/BI | `/dashboard/filter` responde `200 success` con columnas inexistentes y no filtra en modo SQL (TODO) | `server/src/routers/dashboard.py:217-250` · runtime |
 | **P-49** | Dev | No hay modo local sin nube: subir archivos exige Supabase válido (503 si no) y el arranque no lo avisa | `server/src/routers/data.py:212-241` · runtime `/upload` |
 | **P-50** | Infra/Dev | ✅ CERRADO — Con credenciales presentes pero inválidas, `/health` decía `not_configured` y el log solo `SupabaseException`; un typo en `SUPABASE_URL` (`hhttps://…`) dejaba `/upload` en 503 sin causa visible | `server/src/services/storage_service.py:34-100` · runtime `/upload` |
-| **P-70** | IA/BI | MET-G01/G02 promedian la "columna métrica" mezclando semánticas distintas (tasas y brechas en la misma columna) | `insight_auditor.py` (heurística de columna métrica) · reproducido con `ine_tasa_paro_edad_11178.csv` (2026-11-04, ver detalle) |
+| **P-70** | IA/BI | MET-G01/G02 promedian la "columna métrica" mezclando semánticas distintas (tasas y brechas en la misma columna) | ✅ CERRADO (2026-11-04) | `insight_auditor.py`: `_gap_row_split` detecta filas con etiqueta de diferencia (brecha/gap/saldo/desviación); MET-G01/G02 se calculan solo con las filas de magnitud (definen la exclusión) y la brecha recibe **MET-G03 en pp** con tarjeta y narrativa propias; red de seguridad en calidad cuando hay mezcla de magnitudes sin etiquetas (ratio <0.1); término nuevo "Diferencia (brecha)" en GENERIC_DEFINITIONS · INE real: 15.03 mezclado → **21.78 tasa + 1.52 pp brecha** · `TestMetricSemanticSplit` (5 tests) · suite **323 passed, 3 xfailed** |
 
 ### 🟢 BAJOS
 
@@ -996,6 +996,7 @@ un duplicado.
 | 2026-10-30 | **P-22 CERRADO (`/health` bloqueante).** El router `health.py` ya no existe: `/health` vive en `main.py` y seguía ejecutando la inspección de esquema (`db_schema_diagnostic`) y el probe de Supabase (`storage_diagnostic`, cache 60 s) dentro de la corrutina, así que con la cache fría bloqueaba el event loop — el mismo patrón que causaba los reinicios de **P-56**. Ahora ambas sondas se ejecutan en el threadpool (`run_in_threadpool`); el ticker del test confirma que el event loop sigue vivo durante 2 x 0.15 s de sondas lentas. Además se retiró el nombre del bucket de la respuesta pública, que ya declaraba "sin host, usuario, bucket ni credenciales" pero lo filtraba. El endpoint queda público por diseño (los health checks de infra son anónimos; el chequeo real de Render es `/live`); el residuo de información (versión, dialecto, flags) se considera aceptado y saneado. Evidencia: `tests/test_health_endpoint.py` (2 passed, creado). |
 | 2026-11-03 | **P-46 CERRADO (URL interna al cliente).** `GET /data-sources`, `POST /data-sources` y `GET /sources` devolvían los objetos ORM tal cual, incluida la columna `url`: para archivos es la clave de nube `data_sources/<md5(email)>/...` (ruta adivinable), para SQL la cadena de conexión cifrada y para legacy la ruta del contenedor. Ahora los tres endpoints usan `_serialize_source()` (mismo patrón que `dashboard.py:_serialize_chat_source` ya aplicaba en el historial): la respuesta pública pierde `url` y el backend la sigue usando internamente para reconectar la sesión. Verificado que el cliente no consume ese campo (en `api.ts` solo hay POST/DELETE para fuentes). Evidencia: `tests/test_source_serialization.py` (3 passed) · suite completa **318 passed, 3 xfailed**. |
 | 2026-11-04 | **P-61 ampliado (timeout LLM) + P-70 registrado.** El usuario reprodujo en producción el timeout del chat: auditoría determinista OK, pero `/analyze` (LLM, 30-90 s) abortó a los 30 s con "Tiempo de espera agotado" y 2 reintentos duplicando el trabajo. Fix: `LLM_TIMEOUT_MS=180 s` + `retries: 0` en las 8 llamadas LLM de `api.ts` (`LLM_NETWORK_OPTIONS`); regresión `LlmTimeouts.test.ts` (10 passed). Mismo análisis del dataset INE reveló **P-70**: MET-G01/G02 promedian tasas (21.03/22.53) con brechas (1.52 pp) en la misma columna y muestran 15.03 como si fuera la tasa; registrado ABIERTO con tres opciones de diseño. Análisis verificado del dataset (2009-2025): paro juvenil 16-24 promedio 39.3% (vs 17.7% total), mejora 2009→2025 de -12.65 pp juvenil vs -7.25 pp total, brecha de género 0 pp (2009) → ~2.6 pp (2025). |
+| 2026-11-04 | **P-70 CERRADO (opción 2 + red de seguridad).** El usuario aprobó el detector de filas de diferencia: MET-G01/G02 excluyen las filas de brecha (con la exclusión documentada en su definición) y la brecha recibe tarjeta propia MET-G03 en pp con narrativa aparte; sin etiquetas pero con mezcla de magnitudes extrema, nota de calidad sin alterar el cálculo. INE real: 15.03 mezclado → **21.78 tasa + 1.52 pp brecha**. La opción 1 (promedio por grupo) queda como mejora futura opcional (redundante con la 2 para este patrón). `TestMetricSemanticSplit` (5) · suite 323 passed. |
 
 ---
 
@@ -1384,7 +1385,7 @@ runtime de Node (globales experimentales) se detectan aquí antes de romper 15 s
 | Campo | Valor |
 |---|---|
 | **Severidad** | MEDIO (cifra honesta pero de lectura engañosa; no es invención) |
-| **Estado** | 🔴 ABIERTO (registrado 2026-11-04 antes de corregir; hallado usando el producto) |
+| **Estado** | ✅ CERRADO (2026-11-04; opción 2 + red de seguridad de la 3, aprobadas por el usuario) |
 | **Verificado** | 🧪 pandas sobre `datasets_prueba/ine_tasa_paro_edad_11178.csv` (204 filas, INE tasa de paro por edad y sexo, 2009-2025) |
 | **Archivos** | `server/src/engine/insight_auditor.py` (selección de columna métrica y MET-G01/G02) |
 
@@ -1400,14 +1401,31 @@ porcentajes con puntos porcentuales de una diferencia.
 mayor. Es el linaje de P-13/P-54 (números verificados pero mal interpretados), ahora en el auditor
 determinista.
 
-**Criterio de cierre (opciones de diseño, pendiente de aprobación).**
-- (a) MET por grupo: en vez de un único promedio global, promedio/mediana por los grupos de la primera
-  columna categórica (aquí: Hombres 21.03 / Mujeres 22.53 / Brecha 1.52 — la mezcla se vuelve visible).
-- (b) Detector de filas "diferencia/brecha": si una categoría acompasa un patrón tipo
-  `brecha|diferencia|gap|(-)` en su etiqueta, excluirla de MET-G01/G02 y emitirla como tarjeta propia
-  (o nota de calidad).
-- (c) Mínimo: nota de calidad cuando la dispersión entre grupos categóricos sea del orden de la propia
-  media (señal de semántica mixta), avisando que el promedio agrega conceptos distintos.
+**Corrección aplicada (opción 2 aprobada por el usuario + red de seguridad de la 3).**
+- `_gap_row_split()`: detecta filas cuya etiqueta categórica declara una diferencia
+  (`brecha|diferencia|gap|desviación|saldo`). Solo separa cuando el dataset MEZCLA ambos tipos
+  (todo-magnitud o todo-diferencia son semánticas consistentes y se promedian tal cual).
+- MET-G01/MET-G02 se calculan exclusivamente con las filas de magnitud y su definición documenta
+  la exclusión ("Se excluyen las 68 filas de 'Brecha…'").
+- Nueva tarjeta **MET-G03 "Brecha media de '{col}'"**: media de las filas de diferencia en puntos
+  (pp), con dirección por signo, definición explícita ("no un porcentaje") y narrativa propia
+  ("Las filas de brecha promedian X pp y se calculan aparte").
+- Término nuevo "Diferencia (brecha)" en GENERIC_DEFINITIONS; "Promedio y mediana" actualizado.
+- Red de seguridad (opción 3): sin etiquetas de diferencia pero con grupos de magnitudes
+  extremas (|media mínima| < 0.1·|media máxima|, ≥5 filas por grupo), se añade nota de calidad
+  avisando que el promedio global puede mezclar conceptos; el cálculo no se altera.
+- Opción 1 (promedio por grupo): compatible pero redundante con la 2 para este patrón; queda
+  documentada como mejora futura opcional (p. ej. comparación por grupo a petición).
+
+**Evidencia de cierre (2026-11-04).**
+- INE real (`ine_tasa_paro_edad_11178.csv`): antes MET-G01 mostraba **15.03** (tasas+brechas
+  mezcladas); ahora **21.78** (136 filas de tasa) + **MET-G03 1.52 pp** (68 filas de brecha),
+  mediana 17.75, narrativa con la brecha aparte y cero notas de calidad espurias.
+- `TestMetricSemanticSplit` (5 tests): promedio/mediana excluyen filas de brecha (25.0 vs 22.89
+  global mezclado), tarjeta propia en pp, definiciones mostradas, todo-brecha sin separación
+  (semántica única), y nota de calidad ante mezcla de magnitudes sin etiquetas (100 vs 1).
+- Suite completa: `pytest tests -q` → **323 passed, 3 xfailed**; `compileall src/` OK.
+  Regresión gov/retail intacta (los datasets sin etiquetas de brecha no cambian).
 
 **Regla anti-repetición.** Un promedio solo es una métrica si todas las filas miden la misma cosa;
 cuando una columna numérica convive con categorías que la reinterpretan (tasa vs brecha), el auditor

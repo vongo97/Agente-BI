@@ -387,6 +387,95 @@ class TestGenericFactsWithoutSales:
         assert not any(f["id"] == "TIME-G01" for f in audit["insights"])
 
 
+class TestMetricSemanticSplit:
+    """P-70: la "columna métrica" puede mezclar semánticas (tasas y brechas en
+    la misma columna, como el INE de tasa de paro). El promedio/mediana se
+    calculan solo con las filas de magnitud y la brecha recibe tarjeta propia
+    en pp; sin etiquetas de brecha pero con magnitudes extremas, se avisa en
+    calidad (red de seguridad) sin alterar el cálculo."""
+
+    INE_DF = pd.DataFrame(
+        {
+            "sexo_brecha": [
+                "Hombres", "Hombres", "Hombres",
+                "Mujeres", "Mujeres", "Mujeres",
+                "Brecha de género (mujeres - hombres)",
+                "Brecha de género (mujeres - hombres)",
+                "Brecha de género (mujeres - hombres)",
+            ],
+            "grupo_edad": ["16 y más"] * 9,
+            "periodo": ["2023", "2024", "2025"] * 3,
+            "total": [20.0, 22.0, 24.0, 26.0, 28.0, 30.0, 1.0, 2.0, 3.0],
+        }
+    )
+
+    def test_mean_and_median_exclude_gap_rows(self):
+        audit = build_audit(self.INE_DF, source_name="ine.csv")
+
+        mean = _fact(audit, "MET-G01")
+        # Tasas [20,22,24,26,28,30] -> 25.0; el promedio global mezclado sería 22.89.
+        assert mean["value"] == 25.0
+        assert "Se excluyen" in mean["definition"]
+        assert _fact(audit, "MET-G02")["value"] == 25.0
+
+    def test_gap_gets_own_card_in_points(self):
+        audit = build_audit(self.INE_DF, source_name="ine.csv")
+
+        gap = _fact(audit, "MET-G03")
+        assert gap["title"] == "Brecha media de 'total'"
+        assert gap["value"] == 2.0
+        assert gap["unit"] == "pp"
+        assert "pp" in gap["display_value"]
+        assert "no un porcentaje" in gap["definition"]
+        # La brecha también se narra aparte, nunca promediada.
+        assert "se calculan aparte" in audit["analysis"]
+
+    def test_gap_definitions_are_shown(self):
+        audit = build_audit(self.INE_DF, source_name="ine.csv")
+        terms = {d["term"] for d in audit["definitions"]}
+        assert "Diferencia (brecha)" in terms
+
+    def test_all_gap_rows_keep_single_semantics(self):
+        """Si TODAS las filas son de diferencia, no hay mezcla: se promedian
+        tal cual y no se emite la tarjeta separada."""
+        df = pd.DataFrame(
+            {
+                "sexo_brecha": ["Brecha de género (mujeres - hombres)"] * 6,
+                "grupo_edad": ["16 y más"] * 6,
+                "periodo": [str(y) for y in range(2020, 2026)],
+                "total": [1.0, 2.0, 3.0, 2.0, 1.0, 2.0],
+            }
+        )
+        audit = build_audit(df, source_name="solo_brecha.csv")
+
+        ids = {f["id"] for f in audit["insights"]}
+        assert "MET-G01" in ids
+        assert "MET-G03" not in ids
+        mean = _fact(audit, "MET-G01")
+        assert mean["value"] == 11.0 / 6
+        assert "Se excluyen" not in mean["definition"]
+
+    def test_mixed_magnitudes_without_gap_label_get_quality_note(self):
+        """Red de seguridad: sin etiquetas de brecha pero con grupos de
+        magnitudes extremas (1 frente a 100), el promedio global se avisa en
+        calidad; el cálculo no se altera."""
+        df = pd.DataFrame(
+            {
+                "grupo": ["A"] * 6 + ["B"] * 6,
+                "periodo": [str(y) for y in range(2018, 2030)],
+                "total": [100.0] * 6 + [1.0] * 6,
+            }
+        )
+        audit = build_audit(df, source_name="magnitudes.csv")
+
+        ids = {f["id"] for f in audit["insights"]}
+        assert "MET-G03" not in ids
+        assert _fact(audit, "MET-G01")["value"] == 50.5
+        quality = " ".join(audit["profile"]["quality"])
+        assert "magnitudes muy distintas" in quality
+        assert "'grupo'" in quality
+
+
 class TestSalesWithoutProfit:
     """P-63: rankings con Suma_Ingresos (ventas, sin profit) — la auditoría
     trabaja con lo que el archivo contiene: total + repartición verificable,
