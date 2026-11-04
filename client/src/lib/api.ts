@@ -35,6 +35,20 @@ function sleep(ms: number): Promise<void> {
 }
 
 /**
+ * P-61 (ampliación 2026-11-04): las llamadas que disparan LLM tardan 30-90 s
+ * (y hasta ~3 min con el presupuesto de proveedor de P-32). Con el timeout
+ * por defecto de 30 s el cliente aborta ("Tiempo de espera agotado…") y,
+ * encima, reintenta (2 por defecto): cada reintento re-ejecuta el análisis
+ * completo en el servidor y puede duplicar mensajes en el chat. Mismo
+ * tratamiento que uploadFile: timeout largo y 0 reintentos.
+ */
+export const LLM_TIMEOUT_MS = 180_000;
+const LLM_NETWORK_OPTIONS: { timeoutMs: number; retries: number } = {
+  timeoutMs: LLM_TIMEOUT_MS,
+  retries: 0,
+};
+
+/**
  * Ejecuta fetch con timeout y reintentos exponenciales.
  * - Timeout: aborta la petición tras `networkOptions.timeoutMs` (30 s por defecto).
  * - Reintento: solo en errores de red o timeout (no en 4xx/5xx de aplicación);
@@ -159,7 +173,7 @@ export async function analyzeData(query: string, apiKey: string, userId: string,
   const response = await securedFetch(`${API_URL}/analyze`, {
     method: "POST",
     body: formData,
-  });
+  }, LLM_NETWORK_OPTIONS);
   return handleResponse(response);
 }
 
@@ -296,7 +310,7 @@ export async function generateReportSummary(query: string, apiKey: string, userI
   const response = await securedFetch(`${API_URL}/generate-report-summary`, {
     method: "POST",
     body: formData,
-  });
+  }, LLM_NETWORK_OPTIONS);
   return handleResponse(response);
 }
 
@@ -332,7 +346,7 @@ export async function generateAutoDashboard(apiKey: string, userId: string, data
   const response = await securedFetch(`${API_URL}/auto-dashboard`, {
     method: "POST",
     body: formData,
-  });
+  }, LLM_NETWORK_OPTIONS);
   return handleResponse(response);
 }
 
@@ -348,7 +362,7 @@ export async function suggestQuestions(userId: string, apiKey: string, dataSourc
   const response = await securedFetch(`${API_URL}/suggest-questions`, {
     method: "POST",
     body: formData,
-  });
+  }, LLM_NETWORK_OPTIONS);
   return handleResponse(response);
 }
 
@@ -459,7 +473,7 @@ export async function getSimulationOntology(
       selectedIds: selectedIds,
       provider: provider
     }),
-  });
+  }, LLM_NETWORK_OPTIONS);
   return handleResponse(response);
 }
 
@@ -480,7 +494,7 @@ export async function generateSimulationAgents(
       apiKey: apiKey,
       mistralKey: mistralKey
     }),
-  });
+  }, LLM_NETWORK_OPTIONS);
   return handleResponse(response);
 }
 
@@ -501,7 +515,7 @@ export async function getSimulationSuggestions(
       provider: provider,
       mistralKey: mistralKey
     }),
-  });
+  }, LLM_NETWORK_OPTIONS);
   return handleResponse(response);
 }
 
@@ -548,7 +562,7 @@ export async function generateVisualSummary(
   const response = await securedFetch(`${API_URL}/visual-summary`, {
     method: "POST",
     body: formData,
-  });
+  }, LLM_NETWORK_OPTIONS);
   return handleResponse(response);
 }
 

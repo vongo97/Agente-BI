@@ -51,7 +51,7 @@ registrado aquí incluye:
 
 ## 2. Resumen (ordenado de mayor a menor)
 
-**Totales:** 4 críticos · 22 altos · 26 medios · 8 bajos (filas del resumen) · **68 IDs registrados**.
+**Totales:** 4 críticos · 22 altos · 27 medios · 8 bajos (filas del resumen) · **69 IDs registrados**.
 Deuda de registro conocida: **P-57–P-65** solo tienen sección de detalle (sin fila en el resumen) y **P-42** se cita en commits pero no está registrado.
 
 ### 🔴 CRÍTICOS
@@ -74,7 +74,7 @@ Deuda de registro conocida: **P-57–P-65** solo tienen sección de detalle (sin
 | **P-08** | Frontend | Capa de red sin timeout, `AbortController`, retry ni reacci�n a 401/403 | ? CERRADO | `client/src/lib/api.ts` � `securedFetch` con AbortController (30 s), retry exponencial (2 reintentos), 401/403 ? signOut + redirect /login � `client/src/tests/ApiNetwork.test.ts` (6 passed) |
 | **P-09** | Frontend | Autosync guarda valores por defecto antes de cargar la config → puede sobrescribir ajustes del usuario | ✅ CERRADO | `client/src/context/DashboardContext.tsx` · gate de hidratación `loadedConfigUser`/`configLoaded`: `syncConfig` no persiste hasta que `getUserConfig` resuelve para el usuario activo; cleanup de timers/pendientes al desmontar o cambiar de cuenta; token de NextAuth desacoplado de la carga de config · `client/src/tests/DashboardConfigHydration.test.tsx` (3 passed: carga lenta no autosavea defaults, fallo de red deja autosave deshabilitado, cambio del usuario autosavea tras hidratar) · suite `vitest run` → 78 passed · `tsc --noEmit` limpio (2026-10-28) |
 | **P-10** | Cifrado | `ENCRYPTION_KEY` inválida genera clave efímera; `encrypt/decrypt` aceptan texto plano | ✅ CERRADO | `server/src/utils/security.py` · fail-closed en producción sin clave · clave determinista en dev · `encrypt_key` lanza `ValueError` en vez de texto plano · `decrypt_key` rechaza no-Fernet · `tests/test_security_encryption_key.py` (10 passed) · Antigravity 2026-10-22 |
-| **P-11** | Uploads | Original escrito en claro en `.tmp` antes de cifrar; sin mitigación de zip-bomb | ✅ CERRADO | `server/src/routers/data.py` · `server/src/utils/security.py` · `encrypt_bytes` cifra en memoria sin `.tmp` en claro · zip-bomb temprano desde bytes (Excel dimensiones + CSV líneas) · `server/tests/test_upload_security.py` (7 passed) · Antigravity 2026-10-22 |
+| **P-11** | Uploads | Original escrito en claro en `.tmp` antes de cifrar; sin mitigación de zip-bomb | 🟡 REABIERTO (2026-11-03) | **El fix fue revertido:** `885b3b61` (restaurar persistencia, P-57) reescribió `upload_file` y volvió a guardar el original **en claro** en disco y en nube (`data.py:155-183`, `is_encrypted=False` en `:204`); el test de regresión se borró en `20040e19`. El read-back SÍ soporta cifrado (`common.py:485-499`, `load_source_df`), así que re-cifrar en escritura es compatible. P-21 reconstruye los tests; el re-cifrado se reaplica con el zip-bomb temprano |
 | **P-12** | API | `str(e)` de excepciones internas persistido y devuelto al cliente | ✅ CERRADO | `server/src/routers/simulation.py` · `str(e)` reemplazado por mensajes genéricos en 3 ubicaciones (líneas 139, 447, 453) · detalle solo en logs internos con `logger.exception` · Antigravity 2026-10-22 |
 | **P-13** | UI/BI | KPIs inventados presentados como análisis real (`38.4 + n*1.2`, `96.5%`) | ✅ CERRADO | `client/src/components/DashboardView.tsx:73-131` · métricas reales derivadas de datos (visualizaciones activas, filtros, fuentes) · Antigravity 2026-10-22 |
 | **P-14** | UI/BI | El modelo mostrado en el selector no es el que usa el backend | ? CERRADO | `client/src/components/SettingsView.tsx` � `client/src/context/DashboardContext.tsx` � `providerModels` cargado desde `getUserConfig` y mostrado junto al nombre del proveedor � Antigravity 2026-10-22 |
@@ -120,6 +120,7 @@ Deuda de registro conocida: **P-57–P-65** solo tienen sección de detalle (sin
 | **P-48** | API/BI | `/dashboard/filter` responde `200 success` con columnas inexistentes y no filtra en modo SQL (TODO) | `server/src/routers/dashboard.py:217-250` · runtime |
 | **P-49** | Dev | No hay modo local sin nube: subir archivos exige Supabase válido (503 si no) y el arranque no lo avisa | `server/src/routers/data.py:212-241` · runtime `/upload` |
 | **P-50** | Infra/Dev | ✅ CERRADO — Con credenciales presentes pero inválidas, `/health` decía `not_configured` y el log solo `SupabaseException`; un typo en `SUPABASE_URL` (`hhttps://…`) dejaba `/upload` en 503 sin causa visible | `server/src/services/storage_service.py:34-100` · runtime `/upload` |
+| **P-70** | IA/BI | MET-G01/G02 promedian la "columna métrica" mezclando semánticas distintas (tasas y brechas en la misma columna) | `insight_auditor.py` (heurística de columna métrica) · reproducido con `ine_tasa_paro_edad_11178.csv` (2026-11-04, ver detalle) |
 
 ### 🟢 BAJOS
 
@@ -421,8 +422,16 @@ texto plano; test de arranque sin clave → excepción.
 
 ---
 
-### P-11 · Upload: `.tmp` en claro y zip-bomb (CERRADO por Antigravity 2026-10-22)
+### P-11 · Upload: `.tmp` en claro y zip-bomb (REABIERTO 2026-11-03; fix original de Antigravity 2026-10-22 revertido)
 **Archivo:** `server/src/routers/data.py` · `server/src/utils/security.py`.
+
+> **Reapertura (2026-11-03).** El commit `885b3b61` ("restaurar persistencia", P-57) reescribió
+> `upload_file` y eliminó el cifrado en escritura: hoy el original se escribe **en claro** en
+> `permanent_path` (`data.py:155-170`), se sube en claro a la nube (`upload_bytes(cloud_key, raw_bytes)`)
+> y la fila se guarda con `is_encrypted=False` (`data.py:204`). El test de regresión se borró en
+> `20040e19`. El cierre original sigue documentado abajo a efectos históricos, pero el estado vigente
+> es el de la fila del resumen: REABIERTO. La lectura sí soporta cifrado (`common.py:485-499`,
+> `load_source_df`), de modo que cifrar de nuevo en escritura no rompe la persistencia.
 
 Se escribía el original a `permanent_path + ".tmp"` sin cifrar antes de `encrypt_file`; los límites
 (25 MB / 1M celdas) se comprobaban **después** de abrir el Excel/zip; sin ratio de compresión.
@@ -986,6 +995,7 @@ un duplicado.
 | 2026-10-30 | **P-33 CERRADO (SSRF en `/connect-sql`)** siguiendo el criterio de cierre ya anotado: `validate_external_url_host` ahora (1) solo acepta esquemas SQL de red en allowlist (`sqlite:///`, `file://` y `duckdb://` quedan bloqueados porque leen archivos locales), (2) exige `ALLOWED_SQL_HOSTS` en producción (fail-closed: sin allowlist no hay conexiones salientes) y (3) valida **todas** las direcciones que devuelve el DNS, no solo la primera (un registro privado secundario ya no se cuela). La validación se cableó en el punto único `get_sql_engine`, de modo que también las **reconexiones de fuentes guardadas** (`common.py:514`) quedan cubiertas y no solo el endpoint. Nota operativa: en producción hay que configurar `ALLOWED_SQL_HOSTS` en el Dashboard de Render o `/connect-sql` devolverá 400 controlado (declarado en `render.yaml` con `sync: false`). **P-31 corregido el alcance (ACEPTADO):** se comprobó con `uvicorn.Config` que `forwarded_allow_ips=127.0.0.1`, por lo que la evasión descrita vía `X-Forwarded-For` no era posible; el riesgo real era el cubo compartido de las peticiones anónimas, que se asume documentado. Además se eliminó el `except: pass` del key function (ahora registra en debug). Evidencia: `tests/test_security_hardening.py` → 51 passed (15 de SSRF, 2 del limiter); suite completa → **313 passed, 3 xfailed**. |
 | 2026-10-30 | **P-22 CERRADO (`/health` bloqueante).** El router `health.py` ya no existe: `/health` vive en `main.py` y seguía ejecutando la inspección de esquema (`db_schema_diagnostic`) y el probe de Supabase (`storage_diagnostic`, cache 60 s) dentro de la corrutina, así que con la cache fría bloqueaba el event loop — el mismo patrón que causaba los reinicios de **P-56**. Ahora ambas sondas se ejecutan en el threadpool (`run_in_threadpool`); el ticker del test confirma que el event loop sigue vivo durante 2 x 0.15 s de sondas lentas. Además se retiró el nombre del bucket de la respuesta pública, que ya declaraba "sin host, usuario, bucket ni credenciales" pero lo filtraba. El endpoint queda público por diseño (los health checks de infra son anónimos; el chequeo real de Render es `/live`); el residuo de información (versión, dialecto, flags) se considera aceptado y saneado. Evidencia: `tests/test_health_endpoint.py` (2 passed, creado). |
 | 2026-11-03 | **P-46 CERRADO (URL interna al cliente).** `GET /data-sources`, `POST /data-sources` y `GET /sources` devolvían los objetos ORM tal cual, incluida la columna `url`: para archivos es la clave de nube `data_sources/<md5(email)>/...` (ruta adivinable), para SQL la cadena de conexión cifrada y para legacy la ruta del contenedor. Ahora los tres endpoints usan `_serialize_source()` (mismo patrón que `dashboard.py:_serialize_chat_source` ya aplicaba en el historial): la respuesta pública pierde `url` y el backend la sigue usando internamente para reconectar la sesión. Verificado que el cliente no consume ese campo (en `api.ts` solo hay POST/DELETE para fuentes). Evidencia: `tests/test_source_serialization.py` (3 passed) · suite completa **318 passed, 3 xfailed**. |
+| 2026-11-04 | **P-61 ampliado (timeout LLM) + P-70 registrado.** El usuario reprodujo en producción el timeout del chat: auditoría determinista OK, pero `/analyze` (LLM, 30-90 s) abortó a los 30 s con "Tiempo de espera agotado" y 2 reintentos duplicando el trabajo. Fix: `LLM_TIMEOUT_MS=180 s` + `retries: 0` en las 8 llamadas LLM de `api.ts` (`LLM_NETWORK_OPTIONS`); regresión `LlmTimeouts.test.ts` (10 passed). Mismo análisis del dataset INE reveló **P-70**: MET-G01/G02 promedian tasas (21.03/22.53) con brechas (1.52 pp) en la misma columna y muestran 15.03 como si fuera la tasa; registrado ABIERTO con tres opciones de diseño. Análisis verificado del dataset (2009-2025): paro juvenil 16-24 promedio 39.3% (vs 17.7% total), mejora 2009→2025 de -12.65 pp juvenil vs -7.25 pp total, brecha de género 0 pp (2009) → ~2.6 pp (2025). |
 
 ---
 
@@ -1209,6 +1219,8 @@ por encima del límite y el contenedor muere por OOM: "se cae el servidor" al su
 - Guard de memoria: DataFrame > 80 MB → HTTP 400 con mensaje accionable antes de tocar disco/nube/DB (test `test_upload_rejects_oversized_dataframe`). Log `UPLOAD_OK ... df=X pool=Y tablas=N` para vigilar el crecimiento del pool.
 - Verificación: `pytest tests -q` → **285 passed, 3 xfailed**; cliente `tsc --noEmit` limpio y `vitest run` → **64 passed**.
 
+**Ampliación (2026-11-04): mismo patrón en las llamadas LLM.** El usuario reprodujo en producción el timeout con el dataset INE (`ine_tasa_paro_edad_11178.csv`): la auditoría determinista (rápida) respondió bien, pero la pregunta de seguimiento por chat (`POST /analyze`, flujo LLM de 30-90 s) abortó a los 30 s con "Tiempo de espera agotado al conectar con el servidor" — y con los 2 reintentos por defecto, cada reintento re-ejecutaba el análisis completo en el servidor. Fix: `LLM_TIMEOUT_MS = 180_000` y `retries: 0` (`LLM_NETWORK_OPTIONS`) aplicados a las 8 llamadas que disparan LLM (`/analyze`, `/generate-report-summary`, `/auto-dashboard`, `/suggest-questions`, `/visual-summary`, `/simulation/ontology`, `/simulation/generate-agents`, `/simulation/suggestions`). Regresión: `client/src/tests/LlmTimeouts.test.ts` (10 passed, guarda estática al estilo CSP.test.ts que falla si una llamada LLM nueva se añade sin las opciones).
+
 ---
 
 ### P-62 · Auditoría no-retail: hecho temporal tautológico y pocas tarjetas en datasets ricos
@@ -1363,3 +1375,40 @@ runtime de Node (globales experimentales) se detectan aquí antes de romper 15 s
 - Commit `d9e02f20` en `origin/main` (desplegado; `/health` de producción operativo).
 
 **Regla anti-repetición.** Las cuotas de tamaño de archivo/total deben derivarse de límites reales de infraestructura (RAM, memoria de DataFrame, almacenamiento de nube) y no anticiparse con valores fijos bajos que rompan el flujo. Si se mantiene una cuota, debe ser configurable y documentada, y nunca debe anular los guardrails existentes de memoria/ celdas.
+
+
+---
+
+### P-70 · MET-G01/G02 mezclan semánticas al promediar la "columna métrica"
+
+| Campo | Valor |
+|---|---|
+| **Severidad** | MEDIO (cifra honesta pero de lectura engañosa; no es invención) |
+| **Estado** | 🔴 ABIERTO (registrado 2026-11-04 antes de corregir; hallado usando el producto) |
+| **Verificado** | 🧪 pandas sobre `datasets_prueba/ine_tasa_paro_edad_11178.csv` (204 filas, INE tasa de paro por edad y sexo, 2009-2025) |
+| **Archivos** | `server/src/engine/insight_auditor.py` (selección de columna métrica y MET-G01/G02) |
+
+**Qué pasa.** El dataset del INE tiene una columna `total` con DOS semánticas: tasas de paro (filas
+Hombres/Mujeres, promedio 21.03%/22.53%) y **brechas en puntos** (filas "Brecha de género (mujeres -
+hombres)", media 1.52 pp). La heurística de "columna métrica" toma la primera numérica y MET-G01/G02
+promedian las 204 filas juntas: muestra **promedio 15.03** y mediana **13.25**, que el usuario lee
+naturalmente como "la tasa de paro" cuando la tasa media real es **~21.8%**. Las tarjetas son honestas
+con su definición ("204 filas con valor numérico"), pero la lectura natural es engañosa: mezcla
+porcentajes con puntos porcentuales de una diferencia.
+
+**Impacto.** El usuario toma el 15.03 como tasa de paro del dataset; la cifra correcta es ~7 puntos
+mayor. Es el linaje de P-13/P-54 (números verificados pero mal interpretados), ahora en el auditor
+determinista.
+
+**Criterio de cierre (opciones de diseño, pendiente de aprobación).**
+- (a) MET por grupo: en vez de un único promedio global, promedio/mediana por los grupos de la primera
+  columna categórica (aquí: Hombres 21.03 / Mujeres 22.53 / Brecha 1.52 — la mezcla se vuelve visible).
+- (b) Detector de filas "diferencia/brecha": si una categoría acompasa un patrón tipo
+  `brecha|diferencia|gap|(-)` en su etiqueta, excluirla de MET-G01/G02 y emitirla como tarjeta propia
+  (o nota de calidad).
+- (c) Mínimo: nota de calidad cuando la dispersión entre grupos categóricos sea del orden de la propia
+  media (señal de semántica mixta), avisando que el promedio agrega conceptos distintos.
+
+**Regla anti-repetición.** Un promedio solo es una métrica si todas las filas miden la misma cosa;
+cuando una columna numérica convive con categorías que la reinterpretan (tasa vs brecha), el auditor
+debe mostrar la descomposición o avisar, nunca un solo número agregado.
