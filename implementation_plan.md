@@ -1,99 +1,72 @@
-# 🛡️ Implementation Plan — Hardening de Seguridad Vektra BI
+# Implementation Plan — Lista Roja (Problemas Conocidos Abiertos)
 
-**Objetivo:** Cerrar los 6 críticos de seguridad de la auditoría (06/02/2026) sin romper funcionalidad existente. Cambios incrementales y revertibles.
-
----
-
-## FASE 1 — Críticos (Mata-prioridades)
-
-### 1.1 Purgar claves Groq hardcodeadas `MODIFY`
-- **Archivos:** `server/scratch/update_groq_key.py`, `server/scratch/update_groq_key_invitado.py`
-- **Acción:** Reemplazar claves literales por `os.environ["GROQ_API_KEY"]` (leída de argumento/env). Eliminar valores reales del código.
-- **Manual (fuera del repo):** Revocar ambas claves en el panel de Groq.
-
-### 1.2 Eliminar fallback JWT predecible `MODIFY`
-- **Archivos:** `server/src/utils/common.py` (líneas ~92, 124), `client/src/auth.ts` (~42)
-- **Acción:** Si `AUTH_SECRET`/`JWT_SECRET` no está definido → lanzar error al arrancar en vez de usar fallback; permitir fallback **solo** si `ENVIRONMENT=development` explícito.
-- **Verificación:** backend arranca con env; falla limpio con mensaje claro sin env.
-
-### 1.3 Blindar sandbox contra filesystem/red `MODIFY`
-- **Archivo:** `server/src/utils/executor.py` (+ orquestador embebido si existe en `run.py`)
-- **Acción:**
-  - Envolver `pd` expuesto: bloquear `pd.read_csv/read_excel/read_json/...` cuando el argumento sea path de archivo o URL http(s).
-  - Quitar `io` de la whitelist de imports (o exponer shim que prohíba `io.open` de paths).
-  - AST: bloquear atributos peligrosos (`.read`, `.write`, `.open` sobre objetos no permitidos) — validación conservadora lista negra de atributos: `open`, `read_csv`, `read_excel`, `read_parquet`, `to_csv` hacia paths fuera de `temp_dir`.
-  - Ampliar `env_clean`: eliminar TODO el entorno excepto `PATH`, `PYTHONPATH`, `TMP`.
-  - `pickle.load` → validar que el archivo esté dentro de `temp_dir` del propio sandbox.
-- **Verificación:** test que `import io; io.open('...')` y `pd.read_csv('/etc/passwd')` / `pd.read_csv('http://169.254.169.254')` sean rechazados.
-
-### 1.4 SSRF + cifrado en `/connect-sql` `MODIFY`
-- **Archivo:** `server/src/routers/data.py` (líneas ~195-217)
-- **Acción:**
-  - Parsear host de la URL; rechazar loopback, RFC1918, link-local, `169.254.169.254` (allowlist configurable `ALLOWED_SQL_HOSTS`).
-  - Cifrar la URL con la función Fernet existente antes de guardarla en `data_sources.url`; descifrar al usar.
-  - Limitar `get_db_schema()` a timeout corto.
-- **Verificación:** intentar `postgresql://user:pass@127.0.0.1/db` y `...@169.254.169.254/...` → 400.
-
-### 1.5 Eliminar endpoint destructivo `/sources/clear-force` `MODIFY`
-- **Archivo:** `server/src/routers/data.py` (~509)
-- **Acción:** Eliminar el endpoint por completo (no gatearlo: eliminarlo). Si hay necesidad de depuración, se hace por CLI fuera de la API.
-- **Verificación:** `DELETE /sources/clear-force` → 404.
-
-### 1.6 Filtro SQL — endurecer `MODIFY`
-- **Archivo:** `server/src/utils/executor.py` (`validate_sql_safety`)
-- **Acción:**
-  - Whitelist en vez de blacklist: solo permitir statements que empiecen con `SELECT` o `WITH` (tras parseo), un único statement (rechazar `;` seguido de contenido), y rechazar tokens peligrosos en cualquier posición: `ATTACH PRAGMA VACUUM GRANT CREATE TRUNCATE EXEC COPY pg_read_file lo_export xp_cmdshell`.
-  - Rechazar `pg_catalog`/`information_schema` sensibles si aplica.
+**Proyecto:** Agente-BI / Vektra BI  
+**Fecha:** 2026-10-22  
+**Estado:** Pendiente de aprobación del usuario  
+**Autor:** Antigravity
 
 ---
 
-## FASE 2 — Altos
+## Contexto
 
-| # | Cambio | Archivo | Acción |
-|---|---|---|---|
-| 2.1 | Uploads sin fallback a texto plano | `data.py:128` | Si `encrypt_file` falla → abortar upload con 500 genérico, no guardar en claro |
-| 2.2 | Validar parseo antes de persistir | `data.py:112` | Parsear DataFrame con pandas ANTES de mover a disco; límite de celdas igual a g-sheets |
-| 2.3 | Pickle: eliminar fallback en claro | `common.py:200`, `data.py:159/265/401` | Todo por `save_user_data` cifrado; si el descifrado falla → error, no `read_pickle` claro |
-| 2.4 | Rate limit `/user-config` | `auth.py:92` | Añadir `@limiter.limit("10/minute")` |
-| 2.5 | Sanitizar logs con email | `common.py:208`, `analysis.py:98` | Enmascarar emails (`u***@domain`) en logs |
-| 2.6 | Eliminar XSS Mermaid / DOMPurify | `client/.../MermaidPreview.tsx` | `mermaid securityLevel: 'strict'` + `DOMPurify.sanitize(svg, {USE_PROFILES:{svg:true, svgFilters:true}})` |
+Este plan agrupa los problemas conocidos abiertos (`docs/PROBLEMAS_CONOCIDOS.md`) por prioridad.  
+Ningún cambio se aplicará sin tu aprobación explícita (`Proceed`) sobre cada fase o ítem.
+
+Problemas ya cerrados en esta sesión (no están en este plan): P-27, P-03, P-05, P-10, P-13, P-16, P-55.
 
 ---
 
-## FASE 3 — UX / Diseño (del reporte visual)
+## Fase 1 — Seguridad y estabilidad crítica (recomendada primero)
 
-| # | Cambio | Archivos |
-|---|---|---|
-| 3.1 | Reemplazar `alert()` nativos por `ToastContext` (14 lugares) | `Chat.tsx`(7), `Sidebar.tsx`(4), `ReportBuilder.tsx`(3), `ChatHeader.tsx`, `InteractiveCanvas.tsx` |
+| ID | Problema | Archivos | Cambio necesario | Beneficio |
+|---|---|---|---|---|
+| **P-07** | CSP permisiva (`unsafe-inline`, `unsafe-eval`, `connect-src ws: wss:`, sin `frame-ancestors`) | `client/next.config.ts:19-28` | Reemplazar `unsafe-inline`/`unsafe-eval` por nonces o hashes; restringir `connect-src` a los orígenes del backend y Supabase; añadir `frame-ancestors 'none'`. | Reduce superficie de XSS e inyección de contenido malicioso. |
+| **P-08** | Capa de red sin timeout, `AbortController`, retry ni reacción a 401/403 | `client/src/lib/api.ts:15-32` | Envolver `securedFetch` con `AbortController` (timeout 30s), retry exponencial (máx. 2) y mapear 401/403 a cierre de sesión + redirect `/login`. | La UI no se queda colgada; errores de auth se manejan limpiamente. |
+| **P-11** | Original escrito en claro en `.tmp` antes de cifrar; sin mitigación de zip-bomb | `server/src/routers/data.py:110-192` | Cifrar en memoria y escribir directo al destino final sin `.tmp` intermedio claro; limitar filas/columnas y tamaño de archivo en upload (zip-bomb). | Evita fuga de datos sin cifrar y ataques por descompresión descontrolada. |
+| **P-12** | `str(e)` de excepciones internas persistido y devuelto al cliente | `server/src/routers/simulation.py:139,458,461` (y similares) | Reemplazar `str(e)` por mensajes genéricos saneados + `X-Request-Id`; registrar detalle solo en logs internos. | No se filtran rutas, credenciales parciales ni stack traces al cliente. |
+| **P-15** | Sin allowlist ni middleware en cliente: cualquier cuenta Google entra y queda inservible (403) | `client/src/auth.ts:7-30`, `app/page.tsx:20-24` | Añadir allowlist de correos autorizados en middleware/cliente; si el email no está en la lista, bloquear acceso con mensaje claro. | Solo usuarios autorizados usan la app; evita confusiones con cuentas ajenas. |
+
+**Criterio de cierre Fase 1:** `tsc --noEmit` limpio, `npm run build` OK, y tests de seguridad nuevos pasan.
 
 ---
 
-## 🧪 Plan de Verificación
+## Fase 2 — Correctitud de datos y UX
 
-1. **Backend:** `cd server && pytest` (añadir tests nuevos: sandbox escape, connect-sql SSRF, clear-force 404, crypto fallback).
-2. **Frontend:** `cd client && npm run build` (tipos) y `npm test` (tests existentes no deben romperse).
-3. **Manual:** arrancar `run_dev.py`, flujo completo: login → upload CSV → chat → dashboard → simulación → export.
+| ID | Problema | Archivos | Cambio necesario | Beneficio |
+|---|---|---|---|---|
+| **P-14** | El modelo mostrado en el selector no es el que usa el backend | `client/src/components/ProviderKeysPanel.tsx:43-54,130`, `client/src/context/DashboardContext.tsx:146-167` | Sincronizar el proveedor mostrado con el que realmente se resuelve en `resolve_keys()`; mostrar el modelo efectivo. | El usuario no ve un modelo distinto al que realmente ejecuta. |
+| **P-26** | "Guardar Cambios" en Ajustes no guarda nada | `client/src/components/SettingsView.tsx:72-76` | Conectar el botón a la persistencia real de preferencias (o deshabilitarlo/eliminarlo hasta que funcione). | No hay expectativa falsa de que los cambios se guardaron. |
+| **P-34** | Sesión guardada por usuario (sin `chat_id`) → conversaciones se pisan | `server/src/utils/common.py:234-320,455-490` | `ensure_user_session` debe aislar por `user_id + chat_id`; test de dos conversaciones simultáneas que verifique que no se mezclan. | Dos abiertas al mismo tiempo no se sobrescriben. |
+| **P-35** | `data_store` global en memoria sin límite ni TTL | `server/src/utils/common.py` | Añadir LRU o TTL con tamaño máximo; test de crecimiento que no exceda el límite. | Evita OOM en Render free (512 MB) con muchas conversaciones. |
+| **P-27** | (Ya cerrado) — Fuentes con alcance por conversación | — | Ya implementado en esta sesión. | — |
 
-## 🚫 Restricciones
-- No instalar dependencias nuevas salvo `dompurify` + `@types/dompurify` en client (imprescindible para XSS).
-- No cambiar contratos de API; solo endurecer.
-- Sin reescrituras masivas: ediciones dirigidas.
-- Preservar comentarios/docstrings ajenos.
+**Criterio de cierre Fase 2:** tests de aislamiento de sesiones y TTL pasan; `tsc` y `build` OK.
 
-## 📦 Estado de ejecución
+---
 
-**FASE 1 — Críticos: ✅ COMPLETADA** (todos los ítems código-resolvibles)
-**FASE 2 — Altos: ✅ COMPLETADA** (incluye 2.6 XSS/DOMPurify)
-**FASE 3 — Diseño: ✅ COMPLETADA** (14 `alert()` → toasts)
+## Fase 3 — Funcionalidad y deuda menor
 
-**Verificación:**
-- `server`: 43/43 tests nuevos de hardening ✅; suite completa 71 pasan ✅; 8 fallos analizados y confirmados como **preexistentes/ambientales** (red Gemini inalcanzable, mocks a atributos inexistentes, aislamiento de tests) — 0 regresiones.
-- `client`: `tsc --noEmit` sin errores en código de app (faltan dev-deps de vitest, preexistente).
+| ID | Problema | Archivos | Cambio necesario | Beneficio |
+|---|---|---|---|---|
+| **P-37** | `generate_auto_dashboard` es stub con TODO | `server/src/engine/bi_analyst.py:634` | Implementar generación real de métricas y gráficos a partir del dataset, o devolver `501` explícito y ocultar el botón. | El botón "Auto-Dashboard" deja de mostrar "0 gráficos, 0 métricas". |
+| **P-38** | Layout de dashboard desde `localStorage` sin validar; `any` en simulación | `client/src/components/DashboardView.tsx:222-229`, `client/src/components/SimulationSandbox.tsx:13` | Validar esquema de layout al leer `localStorage`; reemplazar `any` por tipos reales. | Evita errores de hidratación y layouts rotos. |
+| **P-39** | Estado `pending` se etiqueta como "Fallo" | `client/src/components/SimHistory.tsx:42` | Mapear estados correctamente: `pending` ≠ fallo. | El usuario ve el estado real de sus simulaciones. |
+| **P-40** | Texto de 8-10 px y sidebar fija en móvil | `client/src/components/SimHistory.tsx:12` y varios | Mínimo 12 px; sidebar responsive en móvil. | Accesibilidad y usabilidad en móviles. |
+| **P-41** | 3 tests backend fallando (`test_exports.py`, `test_simulation.py`) | `server/tests/test_exports.py:82,112`, `server/tests/test_simulation.py:129` | Corregir o justificar como `xfail`; suite 100% verde. | Confianza en el suite de tests. |
+| **P-46** | `/data-sources` y `/sources` devuelven `url` interna al cliente | `server/src/routers/data.py:86-91` | No exponer `url` (clave de nube / ruta contenedor) en la respuesta al cliente; devolver solo metadatos seguros. | No se filtran rutas de almacenamiento ni claves de bucket. |
+| **P-54** | Narrativa sin verificación numérica (fase general) | `server/src/engine/insight_auditor.py`, `analysis.py` | Extender verificación numérica a preguntas generales `/analyze` (no solo auditoría). | Cifras verificadas también en respuestas LLM normales. |
 
-**Acciones MANUALES pendientes (fuera del código):**
-- [ ] Revocar las 2 claves de Groq expuestas en el panel de console.groq.com
-- [ ] Rotar `AUTH_SECRET` y `ENCRYPTION_KEY` y `AUTHORIZED_EMAILS` en el `.env` real
-- [ ] Purgar el historial de git de `server/scratch/update_groq_key*.py` (git filter-repo / BFG)
-- [ ] Activar TLS (:443) en nginx y añadir `limit_req`
-- [ ] Configurar `ALLOWED_SQL_HOSTS` si se usan conexiones SQL a hosts conocidos
+**Criterio de cierre Fase 3:** suite completa verde (`pytest` + `vitest`), `tsc` y `build` OK.
 
+---
+
+## Cómo proceder
+
+1. Tú eliges con qué **fase** quieres comenzar (o apruebas todas).
+2. Yo creo el `implementation_plan.md` detallado para la fase elegida.
+3. Implemento de forma incremental: un problema a la vez, con tests y verificación (`tsc`, `vitest`, `pytest`, `build`).
+4. Commiteo y pusheo solo lo aprobado.
+
+**¿Con qué fase quieres empezar? ¿O prefieres que aborde un problema concreto primero?**
+
+Responde con la fase (1, 2 o 3) o el ID del problema que quieras atacar primero, y yo preparo el plan detallado para tu aprobación antes de escribir código.
