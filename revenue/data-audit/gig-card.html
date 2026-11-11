@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Gig card</title>
+<style>
+  @page { size: 1280px 769px; margin: 0; }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 1280px; height: 769px; overflow: hidden; }
+  body {
+    font-family: "Segoe UI", -apple-system, "Helvetica Neue", Arial, sans-serif;
+    background:
+      radial-gradient(900px 520px at 88% 8%, #e8f0ff 0%, rgba(232,240,255,0) 62%),
+      radial-gradient(760px 520px at 4% 100%, #eafaf3 0%, rgba(234,250,243,0) 60%),
+      #fbfcfe;
+    color: #0f172a;
+    position: relative;
+  }
+  .grid {
+    position: absolute; inset: 0;
+    background-image:
+      linear-gradient(#e6ecf5 1px, transparent 1px),
+      linear-gradient(90deg, #e6ecf5 1px, transparent 1px);
+    background-size: 46px 46px;
+    opacity: .55;
+    mask-image: radial-gradient(760px 560px at 70% 40%, #000 20%, transparent 78%);
+    -webkit-mask-image: radial-gradient(760px 560px at 70% 40%, #000 20%, transparent 78%);
+  }
+  .wrap {
+    position: relative;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    gap: 54px;
+    padding: 0 68px;
+  }
+  .left { width: 620px; flex: 0 0 620px; }
+
+  .eyebrow {
+    display: inline-flex; align-items: center; gap: 9px;
+    background: #0f172a; color: #fff;
+    font-size: 14px; font-weight: 700; letter-spacing: .13em;
+    text-transform: uppercase;
+    padding: 9px 16px; border-radius: 999px;
+    margin-bottom: 26px;
+  }
+  .dot { width: 7px; height: 7px; border-radius: 50%; background: #34d399; box-shadow: 0 0 0 4px rgba(52,211,153,.22); }
+
+  h1 {
+    font-size: 62px; line-height: 1.02; letter-spacing: -.035em;
+    font-weight: 800; margin-bottom: 22px;
+  }
+  h1 .accent {
+    background: linear-gradient(92deg, #2563eb 0%, #0ea5a4 100%);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  .sub {
+    font-size: 22px; line-height: 1.45; color: #475569; font-weight: 450;
+    max-width: 540px; margin-bottom: 30px;
+  }
+  .chips { display: flex; flex-wrap: wrap; gap: 10px; }
+  .chip {
+    font-size: 15px; font-weight: 650; color: #1e293b;
+    background: #fff; border: 1px solid #dbe3ee;
+    padding: 9px 15px; border-radius: 10px;
+    box-shadow: 0 1px 2px rgba(15,23,42,.05);
+  }
+  .chip b { color: #2563eb; }
+
+  .foot {
+    margin-top: 34px; display: flex; align-items: center; gap: 14px;
+    font-size: 16px; color: #64748b; font-weight: 500;
+  }
+  .clock { font-weight: 750; color: #0f172a; }
+
+  /* ---- report mockup ---- */
+  .right { flex: 1 1 auto; display: flex; justify-content: flex-end; }
+  .card {
+    width: 500px;
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    border-radius: 20px;
+    box-shadow: 0 30px 70px -18px rgba(15,23,42,.24), 0 8px 20px -10px rgba(15,23,42,.10);
+    overflow: hidden;
+    transform: rotate(-1.4deg);
+  }
+  .card-top {
+    padding: 22px 24px 20px;
+    border-bottom: 1px solid #eef2f7;
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .card-top .t { font-size: 17px; font-weight: 750; letter-spacing: -.01em; }
+  .card-top .s { font-size: 13px; color: #94a3b8; margin-top: 3px; font-weight: 500; }
+
+  .score {
+    width: 96px; height: 96px; border-radius: 50%;
+    display: grid; place-items: center; position: relative;
+    background: conic-gradient(#0ea5a4 0deg 169deg, #e2e8f0 169deg 360deg);
+    flex: 0 0 96px;
+  }
+  .score::after {
+    content: ""; position: absolute; inset: 9px; border-radius: 50%; background: #fff;
+  }
+  .score span {
+    position: relative; z-index: 1; font-size: 30px; font-weight: 800;
+    letter-spacing: -.03em; color: #0f172a;
+  }
+  .score span i { font-size: 14px; font-style: normal; color: #94a3b8; font-weight: 700; }
+
+  .rows { padding: 8px 24px 18px; }
+  .row {
+    display: flex; align-items: center; gap: 12px;
+    padding: 12px 0; border-bottom: 1px dashed #eef2f7;
+  }
+  .row:last-child { border-bottom: 0; }
+  .sev {
+    font-size: 11px; font-weight: 800; letter-spacing: .06em;
+    padding: 4px 8px; border-radius: 6px; flex: 0 0 auto;
+  }
+  .high { background: #fee2e2; color: #b91c1c; }
+  .med  { background: #fef3c7; color: #b45309; }
+  .low  { background: #dbeafe; color: #1d4ed8; }
+  .row .txt { font-size: 14px; font-weight: 600; color: #334155; }
+  .row .txt em { display: block; font-style: normal; font-size: 12px; font-weight: 500; color: #94a3b8; margin-top: 2px; }
+  .row .n { margin-left: auto; font-size: 13px; font-weight: 750; color: #0f172a; }
+</style>
+</head>
+<body>
+  <div class="grid"></div>
+  <div class="wrap">
+    <div class="left">
+      <div class="eyebrow"><span class="dot"></span> Data quality audit</div>
+      <h1>Your spreadsheet<br>has <span class="accent">hidden errors.</span></h1>
+      <p class="sub">I audit your CSV or Excel file and send a client-ready report: every duplicate, broken type, outlier and exposed email — ranked by severity.</p>
+      <div class="chips">
+        <div class="chip"><b>0–100</b> quality score</div>
+        <div class="chip">Exact column + fix</div>
+        <div class="chip">PII / privacy check</div>
+        <div class="chip"><b>24h</b> delivery</div>
+      </div>
+      <div class="foot">
+        <span class="clock">Send the file first.</span>
+        <span>I tell you what's wrong before you pay.</span>
+      </div>
+    </div>
+
+    <div class="right">
+      <div class="card">
+        <div class="card-top">
+          <div>
+            <div class="t">Data Quality Report</div>
+            <div class="s">orders_export_2026.csv · 18,402 rows</div>
+          </div>
+          <div class="score"><span>47<i>/100</i></span></div>
+        </div>
+        <div class="rows">
+          <div class="row">
+            <div class="sev high">HIGH</div>
+            <div class="txt">Duplicate rows<em>customer_id</em></div>
+            <div class="n">1,204</div>
+          </div>
+          <div class="row">
+            <div class="sev high">HIGH</div>
+            <div class="txt">Emails exposed<em>contact_email</em></div>
+            <div class="n">8,731</div>
+          </div>
+          <div class="row">
+            <div class="sev med">MED</div>
+            <div class="txt">Numbers stored as text<em>revenue</em></div>
+            <div class="n">2,118</div>
+          </div>
+          <div class="row">
+            <div class="sev med">MED</div>
+            <div class="txt">Outliers (1.5× IQR)<em>order_total</em></div>
+            <div class="n">96</div>
+          </div>
+          <div class="row">
+            <div class="sev low">LOW</div>
+            <div class="txt">Leading / trailing spaces<em>country</em></div>
+            <div class="n">412</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

@@ -1,0 +1,12 @@
+﻿id,email,amount,country,status,note
+1,ana@example.com,120.50,ES,paid,ok
+2,luis@example.com,,ES,paid,ok
+3,ANA@example.com,95,ES,paid, ok
+4,pedro@example.com,-40,ES,paid,refund
+5,maria@example.com,1000000,ES,paid,outlier
+6,maria@example.com,88,ES,paid,duplicate
+6,maria@example.com,88,ES,paid,duplicate
+7,not-an-email, 75 ,ES,paid, ok
+8,,abc,ES,paid,
+9,sara@example.com,150,ES,paid,ok
+10,sara@example.com,160,ES,paid,ok
