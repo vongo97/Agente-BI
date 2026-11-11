@@ -31,6 +31,9 @@ Before modifying the project, read and apply the relevant skill files for the ta
 - Use `.codex/skills/agent-stability-and-guidance-control/SKILL.md` for AI agent behavior, preventing scope creep, strictly following instructions, and respecting dependency security rules.
 - Use `.codex/skills/user-interaction-protocol/SKILL.md` for standardizing user requests, ensuring quality standards (9-10/10) and executing task flows without regressions.
 
+### AI Models & Lifecycle
+- Use `.codex/skills/vektra-gemini-model-lifecycle/SKILL.md` **before changing any model identifier**: current Gemini whitelist (verified 2026-11-11), shutdown/redirection dates, single-source-of-truth rule (`server/src/engine/model_catalog.py`), and the migration procedure. The whitelist in `AI_RULES.md` rule #1 is the short version; this skill is the authority.
+
 ## General Rules
 
 - **REGLA 0 — Problemas conocidos primero (BLOQUEANTE):** Antes de leer cualquier otra skill, planificar o modificar un archivo, el agente DEBE leer `docs/PROBLEMAS_CONOCIDOS.md` y `.codex/skills/known-issues-registry/SKILL.md`. Debe citar los `P-XX` abiertos que toquen la tarea, no empeorarlos, y registrar cualquier hallazgo nuevo **antes** de corregirlo. Ningún problema se marca `CERRADO` sin evidencia (test o comando reproducible). **Excepción de evolución:** si el ajuste nuevo justificado choca con un comportamiento o test viejo, manda el ajuste nuevo y el viejo se actualiza en el mismo cambio (documentado en el registro); nunca se revierte un arreglo de seguridad ni se debilita un test de regresión.

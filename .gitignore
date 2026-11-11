@@ -44,3 +44,6 @@ server/scratch_test.py
 server/requirements-local.txt
 
 datasets_vektra/real/
+
+# Claude Code local config
+.claude/settings.local.json
