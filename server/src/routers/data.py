@@ -38,6 +38,59 @@ _ALLOWED_MIME_TYPES = {
 # MIME fallback: octet-stream solo si la extensión es válida
 _ALLOWED_EXTENSIONS = {'.csv', '.xlsx', '.xls', '.xlsm'}
 
+# P-11: límites tempranos anti zip-bomb, comprobados ANTES de parsear el archivo.
+# Un .xlsx es un zip: 50 MB comprimidos pueden expandirse a gigas y tumbar el
+# contenedor durante pd.read_excel aunque la cuota de RAM del DataFrame (P-61)
+# se compruebe después.
+_ZIP_BOMB_MAX_CELLS = 2_000_000      # celdas declaradas en el Excel
+_ZIP_BOMB_MAX_CSV_LINES = 2_000_000  # líneas de texto en el CSV
+
+
+def _reject_zip_bomb_early(raw_bytes: bytes, filename: str) -> None:
+    """Comprobación temprana de bomba de descompresión (P-11), sin parsear el archivo.
+
+    - Excel: suma las dimensiones declaradas de cada hoja con openpyxl en modo
+      read_only (lee solo el XML de dimensiones, no las celdas).
+    - CSV: cuenta saltos de línea en los bytes crudos.
+    Lanza HTTPException 400 si excede los límites.
+    """
+    import io as _io
+    ext = (filename or "").lower()
+
+    if ext.endswith(('.xls', '.xlsx', '.xlsm')):
+        try:
+            from openpyxl import load_workbook
+            wb = load_workbook(_io.BytesIO(raw_bytes), read_only=True, data_only=True)
+            declared = 0
+            try:
+                for ws in wb.worksheets:
+                    if ws.max_row and ws.max_column:
+                        declared += ws.max_row * ws.max_column
+            finally:
+                wb.close()
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.warning("UPLOAD_REJECTED motivo=excel_ilegible file=%s tipo=%s", filename, type(e).__name__)
+            raise HTTPException(status_code=400, detail="El archivo Excel no se puede abrir. Verifica que no esté dañado.")
+        if declared > _ZIP_BOMB_MAX_CELLS:
+            logger.warning(
+                "UPLOAD_REJECTED motivo=zip_bomb_xlsx file=%s celdas=%d limite=%d",
+                filename, declared, _ZIP_BOMB_MAX_CELLS,
+            )
+            raise HTTPException(
+                status_code=400,
+                detail="El Excel declara demasiadas celdas y no se puede procesar con seguridad."
+            )
+    elif ext.endswith('.csv'):
+        lines = raw_bytes.count(b"\n") + 1
+        if lines > _ZIP_BOMB_MAX_CSV_LINES:
+            logger.warning("UPLOAD_REJECTED motivo=zip_bomb_csv file=%s lineas=%d limite=%d", filename, lines, _ZIP_BOMB_MAX_CSV_LINES)
+            raise HTTPException(
+                status_code=400,
+                detail="El CSV tiene demasiadas líneas y no se puede procesar con seguridad."
+            )
+
 
 @router.post("/upload")
 @limiter.limit("5/minute")
@@ -116,6 +169,9 @@ async def upload_file(request: Request, file: UploadFile = File(...), db: Sessio
         file.file.seek(0)
         raw_bytes = file.file.read()
 
+        # ── VALIDACIÓN TEMPRANA ZIP-BOMB (P-11) ──
+        _reject_zip_bomb_early(raw_bytes, clean_name)
+
         # ── PARSEAR DESDE BYTES EN MEMORIA ──
         from src.connectors.data_connectors import ArchivoInvalido, load_file_data_from_bytes
         try:
@@ -152,11 +208,19 @@ async def upload_file(request: Request, file: UploadFile = File(...), db: Sessio
                 ),
             )
 
-        # ── ESCRIBIR ARCHIVO AL DISCO (caché local) ──
+        # ── CIFRAR EN MEMORIA (P-11) ──
+        # El original nunca se escribe en claro: ni en disco, ni en la nube.
+        # El read-back (`load_source_to_session`) ya sabe descifrar cuando
+        # `is_encrypted=True`, así que re-cifrar en escritura es compatible con
+        # los archivos legacy sin cifrar (leídos por el branch `else`).
+        from src.utils.security import encrypt_bytes
+        encrypted_bytes = encrypt_bytes(raw_bytes)
+
+        # ── ESCRIBIR ARCHIVO AL DISCO (caché local, cifrado) ──
         try:
             os.makedirs(DATA_SOURCES_DIR, exist_ok=True)
             with open(permanent_path, 'wb') as f:
-                f.write(raw_bytes)
+                f.write(encrypted_bytes)
         except Exception as e:
             logger.error("UPLOAD_WRITE_FAILED file=%s tipo=%s", permanent_name, type(e).__name__)
             try:
@@ -172,7 +236,7 @@ async def upload_file(request: Request, file: UploadFile = File(...), db: Sessio
         # ── SUBIR A LA NUBE (opcional: si falla seguimos con el disco local) ──
         cloud_key = f"data_sources/{safe_user}/{permanent_name}"
         try:
-            cloud_ok = bool(upload_bytes(cloud_key, raw_bytes))
+            cloud_ok = bool(upload_bytes(cloud_key, encrypted_bytes))
         except Exception:
             cloud_ok = False
         if not cloud_ok:
@@ -182,9 +246,10 @@ async def upload_file(request: Request, file: UploadFile = File(...), db: Sessio
                 clean_name, authenticated_user,
             )
 
-        # P-61: los bytes crudos ya están en disco y en la nube; liberarlos
-        # antes de la persistencia de sesión reduce el pico de RAM.
+        # P-61: los bytes (crudos y cifrados) ya están en disco y en la nube;
+        # liberarlos antes de la persistencia de sesión reduce el pico de RAM.
         del raw_bytes
+        del encrypted_bytes
         gc.collect()
 
         # 6. Actualizar sesión en memoria
@@ -201,7 +266,7 @@ async def upload_file(request: Request, file: UploadFile = File(...), db: Sessio
             type="file",
             url=cloud_key if cloud_ok else permanent_path,
             columns=json.dumps(df.columns.tolist()),
-            is_encrypted=False,
+            is_encrypted=True,
             size_bytes=file_size,
         )
         db.add(new_source)

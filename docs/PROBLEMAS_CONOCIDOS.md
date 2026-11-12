@@ -74,7 +74,7 @@ Deuda de registro conocida: **P-57–P-65** solo tienen sección de detalle (sin
 | **P-08** | Frontend | Capa de red sin timeout, `AbortController`, retry ni reacci�n a 401/403 | ? CERRADO | `client/src/lib/api.ts` � `securedFetch` con AbortController (30 s), retry exponencial (2 reintentos), 401/403 ? signOut + redirect /login � `client/src/tests/ApiNetwork.test.ts` (6 passed) |
 | **P-09** | Frontend | Autosync guarda valores por defecto antes de cargar la config → puede sobrescribir ajustes del usuario | ✅ CERRADO | `client/src/context/DashboardContext.tsx` · gate de hidratación `loadedConfigUser`/`configLoaded`: `syncConfig` no persiste hasta que `getUserConfig` resuelve para el usuario activo; cleanup de timers/pendientes al desmontar o cambiar de cuenta; token de NextAuth desacoplado de la carga de config · `client/src/tests/DashboardConfigHydration.test.tsx` (3 passed: carga lenta no autosavea defaults, fallo de red deja autosave deshabilitado, cambio del usuario autosavea tras hidratar) · suite `vitest run` → 78 passed · `tsc --noEmit` limpio (2026-10-28) |
 | **P-10** | Cifrado | `ENCRYPTION_KEY` inválida genera clave efímera; `encrypt/decrypt` aceptan texto plano | ✅ CERRADO | `server/src/utils/security.py` · fail-closed en producción sin clave · clave determinista en dev · `encrypt_key` lanza `ValueError` en vez de texto plano · `decrypt_key` rechaza no-Fernet · `tests/test_security_encryption_key.py` (10 passed) · Antigravity 2026-10-22 |
-| **P-11** | Uploads | Original escrito en claro en `.tmp` antes de cifrar; sin mitigación de zip-bomb | 🟡 REABIERTO (2026-11-03) | **El fix fue revertido:** `885b3b61` (restaurar persistencia, P-57) reescribió `upload_file` y volvió a guardar el original **en claro** en disco y en nube (`data.py:155-183`, `is_encrypted=False` en `:204`); el test de regresión se borró en `20040e19`. El read-back SÍ soporta cifrado (`common.py:485-499`, `load_source_df`), así que re-cifrar en escritura es compatible. P-21 reconstruye los tests; el re-cifrado se reaplica con el zip-bomb temprano |
+| **P-11** | Uploads | Original escrito en claro en `.tmp` antes de cifrar; sin mitigación de zip-bomb | ✅ CERRADO (2026-11-11) | `server/src/routers/data.py` (`upload_file`): 3 cambios quirúrgicos re-aplicados — (1) `_reject_zip_bomb_early(raw_bytes, clean_name)` invocado ANTES de parsear (línea ~173); (2) `encrypt_bytes(raw_bytes)` cifra en memoria y solo los bytes cifrados se escriben en disco y se suben a la nube (líneas ~211, ~232); (3) `DataSource.is_encrypted=True` (línea ~263). El original nunca se persiste en claro. Tests: `server/tests/test_upload_encryption.py` (7 passed) — cifrado en reposo, zip-bomb Excel, zip-bomb CSV, round-trip de descifrado + 3 guardas estáticas. Suite completa **339 passed, 3 xfailed**. Reapertura de 2026-11-03 por el revert `885b3b61` resuelta: el read-back soporta ambos formatos (`common.py:485-499` descifra cuando `is_encrypted=True`; los archivos legacy sin cifrar siguen leyéndose por el branch `else`) |
 | **P-12** | API | `str(e)` de excepciones internas persistido y devuelto al cliente | ✅ CERRADO | `server/src/routers/simulation.py` · `str(e)` reemplazado por mensajes genéricos en 3 ubicaciones (líneas 139, 447, 453) · detalle solo en logs internos con `logger.exception` · Antigravity 2026-10-22 |
 | **P-13** | UI/BI | KPIs inventados presentados como análisis real (`38.4 + n*1.2`, `96.5%`) | ✅ CERRADO | `client/src/components/DashboardView.tsx:73-131` · métricas reales derivadas de datos (visualizaciones activas, filtros, fuentes) · Antigravity 2026-10-22 |
 | **P-14** | UI/BI | El modelo mostrado en el selector no es el que usa el backend | ? CERRADO | `client/src/components/SettingsView.tsx` � `client/src/context/DashboardContext.tsx` � `providerModels` cargado desde `getUserConfig` y mostrado junto al nombre del proveedor � Antigravity 2026-10-22 |
@@ -423,29 +423,63 @@ texto plano; test de arranque sin clave → excepción.
 
 ---
 
-### P-11 · Upload: `.tmp` en claro y zip-bomb (REABIERTO 2026-11-03; fix original de Antigravity 2026-10-22 revertido)
-**Archivo:** `server/src/routers/data.py` · `server/src/utils/security.py`.
+### P-11 · Upload: `.tmp` en claro y zip-bomb (CERRADO 2026-11-11)
+**Archivo:** `server/src/routers/data.py` · `server/src/utils/security.py` · `server/tests/test_upload_encryption.py`.
 
-> **Reapertura (2026-11-03).** El commit `885b3b61` ("restaurar persistencia", P-57) reescribió
-> `upload_file` y eliminó el cifrado en escritura: hoy el original se escribe **en claro** en
-> `permanent_path` (`data.py:155-170`), se sube en claro a la nube (`upload_bytes(cloud_key, raw_bytes)`)
-> y la fila se guarda con `is_encrypted=False` (`data.py:204`). El test de regresión se borró en
-> `20040e19`. El cierre original sigue documentado abajo a efectos históricos, pero el estado vigente
-> es el de la fila del resumen: REABIERTO. La lectura sí soporta cifrado (`common.py:485-499`,
-> `load_source_df`), de modo que cifrar de nuevo en escritura no rompe la persistencia.
+> **Historia.** El fix original de Antigravity (2026-10-22) se revirtió en `885b3b61` ("restaurar
+> persistencia", P-57), que reescribió `upload_file` y volvió a guardar el original **en claro** en
+> disco y en nube, con `is_encrypted=False`. El test de regresión se borró en `20040e19`. El estado
+> fue REABIERTO (2026-11-03) hasta que la auditoría del 2026-11-07 lo volvió a marcar como la
+> prioridad técnica más urgente y el plan `PLAN_P11_UPLOAD_SEGURO.md` (2026-11-10) detailó los
+> cambios. El 2026-11-11 se aplicó la corrección completa.
 
-Se escribía el original a `permanent_path + ".tmp"` sin cifrar antes de `encrypt_file`; los límites
-(25 MB / 1M celdas) se comprobaban **después** de abrir el Excel/zip; sin ratio de compresión.
+**Problema.** El original se escribía en claro (en `.tmp` antes, y directamente en `permanent_path`
+tras el revert) y se subía en claro a la nube; además el guard anti zip-bomb
+`_reject_zip_bomb_early` existía en el archivo pero **nunca se invocaba** en el flujo activo, de
+modo que los límites se comprobaban después de abrir el Excel/zip.
 
-**Corrección aplicada.**
-- `encrypt_bytes(data: bytes) -> bytes` en `security.py`: cifra bytes en memoria con Fernet, nunca escribe texto plano en disco.
-- `upload_file` lee el archivo a `raw_bytes` en memoria, valida zip-bomb temprano (dimensiones de Excel con `read_only` desde `BytesIO`; conteo de líneas de CSV desde bytes), parsea con `load_file_data_from_bytes` (sin disco), cifra con `encrypt_bytes` y escribe directo al archivo permanente cifrado.
-- La subida a la nube (`upload_bytes`) se hace desde los bytes cifrados en memoria, sin leer de disco.
-- Tests: `server/tests/test_upload_security.py` (7 passed) — roundtrip cifrado, nonce aleatorio, disco solo tiene cifrado, zip-bomb por celdas, parseo CSV desde bytes.
+**Corrección aplicada (3 cambios quirúrgicos en `upload_file`).**
+1. **Zip-bomb temprano** — `_reject_zip_bomb_early(raw_bytes, clean_name)` se invoca entre la
+   lectura en memoria y `load_file_data_from_bytes(...)`. Excel: suma las dimensiones declaradas de
+   cada hoja con `openpyxl` en modo `read_only` (lee solo el XML de dimensiones). CSV: cuenta
+   saltos de línea en los bytes crudos. Límites: 2M celdas / 2M líneas. Rechazo con HTTP 400.
+2. **Cifrado en memoria** — `encrypt_bytes(raw_bytes)` (Fernet) produce `encrypted_bytes`; solo
+   esos bytes se escriben en `permanent_path` y se suben con `upload_bytes(cloud_key, encrypted_bytes)`.
+   El original **nunca** se persiste en claro, ni en disco ni en la nube, ni siquiera de forma transitoria.
+3. **Registro coherente** — `DataSource.is_encrypted=True`, que es lo que activa el descifrado en el
+   read-back (`common.py:485-499`: `decrypt_file_to_bytes` + `load_file_data_from_bytes`).
 
-**Verificación:** `pytest server/tests/test_upload_security.py` → 7 passed; conjunto con test_sql_mode_safety, test_sandbox_imports, test_security_encryption_key → 47 passed.
+**Compatibilidad.** El read-back soporta ambos formatos: los archivos cifrados se descifran cuando
+`is_encrypted=True`, y los archivos legacy subidos antes del fix se siguen leyendo por el branch
+`else` (`load_file_data`). No se requiere migración de los archivos existentes.
 
-**Regla:** nunca escribas datos de usuario en claro, ni siquiera "un momento".
+**Tests de regresión (P-21 parcial).** `server/tests/test_upload_encryption.py` — 7 passed:
+- `test_upload_encrypts_at_rest`: el archivo en disco no empieza por el header del CSV y sí por el
+  token Fernet (`gAAAA`).
+- `test_upload_rejects_zip_bomb_xlsx`: xlsx con `<dimension ref="A1:XFD1048576"/>` (~17,18 mil
+  millones de celdas declaradas) → HTTP 400 y `load_file_data_from_bytes` **no** es invocado.
+- `test_upload_rejects_zip_bomb_csv`: CSV de > 2M líneas → HTTP 400 sin parsear.
+- `test_encrypted_file_roundtrip`: tras limpiar la caché, `ensure_user_session` reconstruye el pool
+  descifrando el archivo y las columnas/filas coinciden.
+- 3 guardas estáticas que fallan si alguien borra la llamada al guard, el `encrypt_bytes` o el
+  `is_encrypted=True`.
+
+**Dos bugs de test encontrados y corregidos al implementar.**
+- El `setUp` parcheaba `upload_bytes`/`delete_object` sobre `src.utils.common`, donde **no existen**
+  (viven en `src.services.storage_service`), y parcheaba `DATA_SOURCES_DIR` sobre `common` cuando
+  el router lo importa **por valor** (`from src.utils.common import DATA_SOURCES_DIR`): el archivo
+  se escribía en el `./data_sources` real. Los parches van ahora sobre `src.routers.data`.
+- El fixture de zip-bomb Excel usaba `ws._dimension = "A1:XFD1048576"`, pero `wb.save()` de openpyxl
+  **recalcula el rango real** y descarta ese valor (queda 1×1), así que el guard nunca se disparaba.
+  El fixture ahora reescribe el XML de la hoja dentro del zip, que es lo que lee el guard.
+- El rate limiter de slowapi es global y compartido entre tests (`/upload` = 5/min por usuario): sin
+  `limiter.reset()` en el `setUp`, el test heredaba el cupo consumido por `test_data.py` y fallaba
+  con 429 según el orden de ejecución de la suite.
+
+**Verificación.** `pytest tests/test_upload_encryption.py` → 7 passed · `pytest tests/` → **339 passed, 3 xfailed** (baseline previo: 332 passed, 3 xfailed; +7 tests nuevos, sin regresiones).
+
+**Regla:** nunca escribas datos de usuario en claro, ni siquiera "un momento". Los límites de
+descompresión se comprueban **antes** de parsear, no después.
 
 ---
 
@@ -1085,7 +1119,7 @@ error se ocultaba tras un mensaje genérico, lo que alargó el diagnóstico en p
   `save_user_data` → responder.
 - La nube pasa a ser **opcional**: si `upload_bytes` falla se guarda la ruta local en `DataSource.url` y la respuesta
   incluye `persisted=false`, en lugar de abortar con 503 (cambio deliberado sobre el contrato anterior de P-49).
-- `is_encrypted=False` explícito mientras el cifrado en reposo de la copia local siga revertido (ver P-11).
+- `is_encrypted=False` explícito mientras el cifrado en reposo de la copia local siga revertido. **Estado vigente:** revertido por P-11 el 2026-11-11 — el cifrado en reposo está activo y la fila se crea con `is_encrypted=True`.
 - Se elimina la exposición de `str(e)` en el detalle 500 y se corrigió el mojibake (`Ã³`, `Ã±`, controles `\x8d`) de
   los mensajes del endpoint, que llegaban corruptos al usuario.
 - Tests actualizados al contrato nuevo: `test_upload_valid_csv` (crea la fila, clave de nube) y

@@ -2,8 +2,26 @@
 
 **Fecha:** 2026-11-10  
 **Proyecto:** Vektra BI / Agente-BI  
-**Estado:** Pendiente de aprobación  
+**Estado:** ✅ EJECUTADO (2026-11-11) — P-11 cerrado  
 **Autor:** Auditoría
+
+> **Resultado de la ejecución (2026-11-11).** Los 3 cambios quirúrgicos y los 4 tests de regresión
+> están aplicados. `pytest tests/test_upload_encryption.py` → **7 passed** (4 funcionales + 3 guardas
+> estáticas) · `pytest tests/` → **339 passed, 3 xfailed** (baseline 332 + 7 nuevos, sin regresiones).
+>
+> **Desviaciones respecto al plan original**, todas en los tests (el código de producción se aplicó
+> tal como estaba especificado):
+> 1. Los parches del `setUp` iban sobre `src.utils.common`, donde `upload_bytes`/`delete_object` no
+>    existen (viven en `src.services.storage_service`), y `DATA_SOURCES_DIR` se parcheaba en `common`
+>    cuando el router lo importa **por valor**: el archivo se escribía en el `./data_sources` real.
+>    Ahora los parches van sobre `src.routers.data`.
+> 2. El fixture de zip-bomb Excel usaba `ws._dimension`, pero `wb.save()` de openpyxl recalcula el
+>    rango real y lo descarta (queda 1×1): el guard nunca se disparaba. Ahora el fixture reescribe el
+>    XML de la hoja dentro del zip (`<dimension ref="A1:XFD1048576"/>`), que es lo que lee el guard.
+> 3. El rate limiter de slowapi es global (`/upload` = 5/min por usuario): sin `limiter.reset()` en el
+>    `setUp` el test heredaba el cupo de `test_data.py` y fallaba con 429 según el orden de ejecución.
+>
+> Detalle completo en `docs/PROBLEMAS_CONOCIDOS.md` → P-11.
 
 ---
 
