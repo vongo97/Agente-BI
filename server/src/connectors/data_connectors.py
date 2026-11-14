@@ -76,6 +76,32 @@ def get_db_schema(engine):
         schema_info += f"Table: {table_name}, Columns: {col_names}\n"
     return schema_info
 
+
+def get_db_schema_structured(engine):
+    """Devuelve el esquema como estructura, no como texto (P-48).
+
+    ``get_db_schema`` devuelve una cadena formateada pensada para prompts de
+    LLM. Para validar nombres de tabla y columna contra el catálogo real hace
+    falta la estructura: una lista de ``{"table": str, "columns": [str]}``.
+
+    Se introspecta el engine vivo (no el texto guardado), porque el esquema
+    guardado es una foto que puede quedarse obsoleta.
+    """
+    inspector = inspect(engine)
+    schema = []
+    for table_name in inspector.get_table_names():
+        try:
+            columns = inspector.get_columns(table_name)
+        except Exception:
+            # Una tabla que no se puede inspeccionar (permisos, vista rota)
+            # no debe tumbar el filtrado completo.
+            continue
+        schema.append({
+            "table": table_name,
+            "columns": [col["name"] for col in columns],
+        })
+    return schema
+
 def _clean_dataframe(df):
     """Limpieza robusta con detección inteligente de header válido y sanador de mojibake."""
     import re

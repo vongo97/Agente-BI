@@ -15,6 +15,7 @@ import ast
 import logging
 import asyncio
 from io import StringIO
+from typing import Optional
 from sqlalchemy import text
 
 logger = logging.getLogger(__name__)
@@ -933,3 +934,27 @@ def execute_sql_safe(engine, raw_sql_response):
         return f"Resultados ({len(df_result)} filas):\n{df_result.to_string()}", df_result, clean_sql
     except Exception as e:
         return f"### ⚠️ Error SQL\n{e}", None, None
+
+
+def execute_sql_with_params(engine, sql: str, params: Optional[dict] = None):
+    """Ejecuta SQL de solo lectura con parámetros bind (P-48).
+
+    A diferencia de `execute_sql_safe`, esta función NO extrae el SQL de un
+    bloque ```sql```: la consulta la construye el caller. Los VALORES viajan
+    como parámetros bind (`:nombre`), nunca interpolados en el string, de modo
+    que un valor de filtro no puede inyectar SQL.
+
+    Los nombres de tabla y columna NO se pueden parameterizar: el caller debe
+    validarlos contra el catálogo vivo del engine antes de llamarla.
+
+    Devuelve la tupla `(mensaje, dataframe, sql)`. Si la ejecución falla, el
+    dataframe es `None` y el mensaje explica el error.
+    """
+    try:
+        validate_sql_safety(sql)
+        with engine.connect() as conn:
+            result = conn.execute(text(sql), params or {})
+            df_result = pd.DataFrame(result.fetchall(), columns=list(result.keys()))
+        return f"Resultados ({len(df_result)} filas):\n{df_result.to_string()}", df_result, sql
+    except Exception as e:
+        return f"### ⚠️ Error SQL\n{e}", None, sql

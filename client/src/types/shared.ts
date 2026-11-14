@@ -110,6 +110,10 @@ export interface DashboardItem {
     content: string;
     fig?: unknown;
     pinned_at: string;
+    // P-48: presente cuando el backend no pudo recalcular la figura del item
+    // con los filtros aplicados. Antes el fallo se tragaba en silencio y el
+    // cliente no distinguía una figura filtrada de una figura obsoleta.
+    error?: string;
 }
 
 export interface Simulation {

@@ -6,7 +6,7 @@ import json
 import logging
 from src.database import get_db, Chat, Message, DashboardItem, DataSource
 from src.engine.bi_analyst import generate_auto_dashboard
-from src.engine.executor import execute_analysis
+from src.engine.executor import execute_analysis, execute_sql_with_params
 from src.engine.insight_auditor import AUDIT_MARKER
 from src.utils.common import check_authorization, get_user_data, get_authenticated_user, ensure_user_session
 from src.utils.limiter import limiter
@@ -265,6 +265,170 @@ async def auto_dashboard(
         logger.error("Error en auto_dashboard: %s", safe_error_message(e))
         raise HTTPException(status_code=500, detail="Error interno al generar el panel automático.")
 
+def _resolve_filter_columns(filters: dict, available_columns: list, available_label: str) -> dict:
+    """Resuelve las claves de filtro contra las columnas realmente disponibles.
+
+    P-48: antes una columna inexistente se ignoraba en silencio y el endpoint
+    respondía "success" sin filtrar. Ahora una columna que no existe es un
+    error de validación (400) con las columnas disponibles a la vista.
+
+    La clave de filtro llega desde el frontend como el nombre de la traza de
+    Plotly, no como el nombre exacto de la columna. La resolución va, por
+    tanto, de más específica a menos específica:
+
+    1. Coincidencia exacta (sin distinguir mayúsculas/minúsculas ni espacios).
+    2. Una columna cuyo nombre está contenido en la clave de la traza
+       ("Ventas por Region" → "Region"). Solo si hay una única coincidencia:
+       si hay varias, es ambiguo y se rechaza.
+    3. Requisición: HTTP 400 con las columnas disponibles a la vista.
+    """
+    resolved = {}
+    normalized = {str(col).strip().lower(): col for col in available_columns}
+    for col in filters:
+        key = str(col).strip().lower()
+        actual = normalized.get(key)
+        if actual is None:
+            # Fallback: la traza de Plotly suele contener el nombre de la
+            # columna. Solo se acepta si la coincidencia es única.
+            contained = [
+                original for norm, original in normalized.items()
+                if norm and norm in key
+            ]
+            if len(contained) == 1:
+                actual = contained[0]
+        if actual is None:
+            disponibles = ", ".join(str(c) for c in available_columns) or "(ninguna)"
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"La columna '{col}' no existe en {available_label}. "
+                    f"Columnas disponibles: {disponibles}"
+                )
+            )
+        resolved[actual] = filters[col]
+    return resolved
+
+
+def _filter_file_context(context: dict, filters: dict) -> dict:
+    """Filtra un contexto de DataFrames de archivo (modo file).
+
+    Cada DataFrame se filtra con los filtros que apliquen a sus columnas. Una
+    columna del filtro que no existe en NINGÚN DataFrame es un error 400; si
+    existe en alguno, se aplica solo donde exista.
+    """
+    frames = {name: df for name, df in context.items() if isinstance(df, pd.DataFrame)}
+    if not frames:
+        raise HTTPException(
+            status_code=400,
+            detail="No hay datos tabulares en la sesión para filtrar."
+        )
+
+    # Columnas disponibles: la unión de todas las del contexto.
+    all_columns = []
+    for df in frames.values():
+        for col in df.columns:
+            if col not in all_columns:
+                all_columns.append(col)
+
+    resolved = _resolve_filter_columns(filters, all_columns, "los datos")
+
+    filtered_context = {}
+    for name, df in context.items():
+        if not isinstance(df, pd.DataFrame):
+            filtered_context[name] = df
+            continue
+        new_df = df.copy()
+        for col, val in resolved.items():
+            if col in new_df.columns:
+                new_df = new_df[new_df[col] == val]
+        filtered_context[name] = new_df
+    return filtered_context
+
+
+def _filter_sql_context(context, filters: dict):
+    """Filtra una fuente SQL materializando un DataFrame (modo SQL).
+
+    P-48: este modo estaba roto. La rama anterior devolvía el motor SQLAlchemy
+    crudo como contexto, y como el sandbox solo serializa DataFrames, el
+    código guardado se ejecutaba sin datos (`NameError: name 'df' is not
+    defined`).
+
+    Lo correcto es materializar el subconjunto filtrado a un DataFrame y
+    ejecutar el código guardado contra él, igual que en modo archivo.
+
+    La consulta se construye con WHERE y los VALORES viajan como parámetros
+    bind; los nombres de tabla y columna se validan contra el catálogo vivo
+    del engine antes de tocar el string SQL, porque un identificador no se
+    puede parameterizar.
+    """
+    from src.connectors.data_connectors import get_db_schema_structured
+
+    schema = get_db_schema_structured(context)
+    if not schema:
+        raise HTTPException(
+            status_code=400,
+            detail="No se pudo leer el esquema de la fuente SQL para filtrar."
+        )
+
+    # La columna del filtro debe existir en el catálogo. Se busca en todas las
+    # tablas porque el filtro del panel no lleva el nombre de la tabla.
+    table_for_column = {}
+    all_columns = []
+    for entry in schema:
+        for col in entry["columns"]:
+            if col not in all_columns:
+                all_columns.append(col)
+            table_for_column.setdefault(col, entry["table"])
+
+    resolved = _resolve_filter_columns(filters, all_columns, "la fuente SQL")
+
+    # Cada filtro se aplica sobre la tabla que contiene su columna.
+    conditions = []
+    params = {}
+    for idx, (col, val) in enumerate(resolved.items()):
+        table = table_for_column[col]
+        param_name = f"p{idx}"
+        conditions.append(f"{col} = :{param_name}")
+        params[param_name] = val
+
+    # Una sola tabla: se filtra directamente.
+    target_table = table_for_column[next(iter(resolved))]
+    if all(table_for_column[col] == target_table for col in resolved):
+        where_clause = " AND ".join(conditions)
+        sql = f"SELECT * FROM {target_table} WHERE {where_clause}"
+    else:
+        # Filtros sobre tablas distintas: se combinan con UNION de las
+        # tablas implicadas, cada una con sus propias condiciones.
+        by_table = {}
+        for col, val in resolved.items():
+            by_table.setdefault(table_for_column[col], []).append((col, val))
+        selects = []
+        for tidx, (table, pairs) in enumerate(by_table.items()):
+            tconds = []
+            tparams = {}
+            for cidx, (col, val) in enumerate(pairs):
+                pname = f"u{tidx}_p{cidx}"
+                tconds.append(f"{col} = :{pname}")
+                tparams[pname] = val
+            selects.append(f"SELECT * FROM {table} WHERE {' AND '.join(tconds)}")
+            params.update(tparams)
+        sql = " UNION ALL ".join(selects)
+
+    from src.engine.executor import execute_sql_with_params as _exec_sql
+    _, df_result, clean_sql = _exec_sql(context, sql, params)
+    if df_result is None:
+        logger.error("No se pudo materializar el filtro SQL: %s", sql)
+        raise HTTPException(
+            status_code=400,
+            detail="No se pudo aplicar el filtro sobre la fuente SQL."
+        )
+
+    # El sandbox necesita DataFrames. La tabla filtrada se expone con su
+    # nombre real para que el código guardado la encuentre, y `var_name` es
+    # "dfs" porque el código Python guardado accede a las tablas por nombre.
+    return {target_table: df_result}, "dfs"
+
+
 @router.post("/dashboard/filter")
 @limiter.limit("10/minute")
 async def filter_dashboard(
@@ -279,6 +443,19 @@ async def filter_dashboard(
     except:
         raise HTTPException(status_code=400, detail="JSON de filtros inválido")
 
+    if not isinstance(filters, dict):
+        raise HTTPException(status_code=400, detail="JSON de filtros inválido")
+
+    # P-48: un filtro vacío o sin valor no es un filtro. Antes se respondía
+    # "success" sin haber filtrado nada, lo que hacía creer al usuario que el
+    # panel estaba filtrado cuando no lo estaba.
+    active_filters = {col: val for col, val in filters.items() if val is not None and val != ""}
+    if not active_filters:
+        raise HTTPException(
+            status_code=400,
+            detail="No hay filtros activos que aplicar."
+        )
+
     try:
         session_data = get_user_data(authenticated_user)
         if not session_data:
@@ -286,28 +463,19 @@ async def filter_dashboard(
 
         context = session_data["data"]
         data_type = session_data["type"]
-        var_name = "dfs" if data_type == "file" else "engine"
 
-        # Aplicar filtros al contexto (solo para modo file por ahora)
+        # Aplicar filtros al contexto. El resultado es SIEMPRE un contexto
+        # ejecutable (DataFrames), nunca un motor SQL crudo: el sandbox solo
+        # serializa DataFrames y el código guardado se ejecuta contra ellos.
         if data_type == "file":
-            filtered_context = {}
-            for name, df in context.items():
-                if isinstance(df, pd.DataFrame):
-                    new_df = df.copy()
-                    for col, val in filters.items():
-                        if col in new_df.columns and val is not None and val != "":
-                            # Soporte para filtrado simple
-                            new_df = new_df[new_df[col] == val]
-                    filtered_context[name] = new_df
-                else:
-                    filtered_context[name] = df
+            filtered_context = _filter_file_context(context, active_filters)
+            var_name = "dfs"
         else:
-            # TODO: Implementar filtrado SQL dinámico inyectando cláusulas WHERE
-            filtered_context = context
+            filtered_context, var_name = _filter_sql_context(context, active_filters)
 
         items = db.query(DashboardItem).filter(DashboardItem.user_id == authenticated_user).all()
         results = []
-        
+
         for item in items:
             if not item.message or not item.message.analysis_code:
                 continue
@@ -320,20 +488,27 @@ async def filter_dashboard(
                     "fig": json.loads(item.message.figure_json) if item.message.figure_json else None
                 })
                 continue
-            
+
             try:
                 # Re-ejecutar el código original sobre los datos filtrados
                 # execute_analysis espera el raw_response con bloques de código
                 _, fig = await execute_analysis(filtered_context, item.message.analysis_code, var_name)
-                
+
                 results.append({
                     "id": item.id,
                     "fig": json.loads(fig.to_json()) if fig else None
                 })
             except Exception as e:
                 from src.utils.logging_config import safe_error_message
+                # P-48: antes el fallo se tragaba con `continue` y el endpoint
+                # respondía "success": el cliente no distinguía una figura
+                # filtrada de una figura que ni se re-ejecutó.
                 logger.error("Error re-filtrando item %d: %s", item.id, safe_error_message(e))
-                continue
+                results.append({
+                    "id": item.id,
+                    "fig": None,
+                    "error": "El análisis no se pudo recalcular con estos filtros."
+                })
 
         return {"status": "success", "updated_items": results}
     except HTTPException as he:

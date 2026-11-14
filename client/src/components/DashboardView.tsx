@@ -218,15 +218,32 @@ export function DashboardView() {
                 const updatedItemsList = data.updated_items as DashboardItem[];
                 setItems(prevItems => prevItems.map(item => {
                     const update = updatedItemsList.find((ui) => ui.id === item.id);
-                    return update ? { ...item, fig: update.fig } : item;
+                    return update ? { ...item, fig: update.fig, error: update.error } : item;
                 }));
+
+                // P-48: un item que no se pudo recalcular ahora viene con `fig: null`
+                // y un campo `error`. Antes el backend se tragaba el fallo y
+                // devolvía "success": el usuario veía un gráfico sin filtrar sin
+                // saber que el filtro no se había aplicado.
+                const failed = updatedItemsList.filter((ui) => ui.error);
+                if (failed.length > 0) {
+                    addToast(
+                        `${failed.length} gráfico${failed.length > 1 ? "s" : ""} no se pudo recalcular con estos filtros.`,
+                        "error"
+                    );
+                }
             }
         } catch (error) {
+            // P-48: el backend responde 400 con detalle legible cuando el filtro
+            // apunta a una columna que no existe o no hay filtros activos. Ese
+            // detalle debe llegar al usuario, no quedarse en la consola.
             console.error("Error applying filters:", error);
+            const detail = error instanceof Error ? error.message : "Error desconocido";
+            addToast(detail, "error");
         } finally {
             setIsFiltering(false);
         }
-    }, [userId, filters]);
+    }, [userId, filters, addToast]);
 
     const fetchDashboard = useCallback(async () => {
         setLoading(true);
