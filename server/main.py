@@ -1,6 +1,7 @@
 import uvicorn
 import logging
 import os
+import re
 import warnings
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
@@ -23,11 +24,11 @@ app = FastAPI(title="Vektra BI API (Modular)")
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
-from src.routers import auth, data, analysis, dashboard, exports, simulation, visual_summary
+from src.routers import auth, data, analysis, dashboard, exports, simulation, visual_summary, reports
 from src.utils.common import request_var, is_development_mode
 
 # Configuración de Logs Estructurados
-from src.utils.logging_config import setup_logging
+from src.utils.logging_config import setup_logging, request_id_var, new_request_id
 setup_logging()
 logger = logging.getLogger(__name__)
 
@@ -57,6 +58,30 @@ app.add_middleware(
     allow_headers=["Authorization", "Content-Type"],
     expose_headers=["Content-Disposition", "X-Request-Id"],
 )
+
+# ── Middleware: Request ID (P-36) ─────────────────────────────────────────────
+# La cabecera `X-Request-Id` ya estaba declarada en CORS pero nunca se generaba.
+# Ahora cada petición recibe un id de correlación: si el cliente lo envía, se
+# respeta; si no, se genera uno. El id viaja en un ContextVar para que cualquier
+# capa (incluidos los `except` que ignoran una excepción) pueda adjuntarlo al log
+# y así unir "un error en un log" con "la petición que lo provocó".
+_REQUEST_ID_RE = re.compile(r"^[A-Za-z0-9._:-]{1,64}$")
+
+
+@app.middleware("http")
+async def request_id_middleware(request, call_next):
+    incoming = request.headers.get("X-Request-Id")
+    # Solo se acepta un id externo si es un token opaco y acotado (UUIDs, hex,
+    # "cliente-123"...); si no, se genera uno para no propagar basura al log.
+    rid = incoming if (incoming and _REQUEST_ID_RE.match(incoming)) else new_request_id()
+    token = request_id_var.set(rid)
+    try:
+        response = await call_next(request)
+        response.headers["X-Request-Id"] = rid
+        return response
+    finally:
+        request_id_var.reset(token)
+
 
 # ── Middleware: Security Headers ──────────────────────────────────────────────
 @app.middleware("http")
@@ -132,12 +157,27 @@ app.include_router(dashboard.router, prefix="/api/v1")
 app.include_router(exports.router, prefix="/api/v1")
 app.include_router(simulation.router, prefix="/api/v1")
 app.include_router(visual_summary.router, prefix="/api/v1")
+# P-23: el router de reports estaba implementado pero nunca se montaba, así que
+# el endpoint /report/kpi-summary no existía y sus consumidores en el cliente
+# (KpiCards, AnomalyAlert) quedaban sin datos.
+app.include_router(reports.router, prefix="/api/v1")
 
 # Inicializar Base de Datos de forma segura
 try:
     init_db()
 except Exception as e:
+    # P-19: si la BD configurada está rota o es inalcanzable, `init_db` aborta
+    # con un RuntimeError claro. Tragar ese error y seguir sirviendo sería
+    # exactamente el fallo que P-19 describe: el servicio "arranca" pero pierde
+    # datos y responde 500 en cada endpoint que toca la BD.
     logger.error("No se pudo completar init_db al iniciar: %s", e)
+    if is_development_mode() and os.getenv("RENDER", "false").strip().lower() != "true":
+        logger.warning(
+            "MODO DESARROLLO: se continúa sin base de datos inicializada. "
+            "Los endpoints que usan la BD fallarán hasta corregir la configuración."
+        )
+    else:
+        raise
 
 @app.get("/live")
 async def live():

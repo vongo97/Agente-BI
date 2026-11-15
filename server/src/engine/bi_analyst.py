@@ -16,6 +16,7 @@ from . import executor
 from . import prompts
 from . import skill_loader
 from src.utils.common import SafeJSONEncoder
+from src.utils.logging_config import log_ignored_error
 
 # Requiere re ya importado arriba
 
@@ -80,8 +81,16 @@ def get_client(api_key):
             first_key = next(iter(_clients))
             try:
                 del _clients[first_key]
-            except KeyError:
-                pass
+            except KeyError as exc:
+                # P-36: la clave se borró entre el `next()` y el `del` (acceso
+                # concurrente al caché). Es inocuo —el caché se reconstruye— pero
+                # antes no quedaba ninguna traza del incidente.
+                log_ignored_error(
+                    logger,
+                    "evicción del cliente en caché (clave ya eliminada)",
+                    exc,
+                    level=logging.DEBUG,
+                )
         _clients[api_key] = genai.Client(api_key=api_key)
     return _clients[api_key]
 

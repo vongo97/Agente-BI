@@ -10,6 +10,7 @@ import logging
 
 logger = logging.getLogger(__name__)
 from datetime import datetime
+from src.utils.logging_config import log_ignored_error
 
 def export_plotly_to_image(fig_data: any, format: str = "png", theme: str = "neon"):
     """
@@ -223,8 +224,16 @@ def export_to_image_matplotlib_fallback(fig_dict: dict):
                 # Intentar agregar las etiquetas de datos sobre cada barra (Matplotlib 3.4+)
                 try:
                     ax.bar_label(bars, padding=3, fontsize=9, fontweight='bold', color='#374151')
-                except Exception:
-                    pass
+                except Exception as exc:
+                    # P-36: `bar_label` no existe en Matplotlib < 3.4. El gráfico es
+                    # válido igual, pero antes el fallo era invisible; ahora queda
+                    # registrado para saber qué versión de Matplotlib hay instalada.
+                    log_ignored_error(
+                        logger,
+                        "etiquetas de datos sobre las barras (Matplotlib < 3.4)",
+                        exc,
+                        level=logging.DEBUG,
+                    )
                 
                 current_bar += 1
             elif chart_type in ['pie', 'treemap', 'sunburst']:
@@ -372,7 +381,17 @@ class PremiumBIReport(FPDF):
         hex_color = brand_color.lstrip('#')
         try:
             self.brand_color_rgb = tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4))
-        except Exception:
+        except Exception as exc:
+            # P-36: el color de marca no es un hex válido. Se usa el azul por
+            # defecto, pero se registra el valor recibido (podría venir de la
+            # config del usuario) en lugar de descartarlo en silencio.
+            log_ignored_error(
+                logger,
+                "conversión del color de marca a RGB",
+                exc,
+                level=logging.WARNING,
+                brand_color=brand_color,
+            )
             self.brand_color_rgb = (37, 99, 235) # Azul Vektra por defecto
         
     def header(self):

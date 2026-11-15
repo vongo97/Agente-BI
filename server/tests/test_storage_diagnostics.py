@@ -62,7 +62,14 @@ def test_url_vacia_pero_clave_presente_no_rompe(monkeypatch):
 
 
 def test_clave_nueva_sb_secret_crea_cliente(monkeypatch):
-    """Regresión del bug real: supabase-py 2.10.0 rechazaba ``sb_secret_...``."""
+    """Regresión del bug real: supabase-py 2.10.0 rechazaba ``sb_secret_...``.
+
+    P-72: este test fallaba porque el **entorno local** tenía supabase-py
+    2.10.0 (la versión con el bug), mientras `server/requirements.txt` fija
+    ``supabase==2.33.0`` desde el cierre de P-50. Con la versión correcta,
+    la clave ``sb_secret_...`` construye el cliente sin problema. El venv
+    drifting era la causa, no el test: por eso el test no se ha modificado.
+    """
     monkeypatch.setenv("SUPABASE_URL", URL_VALIDA)
     monkeypatch.setenv("SUPABASE_SERVICE_ROLE_KEY", CLAVE_NUEVA)
     assert storage.get_supabase_client() is not None

@@ -58,7 +58,13 @@ export function Chat() {
         if (!apiKey || dataSources.length === 0) return;
         setLoadingSuggestions(true);
         try {
-            const mainSourceId = dataSources[dataSources.length - 1].id;
+            // P-29: la fuente principal es SIEMPRE la primera (dataSources[0]).
+            // El backend la devuelve como `data_source` (dashboard.py:68) y exige
+            // que esté incluida en la lista de fuentes seleccionadas
+            // (analysis.py:82). Antes aquí se usaba la última, así que las
+            // sugerencias se generaban sobre un dataset distinto del que
+            // analizaba el chat.
+            const mainSourceId = dataSources[0].id;
             const res = await suggestQuestions(userId, apiKey, mainSourceId, activeChatId || undefined, aiProvider, mistralKey);
             setSuggestions(res.suggestions || []);
         } catch (error) {

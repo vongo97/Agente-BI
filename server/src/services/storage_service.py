@@ -17,6 +17,8 @@ from typing import Optional
 
 from supabase import create_client
 
+from src.utils.logging_config import log_ignored_error
+
 logger = logging.getLogger(__name__)
 
 BUCKET_NAME = "bi_storage"
@@ -172,8 +174,17 @@ def download_bytes(key: str) -> Optional[bytes]:
         return None
     try:
         return client.storage.from_(BUCKET_NAME).download(key)
-    except Exception:
+    except Exception as exc:
         # No loguear como error: la ausencia del objeto es un fallback esperado.
+        # P-36: se registra a nivel DEBUG (no es un fallo de la operación, solo
+        # "no hay objeto en la nube") para que quede traza sin generar ruido.
+        log_ignored_error(
+            logger,
+            "descarga de objeto en la nube (ausente o no responde)",
+            exc,
+            level=logging.DEBUG,
+            key=key,
+        )
         return None
 
 

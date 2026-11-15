@@ -168,7 +168,17 @@ def _request_is_local(request: Request) -> bool:
         client_host = request.client.host if request.client else None
         url_host = (request.url.hostname or "").lower()
         return client_host in ("127.0.0.1", "::1", "localhost") or url_host in ("localhost", "127.0.0.1", "::1")
-    except Exception:
+    except Exception as exc:
+        # P-36: si no se puede determinar el origen de la petición se devuelve
+        # False (fail-closed: NO se concede el bypass de desarrollo). Antes el
+        # fallo era invisible; ahora queda registrado.
+        from src.utils.logging_config import log_ignored_error
+        log_ignored_error(
+            logger,
+            "determinación del origen local de la petición",
+            exc,
+            level=logging.WARNING,
+        )
         return False
 
 def _resolve_auth_secret(request: Optional[Request], allow_bypass: bool) -> str:
@@ -350,14 +360,26 @@ def get_user_data(user_id: str, chat_id: Optional[int] = None):
             try:
                 decrypted = cipher_suite.decrypt(raw)
                 stored_data = pickle.loads(decrypted)
-            except Exception:
+            except Exception as exc:
                 # Migración segura: solo aceptar pickle plano si claramente es un archivo
                 # heredado (no empieza con token Fernet 'gAAA...') y nunca contienen
                 # datos arbitrarios de terceros: los re-ciframos de inmediato.
+                #
+                # P-36: la excepción NO se traga — se documenta por qué es
+                # ignorable (el archivo es legacy y se re-cifra acto seguido) y se
+                # registra el motivo real del fallo de descifrado.
                 if raw.strip().startswith(b"gAAA"):
                     logger.error("Archivo de sesión cifrado inválido; se ignora para prevenir RCE.")
                     raise ValueError("Sesión cifrada corrupta o manipulada")
                 logger.warning("Migrando sesión heredada sin cifrar (%s) a formato cifrado.", session_file)
+                from src.utils.logging_config import log_ignored_error
+                log_ignored_error(
+                    logger,
+                    "descifrado de sesión (se procede a migrar el archivo legacy)",
+                    exc,
+                    level=logging.INFO,
+                    session_file=session_file,
+                )
                 stored_data = pickle.loads(raw)
                 needs_resave = True
             if isinstance(stored_data, pd.DataFrame):

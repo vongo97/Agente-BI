@@ -4,7 +4,9 @@ import re
 import os
 import datetime
 import sys
-from typing import Any
+import uuid
+from contextvars import ContextVar
+from typing import Any, Optional
 
 # ──────────────────────────────────────────────────────────────────────────────
 # FILTRO DE SECRETOS CENTRALIZADO
@@ -44,8 +46,18 @@ class SecretFilter(logging.Filter):
         if record.args:
             try:
                 record.msg = _sanitize_message(record.msg % record.args)
-            except Exception:
-                pass
+            except Exception as exc:
+                # P-36: la interpolación puede fallar (args con formato incompatible).
+                # No se puede tragar: si el mensaje queda sin formatear puede arrastrar
+                # secretos sin sanear, así que se registra y se degrada a texto plano.
+                log_ignored_error(
+                    logging.getLogger(__name__),
+                    "interpolación de un LogRecord",
+                    exc,
+                    level=logging.WARNING,
+                    record=record.name,
+                )
+                record.msg = _sanitize_message(str(record.msg))
             record.args = None
         # Sanitizar traceback si existe
         if record.exc_text:
@@ -136,6 +148,59 @@ def safe_error_message(exc: Exception) -> str:
         logger.error("Error en operación: %s", safe_error_message(e))
     """
     return _sanitize_message(type(exc).__name__)
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# REQUEST ID (P-36)
+# Identificador de correlación para poder unir un log del servidor con la
+# petición que lo provocó. `main.py` lo inyecta en la cabecera `X-Request-Id`
+# (que ya estaba declarada en CORS pero nunca se generaba) y lo publica aquí
+# para que cualquier capa pueda adjuntarlo a sus logs.
+# ──────────────────────────────────────────────────────────────────────────────
+request_id_var: ContextVar[Optional[str]] = ContextVar("request_id", default=None)
+
+
+def get_request_id() -> str:
+    """Devuelve el `X-Request-Id` de la petición en curso o '-' si no hay contexto."""
+    return request_id_var.get() or "-"
+
+
+def new_request_id() -> str:
+    """Genera un identificador de correlación para una petición nueva."""
+    return uuid.uuid4().hex
+
+
+def log_ignored_error(
+    logger: logging.Logger,
+    context: str,
+    exc: Exception,
+    level: int = logging.WARNING,
+    **extra_fields: Any,
+) -> None:
+    """Registra una excepción que se va a ignorar.
+
+    P-36 (regla 8 del registro): *«Sin `except: pass`. Si se ignora un error, se
+    registra con contexto.»* Este helper es la única forma admitida de tragarse
+    una excepción: deja rastro con **tipo + mensaje saneado + request_id**.
+
+    `context` describe la operación que falló (qué se estaba haciendo), nunca
+    datos del usuario. Los campos extra se anexan al mensaje.
+
+    Ejemplo::
+
+        except Exception as e:
+            log_ignored_error(logger, "borrado de archivo de caché", e)
+    """
+    fields = "".join(f" {k}={v!r}" for k, v in extra_fields.items())
+    logger.log(
+        level,
+        "EXCEPCIÓN IGNORADA [%s] %s: %s (%s)%s",
+        get_request_id(),
+        context,
+        type(exc).__name__,
+        _sanitize_message(str(exc))[:200],
+        fields,
+    )
 
 
 def hash_user(user_id: str) -> str:

@@ -190,8 +190,34 @@ export async function runAudit(chatId?: number, dataSourceId?: number, dataSourc
   return handleResponse(response) as Promise<AuditResponse>;
 }
 
-export async function setChatSources(chatId: number, sourceIds: number[]) {
-  const response = await securedFetch(`${API_URL}/history/${chatId}/sources`, {
+/**
+ * P-23: resumen de KPIs del dataset (perfilado: completitud, saturación,
+ * anomalías por Z-Score y correlaciones fuertes). Consumido por KpiCards y
+ * AnomalyAlert.
+ */
+export interface KpiData {
+  dataset: { nombre: string; filas: number; columnas: number };
+  columnas: { numericas: number; categoricas: number; lista_numericas: string[]; lista_categoricas: string[] };
+  saturacion: number;
+  nicho_top: string;
+  confianza: number;
+  completitud: number;
+  anomalias: { columna: string; valor: number; z_score: number; media: number; severidad: string }[];
+  correlaciones_fuertes: { columna_a: string; columna_b: string; r: number }[];
+}
+
+export async function getKpiSummary(dataSourceId: number): Promise<KpiData> {
+  const formData = new FormData();
+  formData.append("data_source_id", dataSourceId.toString());
+
+  const response = await securedFetch(`${API_URL}/report/kpi-summary`, {
+    method: "POST",
+    body: formData,
+  });
+  return handleResponse(response) as Promise<KpiData>;
+}
+
+export async function setChatSources(chatId: number, sourceIds: number[]) {  const response = await securedFetch(`${API_URL}/history/${chatId}/sources`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ source_ids: sourceIds }),

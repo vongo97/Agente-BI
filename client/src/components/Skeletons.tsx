@@ -79,7 +79,7 @@ export function ChartSkeleton({ type = 'bar' }: { type?: 'bar' | 'line' | 'pie' 
 
                 {type === 'pie' && (
                     <div className="w-full h-full flex items-center justify-center py-4">
-                        <div className="w-36 h-36 rounded-full border-8 border-[var(--bi-border-strong)] border-t-[var(--bi-blue-dim)] animate-spin duration-3000" />
+                        <div className="w-36 h-36 rounded-full border-8 border-[var(--bi-border-strong)] border-t-[var(--bi-blue-dim)] animate-spin duration-1000" />
                     </div>
                 )}
             </div>

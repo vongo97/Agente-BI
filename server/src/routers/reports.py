@@ -4,7 +4,7 @@ import pandas as pd
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from sqlalchemy.orm import Session
 from src.database import get_db, DataSource
-from src.utils.common import check_authorization, get_user_data, get_authenticated_user, json_serializable
+from src.utils.common import check_authorization, get_authenticated_user, json_serializable
 from src.utils.limiter import limiter
 
 logger = logging.getLogger(__name__)

@@ -6,11 +6,43 @@ import remarkGfm from "remark-gfm";
 import Link from "next/link";
 import { Activity } from "lucide-react";
 
-// Fuentes legales: docs/legal/*.md en la raíz del repositorio
-const LEGAL_DOCS: Record<string, { file: string; title: string }> = {
-    "privacidad":   { file: "politica-privacidad.md", title: "Política de Privacidad" },
-    "terminos":     { file: "terminos-de-uso.md",     title: "Términos y Condiciones de Uso" },
-    "cookies":      { file: "aviso-cookies.md",       title: "Aviso de Cookies" },
+// Fuentes legales: `client/content/legal/*.md`.
+//
+// P-20: antes vivían en `docs/legal/`, en la raíz del repositorio, y la página
+// los leía con `path.join(process.cwd(), "..", "docs", "legal", ...)`. Eso
+// funciona en `npm run dev` (donde `process.cwd()` es `client/`) pero **falla
+// en el build standalone / Docker**, donde `process.cwd()` no tiene un `docs/`
+// al lado → 404 en las tres páginas legales. Los `.md` ahora viven **dentro de
+// `client/`, así que forman parte de la app y se empaquetan siempre**.
+//
+// P-75: resolver la ruta probando candidatas en un bucle (`fs.existsSync` sobre
+// rutas calculadas) hace que Turbopack avise: *"Dynamic filesystem access
+// causes tracing of the whole project"* — se empaqueta **todo** el proyecto
+// (incluido `public/`) en el output de despliegue, lo que infla el bundle y
+// puede disparar los límites de tamaño de Render.
+//
+// Estas páginas son **SSG** (`generateStaticParams` las prerenderiza en el
+// build), así que el contenido se hornea en el HTML y **no hace falta leer
+// nada en runtime**. La lectura ocurre una sola vez, en el build, y con una
+// ruta **literalmente acotada** a un subdirectorio conocido — que es lo que
+// Turbopack pide para poder trazar solo lo necesario.
+//
+// Cada documento tiene su propia entrada en la tabla: la ruta es un literal,
+// no se calcula. Si el fichero no está (build en un checkout raro), `notFound()`
+// da el 404 limpio en vez de una excepción sin manejar.
+const LEGAL_DOCS: Record<string, { filePath: string; title: string }> = {
+    "privacidad": {
+        filePath: path.join(process.cwd(), "content", "legal", "politica-privacidad.md"),
+        title: "Política de Privacidad",
+    },
+    "terminos": {
+        filePath: path.join(process.cwd(), "content", "legal", "terminos-de-uso.md"),
+        title: "Términos y Condiciones de Uso",
+    },
+    "cookies": {
+        filePath: path.join(process.cwd(), "content", "legal", "aviso-cookies.md"),
+        title: "Aviso de Cookies",
+    },
 };
 
 export function generateStaticParams() {
@@ -28,9 +60,8 @@ export default async function LegalPage({ params }: { params: Promise<{ slug: st
     const doc = LEGAL_DOCS[slug];
     if (!doc) notFound();
 
-    const filePath = path.join(process.cwd(), "..", "docs", "legal", doc.file);
-    if (!fs.existsSync(filePath)) notFound();
-    const content = fs.readFileSync(filePath, "utf8");
+    if (!fs.existsSync(/* turbopackIgnore: true */ doc.filePath)) notFound();
+    const content = fs.readFileSync(/* turbopackIgnore: true */ doc.filePath, "utf8");
 
     return (
         <div className="min-h-screen bg-[var(--bi-canvas)] text-[var(--bi-text-1)]">

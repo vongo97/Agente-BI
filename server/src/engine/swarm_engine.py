@@ -8,6 +8,7 @@ import random
 import logging
 from src.engine import prompts
 from src.engine import skill_loader
+from src.utils.logging_config import log_ignored_error
 
 logger = logging.getLogger(__name__)
 
@@ -40,8 +41,19 @@ class SwarmEngine:
                     from mistralai.client import Mistral
                 self.m_client = Mistral(api_key=self.mistral_key)
                 logger.info("[MISTRAL] Motor activo: %s", self.mistral_model)
-            except ImportError:
-                logger.error("Librería mistralai no instalada.")
+            except ImportError as exc:
+                # P-36: la librería no está. El motor sigue arrancando (el
+                # proveedor elegido puede ser otro), pero la causa exacta se
+                # registra — antes solo decía "no instalada" sin el motivo real
+                # (que suele ser una versión incompatible, no una ausencia).
+                logger.error("[MISTRAL] Librería mistralai no utilizable: %s", type(exc).__name__)
+                log_ignored_error(
+                    logger,
+                    "inicialización del cliente Mistral",
+                    exc,
+                    level=logging.ERROR,
+                    provider=self.provider,
+                )
 
         if self.provider == "groq":
             logger.info("[GROQ] Motor activo: %s", self.groq_model)

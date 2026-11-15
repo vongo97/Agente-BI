@@ -52,6 +52,9 @@ def run_migrations_offline() -> None:
         target_metadata=target_metadata,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
+        # P-19: SQLite no soporta `ALTER COLUMN ... TYPE`; Alembic lo resuelve
+        # con la estrategia "copy-and-move" cuando `render_as_batch` está activo.
+        render_as_batch=True,
     )
 
     with context.begin_transaction():
@@ -73,7 +76,14 @@ def run_migrations_online() -> None:
 
     with connectable.connect() as connection:
         context.configure(
-            connection=connection, target_metadata=target_metadata
+            connection=connection,
+            target_metadata=target_metadata,
+            # P-19: SQLite no soporta `ALTER COLUMN ... TYPE` ni `DROP CONSTRAINT`.
+            # Con `render_as_batch` Alembic usa la estrategia "copy-and-move"
+            # (recrea la tabla copiando los datos), que sí funciona en SQLite.
+            # En PostgreSQL el batch mode no cambia nada: el dialecto ejecuta
+            # el ALTER directamente.
+            render_as_batch=True,
         )
 
         with context.begin_transaction():

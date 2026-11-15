@@ -18,6 +18,8 @@ from io import StringIO
 from typing import Optional
 from sqlalchemy import text
 
+from src.utils.logging_config import log_ignored_error
+
 logger = logging.getLogger(__name__)
 
 # Semáforo global que limita a un máximo de 2 ejecuciones pesadas del sandbox en paralelo
@@ -72,8 +74,18 @@ def _make_preexec_linux(cpu_s: int):
         try:
             import resource
             resource.setrlimit(resource.RLIMIT_CPU, (cpu_s, cpu_s + 2))
-        except Exception:
-            pass  # Si falla (permisos, etc.) continuamos sin límites duros
+        except Exception as exc:
+            # Si falla (permisos, etc.) continuamos sin límites duros, pero el
+            # motivo queda registrado: perder el límite de CPU sin saberlo
+            # significa que el sandbox puede colgarse sin que nadie lo note.
+            # P-36: prohibido tragarse la excepción en silencio.
+            log_ignored_error(
+                logger,
+                "fijado del límite duro de CPU (RLIMIT_CPU)",
+                exc,
+                level=logging.WARNING,
+                cpu_s=cpu_s,
+            )
     return _set_limits
 
 
@@ -96,8 +108,17 @@ def _watchdog_thread(proc: subprocess.Popen, mem_mb: int, stop_event: threading.
             except (psutil.NoSuchProcess, psutil.AccessDenied):
                 return
             stop_event.wait(timeout=0.5)
-    except ImportError:
-        pass  # psutil no disponible; watchdog desactivado
+    except ImportError as exc:
+        # psutil no disponible: el watchdog de RAM queda desactivado. Es una
+        # dependencia opcional, pero su ausencia significa que NO hay límite
+        # de memoria en el sandbox — hay que dejarlo escrito (P-36).
+        log_ignored_error(
+            logger,
+            "watchdog de RAM del sandbox (psutil no instalado)",
+            exc,
+            level=logging.WARNING,
+            mem_mb=mem_mb,
+        )
 
 
 def _run_subprocess_with_limits(cmd, env_clean, timeout=_SANDBOX_TIMEOUT_S):
@@ -323,9 +344,17 @@ def get_safe_environment(var_name=None, context_obj=None):
         import matplotlib.pyplot as plt
         env['plt'] = plt
         env['matplotlib'] = matplotlib
-    except:
-        pass
-    
+    except Exception as exc:
+        # Matplotlib es opcional: si no está, el código generado que lo use
+        # fallará con NameError (que es el mensaje correcto para el usuario).
+        # P-36: se registra para saber que matplotlib no está disponible.
+        log_ignored_error(
+            logger,
+            "carga de matplotlib en el entorno del sandbox",
+            exc,
+            level=logging.WARNING,
+        )
+
     if var_name:
         env[var_name] = smart_context
         if isinstance(context_obj, dict) and len(context_obj) > 0:
@@ -349,8 +378,17 @@ TEMP_SANDBOX_DIR = os.path.join(STORAGE_ROOT, "sandbox_temp")
 if not os.path.exists(TEMP_SANDBOX_DIR):
     try:
         os.makedirs(TEMP_SANDBOX_DIR)
-    except:
-        pass
+    except OSError as exc:
+        # No se pudo crear el directorio temporal del sandbox. Si el sandbox lo
+        # necesita fallará más tarde con un error explícito; aquí solo se deja
+        # constancia (P-36) en lugar de perder la causa original.
+        log_ignored_error(
+            logger,
+            "creación del directorio temporal del sandbox",
+            exc,
+            level=logging.WARNING,
+            path=TEMP_SANDBOX_DIR,
+        )
 
 async def execute_analysis(context_obj, raw_response, var_name):
     """
@@ -416,7 +454,22 @@ async def execute_analysis(context_obj, raw_response, var_name):
 import sys
 import json
 import pickle
+import logging
 from io import StringIO
+
+# P-36: el orquestador corre en un subproceso separado, así que no puede usar el
+# logger del servidor. Este shim escribe en stderr, que el padre recoge y registra.
+_orch_logger = logging.getLogger("sandbox.orchestrator")
+_orch_logger.addHandler(logging.StreamHandler(sys.stderr))
+_orch_logger.setLevel(logging.WARNING)
+
+def _log_ignored(context, exc, **fields):
+    \"\"\"Registra una excepción que se va a ignorar (P-36).\"\"\"
+    extra = "".join(f" {{k}}={{v!r}}" for k, v in fields.items())
+    _orch_logger.warning(
+        "EXCEPCIÓN IGNORADA %s: %s (%s)%s",
+        context, type(exc).__name__, str(exc)[:200], extra,
+    )
 
 # Fix #7 (GitHub): Lazy imports — pandas/numpy se importan primero (necesarios siempre).
 # Plotly se importa SOLO al final si hay una figura, ahorrando ~2s de cold-start.
@@ -506,8 +559,10 @@ try:
     import matplotlib.pyplot as plt
     env['plt'] = plt
     env['matplotlib'] = matplotlib
-except:
-    pass
+except Exception as _mpl_err:
+    # P-36: matplotlib es opcional en el sandbox; si no está, el código que lo
+    # use fallará con NameError (mensaje correcto). Se registra la causa.
+    _log_ignored("carga de matplotlib en el sandbox", _mpl_err)
 
 loaded_tables = {{}}
 for name, pkl_file in metadata_tables.items():
@@ -531,8 +586,11 @@ for _tname, _tdf in loaded_tables.items():
                 # Solo convertir si al menos 50% de los valores son numéricos
                 if _cleaned.notna().sum() > len(_tdf) * 0.5:
                     _tdf[_col] = _cleaned
-            except Exception:
-                pass
+            except Exception as _num_err:
+                # P-36: la columna se queda como texto (no se pierde el dato) pero
+                # el motivo queda registrado en lugar de desaparecer.
+                _log_ignored("conversión numérica de una columna del sandbox", _num_err,
+                             column=_col)
         # Downcast float64 → float32 para ahorrar ~50% de RAM en columnas numéricas
         if _tdf[_col].dtype == 'float64':
             _tdf[_col] = pd.to_numeric(_tdf[_col], downcast='float')
@@ -556,8 +614,10 @@ try:
     import io as _io_mod
     _io_mod.open = _blocked_io
     sys.modules["io"] = _io_mod
-except Exception:
-    pass
+except Exception as _io_err:
+    # P-36: si no se puede bloquear `io.open` en el sandbox, el bloqueo de I/O
+    # queda incompleto. Eso DEBE quedar registrado (warning), no tragarse.
+    _log_ignored("bloqueo de io.open en el sandbox", _io_err)
 
 smart_context = SmartDataContext(loaded_tables)
 
@@ -766,8 +826,10 @@ try:
     import io as _io_mod
     _io_mod.open = _blocked_io
     sys.modules["io"] = _io_mod
-except Exception:
-    pass
+except Exception as _io_err:
+    # P-36: si no se puede bloquear `io.open` en el sandbox, el bloqueo de I/O
+    # queda incompleto. Eso DEBE quedar registrado (warning), no tragarse.
+    _log_ignored("bloqueo de io.open en el sandbox", _io_err)
 
 
 def restricted_import(name, globals=None, locals=None, fromlist=(), level=0):

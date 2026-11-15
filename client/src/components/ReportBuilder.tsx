@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { X, FileText, Download, Sparkles, Loader2, CheckCircle2 } from "lucide-react";
 import { generateReportSummary, exportProfessionalReport, exportProfessionalPptx } from "@/lib/api";
 import { useDashboard, Message } from "@/context/DashboardContext";
@@ -14,6 +14,17 @@ interface ReportBuilderProps {
     userName: string;
 }
 
+// P-25: el modal es un diálogo real: se atrapa el foco dentro, ESC cierra y
+// el foco vuelve al elemento que lo abrió al cerrarse.
+const FOCUSABLE_SELECTOR = [
+    'a[href]',
+    'button:not([disabled])',
+    'input:not([disabled])',
+    'textarea:not([disabled])',
+    'select:not([disabled])',
+    '[tabindex]:not([tabindex="-1"])',
+].join(', ');
+
 export function ReportBuilder({ isOpen, onClose, messages, userId, userName }: ReportBuilderProps) {
     const { apiKey } = useDashboard();
     const { addToast } = useToast();
@@ -24,6 +35,60 @@ export function ReportBuilder({ isOpen, onClose, messages, userId, userName }: R
     const [exportingPptx, setExportingPptx] = useState(false);
     const [selectedTemplate, setSelectedTemplate] = useState<"general" | "legal">("general");
     const [selectedMessageIds, setSelectedMessageIds] = useState<number[]>([]);
+
+    const dialogRef = useRef<HTMLDivElement>(null);
+    const previouslyFocused = useRef<HTMLElement | null>(null);
+
+    // P-25: ESC cierra, Tab cicla dentro del modal y el foco se restaura.
+    useEffect(() => {
+        if (!isOpen) return;
+
+        previouslyFocused.current = document.activeElement as HTMLElement | null;
+
+        const focusables = () => {
+            const node = dialogRef.current;
+            if (!node) return [] as HTMLElement[];
+            // No se filtra por `offsetParent`: en jsdom (y en cualquier entorno
+            // sin layout calculado) siempre es null, y el filtro dejaría la
+            // lista vacía → el focus trap no atrapa nada.
+            return Array.from(node.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR))
+                .filter(el => !el.hasAttribute('disabled') && el.getAttribute('aria-hidden') !== 'true');
+        };
+
+        // Enfoca el primer control al abrir.
+        const first = focusables()[0];
+        if (first) first.focus();
+
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') {
+                e.preventDefault();
+                onClose();
+                return;
+            }
+            if (e.key !== 'Tab') return;
+
+            const items = focusables();
+            if (items.length === 0) return;
+            const firstEl = items[0];
+            const lastEl = items[items.length - 1];
+            const active = document.activeElement as HTMLElement | null;
+
+            // Focus trap: si el foco se sale del diálogo, se devuelve al borde.
+            if (e.shiftKey && (active === firstEl || !dialogRef.current?.contains(active))) {
+                e.preventDefault();
+                lastEl.focus();
+            } else if (!e.shiftKey && (active === lastEl || !dialogRef.current?.contains(active))) {
+                e.preventDefault();
+                firstEl.focus();
+            }
+        };
+
+        document.addEventListener('keydown', handleKeyDown);
+        return () => {
+            document.removeEventListener('keydown', handleKeyDown);
+            previouslyFocused.current?.focus?.();
+        };
+    }, [isOpen, onClose]);
 
     if (!isOpen) return null;
 
@@ -106,18 +171,24 @@ export function ReportBuilder({ isOpen, onClose, messages, userId, userName }: R
 
     return (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-300">
-            <div className="bg-[var(--bi-surface-0)] border border-[var(--bi-border)] w-full max-w-2xl rounded-lg overflow-hidden shadow-2xl flex flex-col max-h-[90vh]">
+            <div
+                ref={dialogRef}
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="report-builder-title"
+                className="bg-[var(--bi-surface-0)] border border-[var(--bi-border)] w-full max-w-2xl rounded-lg overflow-hidden shadow-2xl flex flex-col max-h-[90vh]"
+            >
                 <header className="p-6 border-b border-[var(--bi-border)] flex items-center justify-between bg-[var(--bi-surface-0)]/50">
                     <div className="flex items-center gap-3">
                         <div className="p-2 bg-[var(--bi-blue-dim)] rounded-lg">
                             <FileText className="w-5 h-5 text-[var(--bi-blue)]" />
                         </div>
                         <div>
-                            <h3 className="text-base font-bold text-[var(--bi-text-1)] tracking-tight">Constructor de Reporte Profesional</h3>
+                            <h3 id="report-builder-title" className="text-base font-bold text-[var(--bi-text-1)] tracking-tight">Constructor de Reporte Profesional</h3>
                             <p className="text-[10px] text-[var(--bi-text-3)] uppercase tracking-widest font-semibold">Estándar Ejecutivo • 2026</p>
                         </div>
                     </div>
-                    <button onClick={onClose} className="p-2 hover:bg-[var(--bi-surface-2)] rounded-full text-[var(--bi-text-3)] hover:text-[var(--bi-text-1)] transition-colors cursor-pointer">
+                    <button onClick={onClose} aria-label="Cerrar constructor de reporte" className="p-2 hover:bg-[var(--bi-surface-2)] rounded-full text-[var(--bi-text-3)] hover:text-[var(--bi-text-1)] transition-colors cursor-pointer">
                         <X className="w-5 h-5" />
                     </button>
                 </header>

@@ -18,6 +18,7 @@ import unicodedata
 from typing import Any, Optional
 
 from src.engine.bi_analyst import generate_ai_content
+from src.utils.logging_config import log_ignored_error
 
 logger = logging.getLogger(__name__)
 
@@ -223,8 +224,17 @@ def _number_candidates(token: str) -> set[float]:
         if head and tail:
             try:
                 values.add(round(float(head.replace(".", "") + "." + tail), 4))
-            except ValueError:
-                pass
+            except ValueError as exc:
+                # P-36: esta segunda interpretación (separador de miles) no cuadra
+                # con la cifra. No es un fallo —el primer `float` ya devolvió la
+                # lectura válida— pero antes se ignoraba sin dejar rastro.
+                log_ignored_error(
+                    logger,
+                    "interpretación alternativa de una cifra (separador de miles)",
+                    exc,
+                    level=logging.DEBUG,
+                    token=cleaned[:40],
+                )
     return values
 
 

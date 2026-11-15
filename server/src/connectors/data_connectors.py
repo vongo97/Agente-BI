@@ -7,6 +7,8 @@ from urllib.parse import quote_plus
 from typing import Optional
 import urllib.parse
 
+from src.utils.logging_config import log_ignored_error
+
 logger = logging.getLogger(__name__)
 
 # Cache en memoria para sesiones
@@ -92,9 +94,17 @@ def get_db_schema_structured(engine):
     for table_name in inspector.get_table_names():
         try:
             columns = inspector.get_columns(table_name)
-        except Exception:
+        except Exception as exc:
             # Una tabla que no se puede inspeccionar (permisos, vista rota)
             # no debe tumbar el filtrado completo.
+            # P-36: se registra para poder diagnosticar qué tabla se saltó.
+            log_ignored_error(
+                logger,
+                "inspección de columnas de una tabla",
+                exc,
+                level=logging.WARNING,
+                table=table_name,
+            )
             continue
         schema.append({
             "table": table_name,
@@ -115,11 +125,20 @@ def _clean_dataframe(df):
         if any(p in text for p in patterns):
             try:
                 return text.encode('cp1252').decode('utf-8')
-            except:
+            except (UnicodeEncodeError, UnicodeDecodeError) as cp1252_err:
                 try:
                     return text.encode('latin-1').decode('utf-8')
-                except:
-                    pass
+                except (UnicodeEncodeError, UnicodeDecodeError) as latin1_err:
+                    # P-36: el texto no es decodificable con ninguna de las dos
+                    # codificaciones. No es recuperable, así que se devuelve tal
+                    # cual — pero se registra, no se traga en silencio.
+                    log_ignored_error(
+                        logger,
+                        "reparación de mojibake (cp1252 y latin-1 fallaron)",
+                        latin1_err,
+                        level=logging.DEBUG,
+                        cp1252_error=type(cp1252_err).__name__,
+                    )
         return text
 
     def slugify_column(name):
@@ -186,8 +205,16 @@ def _clean_dataframe(df):
         if 'fecha' in col.lower() or 'date' in col.lower() or 'mes' in col.lower():
             try:
                 df[col] = pd.to_datetime(df[col], errors='coerce')
-            except Exception:
-                pass
+            except Exception as exc:
+                # P-36: la columna se queda como texto (no se pierde el dato) pero
+                # el motivo queda registrado en lugar de desaparecer.
+                log_ignored_error(
+                    logger,
+                    "conversión a datetime de una columna",
+                    exc,
+                    level=logging.WARNING,
+                    column=col,
+                )
 
     # 5. Eliminar filas tipo "nota de pie" (texto largo en pocas celdas)
     if not df.empty and len(df) > 1:
@@ -233,8 +260,17 @@ def load_file_data(file_path):
             raise ArchivoInvalido(
                 "El archivo esta vacio (0 bytes). Sube un CSV o Excel con al menos una fila de datos."
             )
-    except OSError:
-        pass
+    except OSError as exc:
+        # No se puede leer el tamaño del archivo (permisos, ruta montada que no
+        # responde). No es motivo para abortar: la lectura posterior decidirá.
+        # P-36: se registra el motivo en vez de ignorarlo en silencio.
+        log_ignored_error(
+            logger,
+            "lectura del tamaño del archivo (0-byte check)",
+            exc,
+            level=logging.WARNING,
+            file=basename,
+        )
 
     try:
         if ext.endswith('.csv'):
@@ -245,12 +281,28 @@ def load_file_data(file_path):
             separators = [',', ';', '\t']
 
             best_df, best_score = None, 0
+            parse_failures = 0
             for encoding in encodings:
                 for sep in separators:
                     try:
                         decimal = ',' if sep == ';' else '.'
                         df = pd.read_csv(file_path, encoding=encoding, sep=sep, decimal=decimal)
-                    except Exception:
+                    except Exception as exc:
+                        # P-36: probar encoding x separador es un barrido a ciegas: la
+                        # mayoría de combinaciones FALLAN y eso es lo esperado. Por eso
+                        # el fallo individual se registra a nivel DEBUG (ruido) pero se
+                        # cuenta, y el total se registra a WARNING si el barrido
+                        # entero termina sin éxito.
+                        parse_failures += 1
+                        log_ignored_error(
+                            logger,
+                            "parseo CSV (barrido encoding/separador)",
+                            exc,
+                            level=logging.DEBUG,
+                            file=basename,
+                            encoding=encoding,
+                            sep=sep,
+                        )
                         continue
                     score = _parse_score(df)
                     if score > best_score:
@@ -271,8 +323,26 @@ def load_file_data(file_path):
                     if _parse_score(df) > 1:
                         logger.info("CSV leido con motor python (lineas dañadas omitidas) file=%s", basename)
                         return _clean_dataframe(df)
-                except Exception:
+                except Exception as exc:
+                    # P-36: mismo barrido a ciegas que arriba; el fallo se registra a
+                    # DEBUG y el total se resume cuando el barrido no encuentra nada.
+                    parse_failures += 1
+                    log_ignored_error(
+                        logger,
+                        "parseo CSV (motor python, fallback)",
+                        exc,
+                        level=logging.DEBUG,
+                        file=basename,
+                        encoding=encoding,
+                    )
                     continue
+
+            # Ningún parseo funcionó: se deja traza del motivo real antes de
+            # devolver el mensaje de usuario. P-36: sin esto el fallo era invisible.
+            logger.warning(
+                "CSV no parseable file=%s combinaciones_fallidas=%d",
+                basename, parse_failures,
+            )
 
             # Solo encabezados o archivo ilegible: se distingue para no culpar al usuario de
             # un problema que no es el suyo (un CSV corrupto no es "solo encabezados").
@@ -325,7 +395,17 @@ def load_file_data(file_path):
                     best_df = pd.read_csv(file_path, sep=None, engine='python', encoding=enc)
                     if best_df.shape[1] > 1:
                         break
-                except: continue
+                except Exception as exc:
+                    # P-36: barrido de encodings; el fallo se registra a DEBUG.
+                    log_ignored_error(
+                        logger,
+                        "parseo CSV (auto-sense de encoding)",
+                        exc,
+                        level=logging.DEBUG,
+                        file=basename,
+                        encoding=enc,
+                    )
+                    continue
             
             if best_df is not None:
                 return _clean_dataframe(best_df)
@@ -352,6 +432,7 @@ def load_file_data_from_bytes(raw_bytes: bytes, filename: str) -> pd.DataFrame:
         if ext.endswith('.csv'):
             encodings = ['utf-8', 'utf-8-sig', 'cp1252', 'iso-8859-1', 'latin-1']
             separators = [';', ',', '\t']
+            parse_failures = 0
             for encoding in encodings:
                 for sep in separators:
                     try:
@@ -363,15 +444,40 @@ def load_file_data_from_bytes(raw_bytes: bytes, filename: str) -> pd.DataFrame:
                         if len(df.columns) > 1:
                             logger.debug("CSV (bytes) cargado (sep=%r, enc=%s)", sep, encoding)
                             return _clean_dataframe(df)
-                    except Exception:
+                    except Exception as exc:
+                        # P-36: barrido a ciegas encoding x separador (el fallo es el
+                        # caso normal); se registra a DEBUG y se cuenta.
+                        parse_failures += 1
+                        log_ignored_error(
+                            logger,
+                            "parseo CSV cifrado (barrido encoding/separador)",
+                            exc,
+                            level=logging.DEBUG,
+                            file=basename,
+                            encoding=encoding,
+                            sep=sep,
+                        )
                         continue
             # Último recurso
             for encoding in encodings:
                 try:
                     df = pd.read_csv(io.BytesIO(raw_bytes), encoding=encoding, sep=None, engine='python', on_bad_lines='skip')
                     return _clean_dataframe(df)
-                except Exception:
+                except Exception as exc:
+                    parse_failures += 1
+                    log_ignored_error(
+                        logger,
+                        "parseo CSV cifrado (motor python, fallback)",
+                        exc,
+                        level=logging.DEBUG,
+                        file=basename,
+                        encoding=encoding,
+                    )
                     continue
+            logger.warning(
+                "CSV cifrado no parseable file=%s combinaciones_fallidas=%d",
+                basename, parse_failures,
+            )
             raise Exception("No se pudo determinar el formato del CSV cifrado.")
         elif ext.endswith(('.xls', '.xlsx', '.xlsm')):
             engine = 'openpyxl' if ext.endswith('.xlsx') else None
@@ -385,7 +491,16 @@ def load_file_data_from_bytes(raw_bytes: bytes, filename: str) -> pd.DataFrame:
                         if cells_count > max_cells:
                             max_cells = cells_count
                             best_df = temp_df
-                    except Exception:
+                    except Exception as exc:
+                        # P-36: una hoja ilegible no invalida el resto del Excel.
+                        log_ignored_error(
+                            logger,
+                            "lectura de una hoja de Excel cifrado",
+                            exc,
+                            level=logging.WARNING,
+                            file=basename,
+                            sheet=sheet,
+                        )
                         continue
             if best_df is not None:
                 return _clean_dataframe(best_df)
@@ -397,7 +512,16 @@ def load_file_data_from_bytes(raw_bytes: bytes, filename: str) -> pd.DataFrame:
                     df = pd.read_csv(io.BytesIO(raw_bytes), sep=None, engine='python', encoding=encoding)
                     if df.shape[1] > 1:
                         return _clean_dataframe(df)
-                except Exception:
+                except Exception as exc:
+                    # P-36: barrido de encodings; el fallo individual se registra.
+                    log_ignored_error(
+                        logger,
+                        "parseo CSV cifrado (fallback de formato)",
+                        exc,
+                        level=logging.DEBUG,
+                        file=basename,
+                        encoding=encoding,
+                    )
                     continue
             raise Exception("Formato de archivo cifrado no reconocido.")
     except Exception as e:

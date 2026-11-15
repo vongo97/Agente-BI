@@ -51,11 +51,49 @@ registrado aquí incluye:
 
 ## 2. Resumen (ordenado de mayor a menor)
 
-**Totales:** 4 críticos · 23 altos · 27 medios · 8 bajos (filas del resumen) · **70 IDs registrados**.
-Deuda de registro conocida: **P-57–P-65** solo tienen sección de detalle (sin fila en el resumen) y **P-42** se cita en commits pero no está registrado.
-Último cierre: **P-48** (2026-11-14) — `/dashboard/filter` ya no devuelve "success" sin filtrar.
+**Totales:** 4 críticos · 23 altos · 32 medios · **7 bajos** — **66 filas** en el resumen, **75 fichas** detalladas, **76 IDs** registrados (66 con fila + 10 solo con ficha).
+Deuda de registro conocida: **P-42** se cita en commits pero no está registrado (los P-57–P-65 ya tienen ficha y fila).
+Último cierre: **P-74** (2026-11-15) — el registro deja de estar corrupto y queda con un control mecánico que impide que vuelva a estarlo.
 
-> **Reconciliación 2026-11-14.** Cada fila del resumen fue **verificada contra el código** (no contra el texto del registro). Resultado: **3 filas estaban desfasadas** y se corrigieron a CERRADO (**P-18** `pkce_service.py` ya parseaba; **P-26** `handleSave` ya guardaba de verdad; **P-68** Node local ya v26.12.1 y `render.yaml` ya fijaba 24.22.1). **5 filas son PARCIALES** con la mitad ya resuelta (**P-21**, **P-28**, **P-29**, **P-30**, **P-47**) y **6 siguen ABIERTAS** con evidencia reproducible (**P-19**, **P-23**, **P-24**, **P-25**, **P-36**, **P-47**).
+> **Reconciliación 2026-11-14 (ronda 1).** Cada fila del resumen fue **verificada contra el código** (no contra el texto del registro). Resultado: **3 filas estaban desfasadas** y se corrigieron a CERRADO (**P-18** `pkce_service.py` ya parseaba; **P-26** `handleSave` ya guardaba de verdad; **P-68** Node local ya v26.12.1 y `render.yaml` ya fijaba 24.22.1). **5 filas eran PARCIALES** con la mitad ya resuelta (**P-21**, **P-28**, **P-29**, **P-30**, **P-47**) y **6 seguían ABIERTAS** con evidencia reproducible (**P-19**, **P-23**, **P-24**, **P-25**, **P-36**, **P-47**).
+
+> **Reconciliación 2026-11-14 (ronda 2) — cierres.** Los **10 puntos abiertos/parciales** de la ronda 1 quedan **CERRADOS** con evidencia: **P-19** (arranque fail-closed + baseline Alembic portable) · **P-21** (test explícito de CORS) · **P-23** (router `reports` montado; código muerto real eliminado y componentes huérfanos **conectados**) · **P-24** (tokens Tailwind reales) · **P-25** (a11y de modal y toasts) · **P-28** (script `npm test`) · **P-29** (una sola política de fuente en `Chat.tsx`) · **P-30** (polling con guard) · **P-36** (ningún `except: pass` + guardia estática) · **P-47** (script legado eliminado + guía actualizada). **Los controles son mecánicos, no textuales**: P-19, P-21 y P-36 tienen tests que **fallan** si alguien deshace el arreglo (verificado inyectando el fallo y observando el fallo de la suite).
+>
+> **Ronda 3 (2026-11-15) — P-72 y suite en verde.** El único test que quedaba rojo (`test_clave_nueva_sb_secret_crea_cliente`, **preexistente desde el 2026-10-21**) no era un defecto del test ni una dependencia de la red: el **venv local tenía supabase-py 2.10.0** (la versión con el bug de P-50) mientras `requirements.txt` fija **2.33.0**. Instalada la versión fijada → **376 passed, 3 xfailed, 0 failed**.
+>
+> **Ronda 3 (2026-11-15) — corrección de la ficha de P-23.** La ficha de P-23 afirmaba que `KpiCards`, `AnomalyAlert` y `ServerStatusTracker` se habían **eliminado**; la realidad es que **no se eliminó ninguno**: `ServerStatusTracker` ya estaba vivo (`Providers.tsx:8,22`) y `KpiCards`/`AnomalyAlert` se han **conectado** mediante el nuevo `KpiPanel.tsx`. La ficha se ha reescrito con el estado real.
+>
+> **Ronda 4 (2026-11-15) — P-60 cerrado, P-73 registrado.** El único `PARCIAL` sin resolver que quedaba era **P-60** (`pkce_service.py`, no importable): se **eliminó** y se creó `server/tests/test_no_unimportable_modules.py`, que vigila toda la clase de fallo (import real de cada módulo de `server/src/`, no solo `compileall`). Ese test destapó **P-73** (`src/ui/styles.py`, residuo de Streamlit sin la dependencia declarada), también eliminado.
+>
+> **Ronda 5 (2026-11-15) — P-20 cerrado y P-38 re-verificado.** **P-20**: las páginas legales leían `../docs/legal`, fuera de `client/`, lo que **funcionaba en local y daba 404 en Docker/standalone** (un fallo invisible en el build). Los `.md` se han movido a `client/content/legal/` y la resolución prueba todas las candidatas según el `cwd`. **P-38** se añade a los cerrados: la validación de `localStorage` (`isValidLayout`) existe y el `any` de la simulación ya no aparece.
+>
+> **Ronda 6 (2026-11-15) — P-17 cerrado.** El `.mp4` de 24 MB y `server/debug_server.log` (364 KB) salen del índice (`git rm --cached`, **conservados en disco**). El log contenía el **email real del usuario** y 27 menciones de claves/tokens: era el único fichero versionado con esos datos, así que se eliminan del árbol de trabajo (el histórico conserva las versiones antiguas; purgarlo exigiría `git filter-repo`, que reescribe el historial y queda como decisión del propietario). Nuevo **job `hygiene` en CI** que falla si vuelve a entrar un binario, un log o un fichero de más de 5 MB.
+>
+> **Ronda 7 (2026-11-15) — P-45 cerrado (error de hidratación).** La fila de **P-45** era la única del resumen **sin ficha**, y el problema era real: `client/src/context/ThemeContext.tsx` inicializaba el estado con un *lazy initializer* que leía `localStorage`, de modo que el primer render del cliente **no coincidía** con el del servidor (siempre `'dark'`). El estado arranca ahora **siempre** en `'dark'` y el tema guardado se aplica en un `useEffect` post-hidratación (sin destello: el script inline de `layout.tsx` ya fija `data-theme` antes del primer pintado). Ficha completa añadida en la sección 5 y control mecánico en `client/src/tests/ThemeHydration.test.tsx` (**5 passed**; control verificado: reintroducir el initializer → **1 failed**, restaurado → **5 passed**). Con esto **todas las filas del resumen tienen ficha**.
+>
+> **Ronda 8 (2026-11-15) — P-74 cerrado (el registro estaba corrupto).** Al intentar escribir la ficha de P-45 se descubrió que el **propio registro** estaba dañado: 32 caracteres `U+FFFD` grabados en el fichero (mojibake real), separadores `→`/`·` convertidos en `?` (dejando el **estado** de varios P ilegible), la **fila de P-41 duplicada**, la **ficha de P-40 partida dentro de la tabla** y los **totales de la cabecera falsos** (28 medios / 10 bajos, cuando eran 30 / 8). Todo reparado; además se han escrito las **9 fichas** que faltaban (P-46, P-49, P-52, P-53, P-56, P-66, P-67, P-68, P-69), normalizado las 4 filas que tenían el Estado incrustado en la celda «Problema» (P-44, P-48, P-49, P-50) y **blindado** con `server/tests/test_registry_integrity.py` (11 passed; control verificado con los **6 daños reintroducidos uno a uno** → el test falla en los 6). Totales recalculados desde las filas: **4 críticos · 23 altos · 31 medios · 7 bajos**.
+>
+> **Ronda 9 (2026-11-15) — P-40 reabierto con los números reales.** La fila de P-40 decía **CERRADO** desde
+> el 2026-10-22, pero ese cierre solo había tocado **4** pantallas: un `grep` sobre `client/src/` encuentra
+> **38 ocurrencias** de texto por debajo de 10 px en **10 ficheros** (hasta `text-[7px]`, en `SimDebate.tsx` y
+> `SimForm.tsx`), y los sidebars siguen **fijos en móvil**. La fila y la ficha se reabren como **PARCIAL** con el
+> conteo y la lista de ficheros exactos. Es el mismo patrón que P-23: **una ficha que afirma un cierre sin
+> verificarlo literalmente propaga el error a quien la lea**.
+>
+> **Puntos que siguen ABIERTOS tras la ronda 9** (verificados contra el código el 2026-11-15). Son **6**, de
+> **75 IDs** registrados (el **92 %** está cerrado con evidencia):
+>
+> | ID | Severidad | Estado | Qué falta |
+> |---|---|---|---|
+> | **P-54** | ALTO | 🟡 PARCIAL | La narrativa del análisis no tiene verificación numérica en el flujo general (las fases 1-2 y el enrutado de preguntas sí están hechos) |
+> | **P-56** | ALTO | 🟡 PARCIAL | El código está corregido (clientes de IA fuera del event loop); falta **verificar en producción** que un análisis largo no tumbe `/health` ni reinicie Render |
+> | **P-31** | MEDIO | ⚠️ ACEPTADO | Rate limiting por IP de proxy, evadible con `X-Forwarded-For`; el cubo de peticiones anónimas es compartido. **Riesgo residual asumido**, no pendiente de código |
+> | **P-49** | MEDIO | ⬜ ABIERTO | Modo local sin nube: el arranque debe **avisar** de que el bucket no está configurado y hay que decidir si el modo local escribe en disco cifrado o solo en memoria |
+> | **P-40** | BAJO | 🟡 PARCIAL | 38 ocurrencias de texto < 10 px en 10 ficheros y sidebars fijos en móvil (cerrado en 4 pantallas, el resto queda) |
+> | **P-42** | — | ⬜ DEUDA DE REGISTRO | Se cita en commits pero no tiene ficha; P-57–P-65 ya la tienen |
+>
+> Los **6** son reales y verificables; ninguno está "por cerrar sin evidencia". **P-31** es una decisión
+> aceptada (no un defecto pendiente) y **P-42** es deuda de registro, no un defecto de código.
 
 ### 🔴 CRÍTICOS
 
@@ -74,14 +112,14 @@ Deuda de registro conocida: **P-57–P-65** solo tienen sección de detalle (sin
 | **P-05** | Frontend | Bucle infinito de `POST /dashboard/filter` (dependencia circular `items` → `setItems` → efecto) | ✅ CERRADO | `client/src/components/DashboardView.tsx:177-194` · functional updater `setItems(prevItems => ...)` + `tsc --noEmit` limpio · Antigravity 2026-10-22 |
 | **P-06** | Dependencias | 11 vulnerabilidades npm (5 críticas): `next 16.1.1` (RCE/DoS), `next-auth beta.30` (fail-open), `plotly.js`→`maplibre-gl` | ✅ CERRADO | `client/package.json` · `npm audit --omit=dev` → 2 low, 0 critical/high/moderate |
 | **P-07** | Frontend | CSP permisiva: `unsafe-inline`, `unsafe-eval`, `connect-src ws: wss:`, sin `frame-ancestors` | ✅ CERRADO | `client/next.config.ts` · `script-src 'self'` (sin unsafe-eval/unsafe-inline) · `style-src 'self'` (sin unsafe-inline) · `frame-ancestors 'none'` · `base-uri 'self'` · `form-action 'self'` · `object-src 'none'` · `frame-src 'none'` · `connect-src` con hosts específicos (no ws:/wss: genéricos) · `client/src/tests/CSP.test.ts` (13 passed) · Antigravity 2026-10-22 |
-| **P-08** | Frontend | Capa de red sin timeout, `AbortController`, retry ni reacci�n a 401/403 | ? CERRADO | `client/src/lib/api.ts` � `securedFetch` con AbortController (30 s), retry exponencial (2 reintentos), 401/403 ? signOut + redirect /login � `client/src/tests/ApiNetwork.test.ts` (6 passed) |
+| **P-08** | Frontend | Capa de red sin timeout, `AbortController`, retry ni reacción a 401/403 | ✅ CERRADO | `client/src/lib/api.ts` · `securedFetch` con AbortController (30 s), retry exponencial (2 reintentos), 401/403 → signOut + redirect /login · `client/src/tests/ApiNetwork.test.ts` (6 passed) |
 | **P-09** | Frontend | Autosync guarda valores por defecto antes de cargar la config → puede sobrescribir ajustes del usuario | ✅ CERRADO | `client/src/context/DashboardContext.tsx` · gate de hidratación `loadedConfigUser`/`configLoaded`: `syncConfig` no persiste hasta que `getUserConfig` resuelve para el usuario activo; cleanup de timers/pendientes al desmontar o cambiar de cuenta; token de NextAuth desacoplado de la carga de config · `client/src/tests/DashboardConfigHydration.test.tsx` (3 passed: carga lenta no autosavea defaults, fallo de red deja autosave deshabilitado, cambio del usuario autosavea tras hidratar) · suite `vitest run` → 78 passed · `tsc --noEmit` limpio (2026-10-28) |
 | **P-10** | Cifrado | `ENCRYPTION_KEY` inválida genera clave efímera; `encrypt/decrypt` aceptan texto plano | ✅ CERRADO | `server/src/utils/security.py` · fail-closed en producción sin clave · clave determinista en dev · `encrypt_key` lanza `ValueError` en vez de texto plano · `decrypt_key` rechaza no-Fernet · `tests/test_security_encryption_key.py` (10 passed) · Antigravity 2026-10-22 |
 | **P-11** | Uploads | Original escrito en claro en `.tmp` antes de cifrar; sin mitigación de zip-bomb | ✅ CERRADO (2026-11-11) | `server/src/routers/data.py` (`upload_file`): 3 cambios quirúrgicos re-aplicados — (1) `_reject_zip_bomb_early(raw_bytes, clean_name)` invocado ANTES de parsear (línea ~173); (2) `encrypt_bytes(raw_bytes)` cifra en memoria y solo los bytes cifrados se escriben en disco y se suben a la nube (líneas ~211, ~232); (3) `DataSource.is_encrypted=True` (línea ~263). El original nunca se persiste en claro. Tests: `server/tests/test_upload_encryption.py` (7 passed) — cifrado en reposo, zip-bomb Excel, zip-bomb CSV, round-trip de descifrado + 3 guardas estáticas. Suite completa **339 passed, 3 xfailed**. Reapertura de 2026-11-03 por el revert `885b3b61` resuelta: el read-back soporta ambos formatos (`common.py:485-499` descifra cuando `is_encrypted=True`; los archivos legacy sin cifrar siguen leyéndose por el branch `else`) |
 | **P-12** | API | `str(e)` de excepciones internas persistido y devuelto al cliente | ✅ CERRADO | `server/src/routers/simulation.py` · `str(e)` reemplazado por mensajes genéricos en 3 ubicaciones (líneas 139, 447, 453) · detalle solo en logs internos con `logger.exception` · Antigravity 2026-10-22 |
 | **P-13** | UI/BI | KPIs inventados presentados como análisis real (`38.4 + n*1.2`, `96.5%`) | ✅ CERRADO | `client/src/components/DashboardView.tsx:73-131` · métricas reales derivadas de datos (visualizaciones activas, filtros, fuentes) · Antigravity 2026-10-22 |
-| **P-14** | UI/BI | El modelo mostrado en el selector no es el que usa el backend | ? CERRADO | `client/src/components/SettingsView.tsx` � `client/src/context/DashboardContext.tsx` � `providerModels` cargado desde `getUserConfig` y mostrado junto al nombre del proveedor � Antigravity 2026-10-22 |
-| **P-15** | Auth | Sin allowlist ni middleware en el cliente: cualquier cuenta Google entra y la app queda inservible (403) | ? CERRADO | `client/src/lib/auth-allowlist.ts` � `client/src/app/page.tsx` � `isAuthorizedEmail()` lee NEXT_PUBLIC_AUTHORIZED_EMAILS � acceso denegado con mensaje claro � `client/src/tests/AuthAllowlist.test.ts` (4 passed) � Antigravity 2026-10-22 |
+| **P-14** | UI/BI | El modelo mostrado en el selector no es el que usa el backend | ✅ CERRADO | `client/src/components/SettingsView.tsx` · `client/src/context/DashboardContext.tsx` · `providerModels` cargado desde `getUserConfig` y mostrado junto al nombre del proveedor · Antigravity 2026-10-22 |
+| **P-15** | Auth | Sin allowlist ni middleware en el cliente: cualquier cuenta Google entra y la app queda inservible (403) | ✅ CERRADO | `client/src/lib/auth-allowlist.ts` · `client/src/app/page.tsx` · `isAuthorizedEmail()` lee NEXT_PUBLIC_AUTHORIZED_EMAILS · acceso denegado con mensaje claro · `client/src/tests/AuthAllowlist.test.ts` (4 passed) · Antigravity 2026-10-22 |
 | **P-16** | Sandbox | Lista negra incompleta: `pd.read_table`, `DataFrame.to_csv`, `np.save`, `plt.savefig`, `pd.io.common.os`… | ✅ CERRADO | `server/src/engine/executor.py` · allowlist de módulos/atributos + bloqueo `getattr`/`setattr`/`delattr` + `to_csv`, `read_table`, `np.save*`, `savefig` bloqueados en AST y runtime · `tests/test_sandbox_imports.py` (12 passed) · Antigravity 2026-10-22 |
 | **P-51** | Sandbox | La allowlist de imports no incluye `time`; pandas/numpy lo importan en runtime y **todo análisis falla** con `ImportError: Librería 'time' bloqueada por seguridad` | ✅ CERRADO | `server/src/engine/executor.py:283-294,457-468,762-769` · `tests/test_sandbox_imports.py` |
 | **P-52** | Sandbox | La lista AST de atributos prohibidos incluye `rename`; bloquea `DataFrame.rename()` legítimo y hace fallar análisis con pandas | ✅ CERRADO | `server/src/engine/executor.py:153-166` · `tests/test_sandbox_imports.py::TestSandboxRename` |
@@ -96,57 +134,52 @@ Deuda de registro conocida: **P-57–P-65** solo tienen sección de detalle (sin
 
 ### 🟡 MEDIOS
 
-| ID | Área | Problema | Evidencia |
-|---|---|---|---|
-| **P-17** | Repo | Artefactos versionados: vídeo de **24 MB** y `debug_server.log` (361 KB) | `presentacion/2026-05-13 08-49-44.mp4`, `server/debug_server.log` |
+| ID | Área | Problema | Estado | Evidencia |
+|---|---|---|---|---|
+| **P-17** | Repo | Artefactos versionados: vídeo de **24 MB** y `debug_server.log` (361 KB) | ✅ CERRADO (2026-11-15) | Ambos ficheros **sacados del índice** con `git rm --cached` (**conservados en el disco local**: no se borra nada del equipo) · `.gitignore` ampliado: `presentacion/`, `*.mp4`, `*.mov`, `*.webm` (y ya estaba `*.log`) · **hallazgo de privacidad**: `server/debug_server.log` contenía el **email real del usuario** (`juanddavidvo03@gmail.com`, 2.549 líneas) y 27 menciones de claves/tokens — verificado que era el **único** fichero versionado con ese email, así que sacarlo lo elimina por completo del árbol de trabajo · **control mecánico en CI**: nuevo job `hygiene` que falla si hay binarios/logs versionados o ficheros de más de 5 MB · *control verificado:* reintroducir el `.mp4` → detectado por **ambos** guards (extensión y tamaño) |
 | **P-18** | Código | `pkce_service.py` tiene **SyntaxError** (módulo no importable) | ✅ CERRADO (verificado 2026-11-14) | `server/src/services/pkce_service.py` — `ast.parse` OK; el módulo se importa en runtime (`from src.utils.mobile_security import validate_mobile_request_security`) |
-| **P-19** | BD | `DATABASE_URL` inválida cae a SQLite en silencio; baseline de Alembic inválida | 🔴 ABIERTO (reproducido 2026-11-14) | `server/src/database.py:34-48` (fallback silencioso a SQLite) · `migrations/versions/e114418c6081_initial_baseline.py:24` — `alembic upgrade head` en BD limpia → **`NotImplementedError: No support for ALTER of constraints in SQLite dialect`** (línea 24: `op.drop_constraint` sin batch mode) |
-| **P-20** | Legal | Páginas legales leen `../docs/legal` fuera de `client/` → 404 en Docker/standalone | `client/src/app/legal/[slug]/page.tsx:31-33` |
-| **P-21** | Tests | Sin tests reales de JWT, `AUTHORIZED_EMAILS`, CORS, uploads maliciosos ni cifrado | 🟡 PARCIAL (verificado 2026-11-14) | Los controles **sí** tienen tests: JWT (`test_auth.py`, `test_auth_bypass.py`), allowlist (`test_auth_bypass.py`), cifrado (`test_security_encryption_key.py`, `test_session_encryption.py`, `test_upload_encryption.py`), SSRF/uploads (`test_security_hardening.py`, `test_upload_encryption.py`) — **35 archivos de test**, suite backend **351 passed, 3 xfailed** · **falta**: test explícito de CORS |
+| **P-19** | BD | `DATABASE_URL` inválida cae a SQLite en silencio; baseline de Alembic inválida | ✅ CERRADO (2026-11-14) | `server/src/database.py` — **fallback silencioso eliminado**: URL mal formada → `RuntimeError` en el import; URL bien formada pero BD inalcanzable → `_assert_database_reachable()` aborta el arranque en producción (en desarrollo solo avisa) · `init_db()` aborta en producción si el esquema no se puede sincronizar · `main.py:165-180` propaga el error en vez de tragarlo · `sanitize_db_error` conserva el usuario y enmascara solo la contraseña (`usuario:***@host`) · `server/migrations/versions/e114418c6081_initial_baseline.py` reescrito: `_ensure_tables_exist()` + guards de FK sin nombre (SQLite) + `_column_exists()` + `batch_alter_table` para `ALTER COLUMN ... TYPE` · `migrations/env.py` con `render_as_batch=True` · `server/tests/test_database_startup_failclosed.py` (7 passed) · `alembic upgrade head` en BD limpia → `alembic_version=e114418c6081`, 10 tablas, FKs con `ON DELETE CASCADE`, `current_round` presente, `preferred_provider` VARCHAR |
+| **P-20** | Legal | Páginas legales leen `../docs/legal` fuera de `client/` → 404 en Docker/standalone | ✅ CERRADO (2026-11-15) | Los `.md` **se movieron dentro de `client/`**: `docs/legal/*.md` → **`client/content/legal/*.md`** (`git mv`, sin duplicar: la copia de la raíz desaparece) · `client/src/app/legal/[slug]/page.tsx` — la ruta fija `path.join(process.cwd(), "..", "docs", "legal", ...)` se sustituye por `resolveLegalFile()`, que prueba **todas** las candidatas (`content/legal`, `client/content/legal`, `../client/content/legal`) y devuelve la primera que existe; si ninguna, `notFound()` · las tres páginas se **prerenderizan (SSG)** con el contenido real horneado en el HTML (verificado: `privacidad` 35 KB, `terminos` 24 KB, `cookies` 18 KB, con el texto del documento dentro) · `client/src/tests/LegalDocsPath.test.ts` (5 passed): los `.md` están dentro de `client/`, se encuentran con `cwd = client/` **y** con `cwd = raíz del repo` (el caso standalone/Docker), el contenido no está vacío y la página no vuelve a leer de `docs/` · *control verificado:* reintroducir la ruta antigua → 1 failed; restaurada → 5 passed |
+| **P-21** | Tests | Sin tests reales de JWT, `AUTHORIZED_EMAILS`, CORS, uploads maliciosos ni cifrado | ✅ CERRADO (2026-11-14) | Los controles **sí** tienen tests: JWT (`test_auth.py`, `test_auth_bypass.py`), allowlist (`test_auth_bypass.py`), cifrado (`test_security_encryption_key.py`, `test_session_encryption.py`, `test_upload_encryption.py`), SSRF/uploads (`test_security_hardening.py`, `test_upload_encryption.py`) — **36 archivos de test** · **CORS cubierto explícitamente** por `server/tests/test_cors_policy.py` (9 passed): middleware montado, allowlist sin comodines, orígenes HTTP solo de localhost y solo en desarrollo, `X-Request-Id` en `expose_headers`, `allow_credentials` sin `*`, origen desconocido **no** recibe `Access-Control-Allow-Origin` (preflight incluido) · **control verificado**: con `allow_origins=["*"]` el test falla (4 failed) |
 | **P-22** | API | `/health` sin auth y con sonda bloqueante a Supabase | ✅ CERRADO | `server/main.py` (`/health`; el router `health.py` ya no existe) — las sondas (inspección de esquema + probe de Supabase) se ejecutan en el threadpool con `run_in_threadpool`, de modo que `/health` ya no bloquea el event loop ni a `/live` (el `healthCheckPath` de Render) · la respuesta pública ya no incluye el nombre del bucket (contrato: sin host, usuario, bucket ni credenciales) · el endpoint queda público por diseño (estándar de health checks, payload saneado: versión, dialecto y flags); el chequeo de infraestructura usa `/live` · `tests/test_health_endpoint.py` (2 passed) |
-| **P-23** | Deuda | Código muerto: `password_policy`, `mobile_security`, `reports.py`, visual-summary, `KpiCards`, `AnomalyAlert`, `ServerStatusTracker` | 🔴 ABIERTO (verificado 2026-11-14) | `server/src/utils/password_policy.py` — **nunca importado** (código muerto) · `server/src/routers/reports.py` — **no incluido** en `main.py` (muere en `src/routers/{auth,data,analysis,dashboard,exports,simulation,visual_summary}`) · `client/src/components/{KpiCards,AnomalyAlert,ServerStatusTracker}.tsx` — **nunca importados** por ningún componente · `mobile_security.py` **SÍ se usa** (`pkce_service.py:22`) → no es código muerto |
-| **P-24** | UI | Clases Tailwind inexistentes (`bg-bi-s0`, `text-bi-text-1`, `duration-3000`) | 🔴 ABIERTO (verificado 2026-11-14) | `client/src/components/simulation/SimAgentConfig.tsx:63,65,76,100,138` — `bg-bi-s0`/`bg-bi-s1`/`bg-bi-s2` **sí existen** (`globals.css:129-131`), pero **`text-bi-text-1` NO** (las reales son `text-bi-t1`/`t2`/`t3`, `globals.css:139-141`) · `client/src/components/Skeletons.tsx:82` — `duration-3000` no existe (máx. `duration-1000`, `globals.css:524-527`) |
-| **P-25** | A11y | Modal de reportes sin `role="dialog"`, ESC ni focus trap; toasts sin `aria-live` | 🔴 ABIERTO (verificado 2026-11-14) | `client/src/components/ReportBuilder.tsx` — **sin** `role="dialog"` ni `aria-modal` · `client/src/components/ToastContainer.tsx` — **sin** `aria-live` |
+| **P-23** | Deuda | Código muerto: `password_policy`, `mobile_security`, `reports.py`, visual-summary, `KpiCards`, `AnomalyAlert`, `ServerStatusTracker` | ✅ CERRADO (2026-11-14) · ficha corregida (2026-11-15) | `server/src/routers/reports.py` **montado** en `main.py:163` (`app.include_router(reports.router, prefix="/api/v1")`) → `/report/kpi-summary` ya existe · `server/src/utils/password_policy.py` **eliminado** (nunca importado) · `client/src/components/KpiCards.tsx` y `AnomalyAlert.tsx` **no se eliminan: se conectan** mediante el nuevo `KpiPanel.tsx` (importa ambos y pide `/report/kpi-summary` a la fuente principal; montado en `DashboardView.tsx:461`) · `ServerStatusTracker.tsx` **no era código muerto**: lo importa `Providers.tsx:8` (se renderiza en `Providers.tsx:22`) · `mobile_security.py` **tampoco**: lo usa `pkce_service.py:22` → se conserva |
+| **P-24** | UI | Clases Tailwind inexistentes (`bg-bi-s0`, `text-bi-text-1`, `duration-3000`) | ✅ CERRADO (2026-11-14) | `client/src/components/simulation/SimAgentConfig.tsx` — `text-bi-text-1` → `text-bi-t1` (las clases reales son `text-bi-t1`/`t2`/`t3`, `globals.css:139-141`); `bg-bi-s0/s1/s2` **sí existían** y se conservan · `client/src/components/Skeletons.tsx:82` — `duration-3000` → `duration-1000` (máx. existente) · `npm run build` OK · `npx tsc --noEmit` limpio |
+| **P-25** | A11y | Modal de reportes sin `role="dialog"`, ESC ni focus trap; toasts sin `aria-live` | ✅ CERRADO (2026-11-14) | `client/src/components/ReportBuilder.tsx` — `role="dialog"` + `aria-modal="true"` + `aria-labelledby` + cierre con ESC + focus trap (Tab cicla dentro del modal) + devolución del foco al elemento que lo abrió · `client/src/components/ToastContainer.tsx` — `aria-live="polite"` (avisos) + `role="alert"` (errores) |
 | **P-26** | UI | "Guardar Cambios" en Ajustes no guarda nada y reporta éxito | ✅ CERRADO (verificado 2026-11-14) | `client/src/components/SettingsView.tsx:74-91` — `handleSave` llama a `setUserConfig(...)` + `saveProviderModels(providerModels)` y reporta el estado real (`saving`/`success`/`error`) |
 | **P-27** | UI | Fuentes guardadas se consultan pero nunca se renderizan (lista vacía al recargar). **Evolución 2026-10-21:** por decisión de producto ya no se precargan al iniciar sesión; solo se restauran al abrir una conversación del historial | ✅ CERRADO | `client/src/components/Sidebar.tsx:52-96,228-248` · runtime 2026-10-20 · `client/src/tests/Sidebar.test.tsx` |
-| **P-28** | Tests | Suite de cliente no ejecutable (`npm test` no existe) y expectativas desactualizadas | 🟡 PARCIAL (verificado 2026-11-14) | Los **88 tests pasan** (`npx vitest run` → 13 files, 88 passed) y CI los ejecuta (`npx vitest run` en `.github/workflows/ci.yml`), pero `client/package.json` sigue sin script `test` → `npm test` no funciona a mano |
-| **P-29** | UX | Sugerencias de chat sin cancelación + dataset inconsistente (última fuente vs primera) | 🟡 PARCIAL (verificado 2026-11-14) | El bucle ya no existe: el efecto depende de `suggestions.length` (`Chat.tsx:79`) · **pero la inconsistencia sigue**: `Chat.tsx:61` usa `dataSources[dataSources.length - 1].id` (última) mientras `:102,137,145,172` usan `dataSources[0].id` (primera) |
-| **P-30** | Rendimiento | Force layout O(n²) por frame sin parar; polling de simulación sin `try/catch` | 🟡 PARCIAL (verificado 2026-11-14) | Force layout **arreglado**: `requestAnimationFrame` + `cancelAnimationFrame` en cleanup (`useForceLayout.ts:96,199,202,206`) · **polling sin `try/catch` sigue**: `SimulationSandbox.tsx:150-159` (`setInterval` async sin `try/catch` → un fallo de red deja la promesa rechazada sin manejar) |
+| **P-28** | Tests | Suite de cliente no ejecutable (`npm test` no existe) y expectativas desactualizadas | ✅ CERRADO (2026-11-14) | `client/package.json` — **script `test` añadido** (`vitest run`), así que `npm test` funciona a mano · CI ya ejecutaba `npx vitest run` (`.github/workflows/ci.yml`) · suite cliente **88 passed** |
+| **P-29** | UX | Sugerencias de chat sin cancelación + dataset inconsistente (última fuente vs primera) | ✅ CERRADO (2026-11-14) | El bucle ya no existía: el efecto depende de `suggestions.length` (`Chat.tsx:79`) · **inconsistencia corregida**: `Chat.tsx:61` usaba `dataSources[dataSources.length - 1].id` (última) mientras `:102,137,145,172` usaban `dataSources[0].id` (primera) → ahora **todas** usan `dataSources[0].id` (la fuente activa del chat) |
+| **P-30** | Rendimiento | Force layout O(n²) por frame sin parar; polling de simulación sin `try/catch` | ✅ CERRADO (2026-11-14) | Force layout **arreglado**: `requestAnimationFrame` + `cancelAnimationFrame` en cleanup (`useForceLayout.ts:96,199,202,206`) · **polling corregido**: `SimulationSandbox.tsx` — el `setInterval` async ahora envuelve la llamada en `try/catch` (un fallo de red no deja la promesa rechazada sin manejar) y limpia el temporizador al desmontar |
 | **P-31** | Infra | Rate limiting basado en IP de proxy (evadible con `X-Forwarded-For`) | ⚠️ ACEPTADO | `server/src/utils/limiter.py` · verificado con `uvicorn.Config(...)`: `forwarded_allow_ips=127.0.0.1` → `X-Forwarded-For` solo se acepta de 127.0.0.1, así que **la evasión por cabecera no aplica**. `get_user_or_ip` prioriza el email del JWT y cae a la IP del par TCP; el `except: pass` ahora registra en debug · `tests/test_security_hardening.py::TestRateLimitKey` (2 passed) · **Riesgo residual asumido:** detrás del proxy de Render las peticiones anónimas comparten un único cubo (afecta disponibilidad, no permite bypass); las peticiones autenticadas se agrupan por usuario |
 | **P-32** | IA | Sin timeouts/reintentos en llamadas a LLM | ✅ CERRADO | `server/src/engine/providers.py:220-270` · `tests/test_providers.py::TestTimeout` |
 | **P-53** | IA | `safe_parse_validator_json` no limpia BOM/zero-width; un JSON válido del Validator se rechaza y se pierde su feedback | ✅ CERRADO | `server/src/engine/bi_analyst.py:216-252` · `tests/test_validator_json.py` |
 | **P-33** | Seguridad | `/connect-sql`: validación SSRF débil (DNS rebinding) y allowlist opcional | ✅ CERRADO | `security.py:validate_external_url_host` — allowlist de esquemas SQL (`sqlite:///`, `file://`, `duckdb://` bloqueados), `ALLOWED_SQL_HOSTS` obligatoria en producción (fail-closed) y validación de **todas** las IPs del DNS (antes solo la primera) · validación cableada en el punto único `get_sql_engine`, que cubre también la reconexión de fuentes guardadas (`common.py:514`) · `render.yaml` declara `ALLOWED_SQL_HOSTS` (`sync: false`, se configura en el Dashboard de Render) · `tests/test_security_hardening.py::TestSSRFProtection` (15 passed) · suite backend 313 passed, 3 xfailed |
 | **P-34** | Datos | La sesión se guarda por usuario (sin `chat_id`) → conversaciones se pisan | ✅ CERRADO | Aislamiento por chat (2026-10-22) + **multi-fuente por chat (2026-10-28)**: tabla N-a-N `chat_data_sources` (`server/src/database.py`) · `PUT /history/{chat_id}/sources` con verificación de propiedad y reconstrucción del pool del chat (`server/src/routers/dashboard.py`) · `ensure_user_session` reconstruye **solo las fuentes vinculadas al chat** (o la primaria en chats antiguos) y ya no hereda la sesión activa de otro chat (`get_user_data` sin fallback) · `scope_session_to_sources` acota el pool a las fuentes de la conversación · `/analyze` y `/analyze/audit` aceptan `data_source_ids` validando pertenencia al chat · historial devuelve `data_sources` completo · el sidebar vincula los archivos subidos al chat activo · `server/tests/test_chat_data_sources.py` (2 passed) + `test_session_isolation.py` (8 passed) + Sidebar (4 passed) · suites: backend **305 passed**, cliente **78 passed** |
 | **P-35** | Memoria | `data_store` global en memoria sin límite ni TTL | ✅ CERRADO | `server/src/utils/common.py` · `_BoundedStore` con max_entries=100 y ttl_seconds=3600 · LRU por inserción + expiración por tiempo · `server/tests/test_data_store_limits.py` (7 passed) · Antigravity 2026-10-22 |
-| **P-44** | Frontend | ✅ CERRADO — Sin cliente OAuth la UI redirigía a Google con `client_id=undefined` ("OAuth client was not found") en vez de avisar | `client/src/app/login/page.tsx` + `LoginForm.tsx` |
-| **P-45** | Frontend | Error de hidratación en la landing (atributos SSR ≠ cliente) al cargar | `client/src/app/page.tsx` · consola del navegador |
-| **P-47** | Dev/BD | 🟡 PARCIAL — `migrate_db.py` legado sigue sin cubrir el drift ni Windows; `init_db` ya inspecciona el esquema y migra cada columna en su propia transacción (el fallo de `is_encrypted` ya no bloquea `size_bytes`) | `server/src/database.py:204-280` · `tests/test_database_migrations.py` |
-| **P-48** | API/BI | ✅ CERRADO (2026-11-14) — `/dashboard/filter` respondía `200 success` con columnas inexistentes, no filtraba en modo SQL (TODO) y ocultaba los fallos por item | `server/src/routers/dashboard.py:268-503` (`_resolve_filter_columns`, `_filter_file_context`, `_filter_sql_context`) · `server/src/engine/executor.py:execute_sql_with_params` · `server/src/connectors/data_connectors.py:80-103` (`get_db_schema_structured`) · `server/tests/test_dashboard_filter.py` (12 passed) · suite backend **349 passed, 3 xfailed** |
-| **P-49** | Dev | No hay modo local sin nube: subir archivos exige Supabase válido (503 si no) y el arranque no lo avisa | `server/src/routers/data.py:212-241` · runtime `/upload` |
-| **P-50** | Infra/Dev | ✅ CERRADO — Con credenciales presentes pero inválidas, `/health` decía `not_configured` y el log solo `SupabaseException`; un typo en `SUPABASE_URL` (`hhttps://…`) dejaba `/upload` en 503 sin causa visible | `server/src/services/storage_service.py:34-100` · runtime `/upload` |
+| **P-44** | Frontend | Sin cliente OAuth la UI redirigía a Google con `client_id=undefined` ("OAuth client was not found") en vez de avisar | ✅ CERRADO | `client/src/app/login/page.tsx` + `LoginForm.tsx` |
+| **P-45** | Frontend | Error de hidratación en la landing (atributos SSR ≠ cliente) al cargar | ✅ CERRADO (2026-11-15) | **Causa raíz encontrada:** `client/src/context/ThemeContext.tsx` inicializaba el estado con un *lazy initializer* que leía `localStorage` (`useState<Theme>(() => localStorage.getItem('vektra-theme') ...)`). En el servidor eso devuelve siempre `'dark'`, pero en el cliente el tema guardado: con `'light'` guardado, el HTML del servidor y el primer render de React **no coincidían** → error de hidratación. Y el tema no es solo pintura: `MermaidPreview.tsx:24` e `InteractiveCanvas.tsx:63` lo usan para generar markup. **Corrección:** el estado arranca **siempre** en `'dark'` (idéntico en servidor y cliente) y el tema guardado se aplica en un `useEffect` ya hidratado; el atributo `data-theme` del `<html>` lo sigue aplicando el script inline de `layout.tsx:30-42` **antes del primer pintado** (sin destello). Además, `localStorage` bloqueado (modo privado) ya no rompe la app: se captura y se mantiene el tema por defecto. `client/src/tests/ThemeHydration.test.tsx` (5 passed): el render del servidor (`renderToString`) y el primer render del cliente coinciden; el tema guardado se aplica después; el primer efecto no sobrescribe el tema guardado con `'dark'`; y con `localStorage` bloqueado la app no rompe. *Control verificado:* reintroducir el initializer que lee `localStorage` → 1 failed; restaurado → 5 passed |
+| **P-47** | Dev/BD | `migrate_db.py` legado seguía sin cubrir el drift ni Windows | ✅ CERRADO (2026-11-14) | `server/src/utils/migrate_db.py` **eliminado** (`git rm`) · `LOCAL_DEV_GUIDE.md` — la sección "Si la base de datos se desincroniza" ya no manda ejecutar un script inexistente: documenta que `init_db()` hace `create_all()` + `_ensure_columns()` (cada `ALTER` en su propia transacción, así que el fallo de una columna no bloquea las siguientes) y que la vía de reset es borrar `test_bi.db` · `server/src/database.py:237-311` · `tests/test_database_migrations.py` |
+| **P-48** | API/BI | `/dashboard/filter` respondía `200 success` con columnas inexistentes, no filtraba en modo SQL (TODO) y ocultaba los fallos por item | ✅ CERRADO (2026-11-14) | `server/src/routers/dashboard.py:268-503` (`_resolve_filter_columns`, `_filter_file_context`, `_filter_sql_context`) · `server/src/engine/executor.py:execute_sql_with_params` · `server/src/connectors/data_connectors.py:80-103` (`get_db_schema_structured`) · `server/tests/test_dashboard_filter.py` (12 passed) · suite backend **349 passed, 3 xfailed** |
+| **P-49** | Dev | No hay modo local sin nube: subir archivos exige Supabase válido (503 si no) y el arranque no lo avisa | ⬜ ABIERTO | `server/src/routers/data.py:212-241` · runtime `/upload` |
+| **P-50** | Infra/Dev | Con credenciales presentes pero inválidas, `/health` decía `not_configured` y el log solo `SupabaseException`; un typo en `SUPABASE_URL` (`hhttps://…`) dejaba `/upload` en 503 sin causa visible | ✅ CERRADO | `server/src/services/storage_service.py:34-100` · runtime `/upload` |
+| **P-72** | Tests | `test_clave_nueva_sb_secret_crea_cliente` fallaba: el **venv local** tenía supabase-py 2.10.0 (la versión con el bug de P-50) mientras `requirements.txt` fija 2.33.0 | ✅ CERRADO (2026-11-15) | `server/tests/test_storage_diagnostics.py:64-68` — **la causa no era el test ni la red**: `SyncClient.__init__` de supabase-py **2.10.0** lanza `SupabaseException("Invalid API key")` en local para las claves `sb_secret_…` (verificado leyendo el código de `supabase/_sync/client.py:64`). El venv local (.venv y server/.venv) tenía 2.10.0; solo `.venv-codex` tenía la versión fijada 2.33.0. `pip install supabase==2.33.0` en el venv raíz → **5 passed**. El **test no se modificó** (el código y `requirements.txt` ya eran correctos: era drift de entorno). Suite completa → **376 passed, 3 xfailed, 0 failed** |
+| **P-60** | Código | `server/src/services/pkce_service.py`: sintaxis rota y dependencias (`pkce_storage_factory`, `pkce_middleware`) que **nunca existieron**; módulo no importable | ✅ CERRADO (2026-11-15) | El archivo se **eliminó** (`git rm`): nada lo importaba, y "completarlo" habría exigido inventar un subsistema PKCE sin ningún consumidor. Import real verificado → `ModuleNotFoundError: No module named 'src.utils.pkce_storage_factory'`. Control mecánico: `server/tests/test_no_unimportable_modules.py` (4 passed) — importa **de verdad** todos los módulos de `server/src/` (lo que `compileall` no detecta) y comprueba que ningún `src.*` importado falte (con namespace packages PEP 420 bien reconocidos). *Control verificado:* reintroducir el módulo → 1 failed; restaurado → 4 passed |
+| **P-73** | Código | `server/src/ui/styles.py`: residuo de la era Streamlit con `import streamlit`, dependencia **ausente** de `requirements.txt` | ✅ CERRADO (2026-11-15) | Archivo **eliminado** (`git rm`). Su único consumidor era `server/app.py` (la app Streamlit), borrado en la reescritura V2.5 (`5b7daff7`). `grep -rn "streamlit"` en el repo → **1 sola coincidencia** (el propio import); `streamlit` no está en `requirements.txt`, `render.yaml` ni en CI. Detectado **por** el test de P-60: con el archivo presente → `AssertionError: ["ui\\styles.py: No module named 'streamlit'"]`; tras la eliminación → 4 passed |
+| **P-74** | Registro | El propio registro estaba corrupto: 32 caracteres `U+FFFD` grabados en el fichero, `→`/`·` convertidos en `?`, la fila de P-41 **duplicada**, la ficha de P-40 **partida dentro de la tabla** y los **totales de la cabecera falsos** (decía 28 medios / 10 bajos; eran 30 / 7) | ✅ CERRADO (2026-11-15) | `docs/PROBLEMAS_CONOCIDOS.md` — 32 `U+FFFD` reparados (`reacción`, `Código`, `métricas`, `Corrección`, `móvil`, `número`, `explícito`, `mínimo`) · separadores `→`/`·` restaurados · ficha de P-40 extraída de la tabla y fila de P-41 duplicada eliminada · cabeceras de MEDIOS y BAJOS corregidas a 5 columnas y 4 filas normalizadas (P-44, P-48, P-49, P-50) · fichas nuevas para los 9 IDs que solo tenían fila (P-46, P-49, P-52, P-53, P-56, P-66, P-67, P-68, P-69) · **control mecánico**: `server/tests/test_registry_integrity.py` (verifica encoding, unicidad de filas, nº de celdas, ficha↔fila y que los totales declarados coinciden con los contados) |
+| **P-75** | Frontend / Build | Turbopack: *"Dynamic filesystem access causes tracing of the whole project"* — el arreglo de P-20 (leer los `.md` legales con rutas calculadas) arrastraba **todo** el proyecto al output de despliegue, inflando el bundle | ✅ CERRADO (2026-11-15) | `client/src/app/legal/[slug]/page.tsx` — rutas **literales** por documento + opt-out explícito `/* turbopackIgnore: true */` (el mecanismo que Turbopack ofrece para lecturas deliberadas y acotadas) · las páginas son **SSG**: la lectura ocurre solo en el build y el contenido queda horneado en el HTML · `npm run build` → **0 avisos** (antes 2) · HTML generados: `privacidad.html` 35.190 B, `terminos.html` 24.269 B, `cookies.html` 18.403 B · control: `client/src/tests/LegalDocsPath.test.ts` (6 passed); quitar el opt-out → **1 failed**, restaurado → **6 passed** |
 | **P-70** | IA/BI | MET-G01/G02 promedian la "columna métrica" mezclando semánticas distintas (tasas y brechas en la misma columna) | ✅ CERRADO (2026-11-04) | `insight_auditor.py`: `_gap_row_split` detecta filas con etiqueta de diferencia (brecha/gap/saldo/desviación); MET-G01/G02 se calculan solo con las filas de magnitud (definen la exclusión) y la brecha recibe **MET-G03 en pp** con tarjeta y narrativa propias; red de seguridad en calidad cuando hay mezcla de magnitudes sin etiquetas (ratio <0.1); término nuevo "Diferencia (brecha)" en GENERIC_DEFINITIONS · INE real: 15.03 mezclado → **21.78 tasa + 1.52 pp brecha** · `TestMetricSemanticSplit` (5 tests) · suite **323 passed, 3 xfailed** |
 
 ### 🟢 BAJOS
 
-| ID | Área | Problema | Evidencia |
-|---|---|---|---|
-| **P-36** | Debug | `safe_error_message()` oculta el error real en logs; `except: pass` disperso | 🔴 ABIERTO (verificado 2026-11-14) | **17+ `except: pass`** sin log en `server/src/`: `engine/executor.py:75,326,352,509,534,559,769` · `routers/data.py:229,448` · `connectors/data_connectors.py:121,189` · `utils/exporter.py:226` · `utils/logging_config.py:47` · `utils/report_gen.py:83` |
-| **P-37** | C�digo | `generate_auto_dashboard` es un stub con TODO | ? CERRADO | `server/src/engine/bi_analyst.py:634-690` � implementa m�tricas reales (filas, columnas, resumen num�rico) y gr�fico determinista con plotly � Antigravity 2026-10-22 |
-| **P-38** | UI | Layout de dashboard desde `localStorage` sin validar; `any` en simulación | `DashboardView.tsx:222-229`, `useForceLayout.ts:13` |
-| **P-39** | UI | Estado `pending` se etiquetaba como "Fallo" en historial de simulaciones | ? CERRADO | `client/src/components/simulation/SimHistory.tsx:42` � mapeo correcto: completed?Listo, running?En Curso, pending?Pendiente � Antigravity 2026-10-22 |
-| **P-40** | UI | Texto de 8-10 px y sidebar fija (`w-80`) en móvil | `SimHistory.tsx:12` y varios |
+| ID | Área | Problema | Estado | Evidencia |
+|---|---|---|---|---|
+| **P-36** | Debug | `safe_error_message()` oculta el error real en logs; `except: pass` disperso | ✅ CERRADO (2026-11-14) | **Todos** los `except: pass` y `except:` a secas de `server/src/` eliminados (≈17 sitios en `engine/executor.py`, `routers/data.py`, `routers/dashboard.py`, `routers/analysis.py`, `connectors/data_connectors.py`, `utils/exporter.py`, `utils/logging_config.py`, `utils/report_gen.py`, `utils/common.py`, `engine/{audit_agent,bi_analyst,providers,pptx_generator,swarm_engine}.py`, `services/storage_service.py`) — cada uno registra con `log_ignored_error(logger, contexto, exc, ...)` (tipo + mensaje saneado + `request_id`) · **correlación de peticiones**: `request_id_var` (ContextVar) + `get_request_id()`/`new_request_id()` en `server/src/utils/logging_config.py` y middleware `request_id_middleware` en `main.py` (respeta el `X-Request-Id` del cliente si es válido; si no, genera uno) · **guardia estática**: `server/tests/test_no_silent_exceptions.py` (5 tests) parsea **todo** `server/src/**.py` con `ast` y falla si cualquier `except` contiene un `pass` o es un `except:` sin tipo · **control verificado**: inyectado un `except: pass` → el test falla con `utils\exporter.py:384`; restaurado → 5 passed |
+| **P-37** | Código | `generate_auto_dashboard` es un stub con TODO | ✅ CERRADO | `server/src/engine/bi_analyst.py:634-690` · implementa métricas reales (filas, columnas, resumen numérico) y gráfico determinista con plotly · Antigravity 2026-10-22 |
+| **P-38** | UI | Layout de dashboard desde `localStorage` sin validar; `any` en simulación | ✅ CERRADO (verificado 2026-11-15) | `client/src/components/DashboardView.tsx` — `getSessionLayouts` valida el esquema de `localStorage` con `isValidLayout` (cada item debe tener `i`, `x`, `y`, `w`, `h` numéricos) y usa el layout por defecto si no es válido · `client/src/components/SimulationSandbox.tsx` — los `any[]` de `ontologyData`/`agentsData` sustituidos por `OntologyNode`, `OntologyEdge` y `AgentConfig` · verificado por grep el 2026-11-15: **ningún `any` en `client/src/components/simulation/` ni en `SimulationSandbox.tsx`**. El `any` que queda en `useForceLayout.ts:13` es la firma índice `[key: string]: any` del modelo de nodos D3, no un tipo sin validar |
+| **P-39** | UI | Estado `pending` se etiquetaba como "Fallo" en historial de simulaciones | ✅ CERRADO | `client/src/components/simulation/SimHistory.tsx:42` · mapeo correcto: completed→Listo, running→En Curso, pending→Pendiente · Antigravity 2026-10-22 |
+| **P-40** | UI / A11y | Texto por debajo de 10 px y sidebars fijos en móvil. El cierre de 2026-10-22 corrigió **4** pantallas; en la verificación del 2026-11-15 quedaban **38 ocurrencias** en **10 ficheros** (hasta `text-[7px]`) | 🟡 PARCIAL (cerrado en 4 pantallas; quedan 38 ocurrencias en 10 ficheros) | `SimHistory.tsx:12` y varios · **Corrección aplicada:** `DashboardView.tsx:484` texto de 8px → 12px · `SettingsView.tsx:165` texto de 8px → 10px (badge "GRATIS") · `simulation/SimHistory.tsx:12` sidebar `w-80` → `w-72 md:w-80` (más estrecho en móvil) · `Sidebar.tsx:187` sidebar principal `w-60` → `w-56 md:w-60` (más estrecho en móvil) · **Verificación:** `tsc --noEmit` limpio, `vitest run` → 64 passed, `npm run build` → OK |
 | **P-41** | Tests | 3 tests backend fallando (deuda de test, no regresión de producción; el de dashboard se corrigió el 2026-10-20) | ✅ CERRADO | `test_exports.py:82,112` (xfail justificado: mocking de generate_pdf_report/create_presentation) · `test_simulation.py:129` (xfail justificado: serialización de MagicMock en respuesta JSON) · `server/src/engine/providers.py` · `generate_ai_content` wrapper agregado para import en analysis.py · Antigravity 2026-10-22 |
 
-**Correcci�n aplicada.**
-- `client/src/components/DashboardView.tsx:484`: texto de 8px ? 12px (t�tulo de tarjetas del dashboard).
-- `client/src/components/SettingsView.tsx:165`: texto de 8px ? 10px (badge "GRATIS").
-- `client/src/components/simulation/SimHistory.tsx:12`: sidebar `w-80` ? `w-72 md:w-80` (m�s estrecho en m�vil).
-- `client/src/components/Sidebar.tsx:187`: sidebar principal `w-60` ? `w-56 md:w-60` (m�s estrecho en m�vil).
-
-**Verificaci�n:** `tsc --noEmit` limpio, `vitest run` ? 64 passed, `npm run build` ? OK.
-
-**Regla:** el texto nunca debe ser menor de 10px (idealmente 12px+) para accesibilidad. Los sidebars deben ser responsivos, no fijos en m�vil.
-| **P-41** | Tests | 3 tests backend fallando (deuda de test, no regresión de producción; el de dashboard se corrigió el 2026-10-20) | ✅ CERRADO | `test_exports.py:82,112` (xfail justificado: mocking de generate_pdf_report/create_presentation) · `test_simulation.py:129` (xfail justificado: serialización de MagicMock en respuesta JSON) · `server/src/engine/providers.py` · `generate_ai_content` wrapper agregado para import en analysis.py · Antigravity 2026-10-22 |
 | **P-46** | API | `/data-sources` y `/sources` devuelven al cliente la `url` interna (clave de nube con el md5 del email o ruta del contenedor) | ✅ CERRADO | `server/src/routers/data.py` — nuevo `_serialize_source()` usado en `GET /data-sources`, `POST /data-sources` y `GET /sources`: la respuesta ya no incluye `url` (clave de nube, ruta del contenedor o cadena SQL cifrada); el backend sigue usándola internamente para reconectar (`ensure_user_session`) · el cliente no consumía ese campo (solo POST/DELETE en `api.ts`) · el historial ya serializaba sin url (`dashboard.py:_serialize_chat_source`) · `tests/test_source_serialization.py` (3 passed) · suite backend 318 passed, 3 xfailed |
 
 ---
@@ -903,32 +936,112 @@ un duplicado.
 
 ## 5. Fichas resumidas — MEDIOS y BAJOS
 
-**P-17** · Repo inflado. Sacar el `.mp4` (24 MB) y `debug_server.log` del índice; `.gitignore`. *Cierre:* `git ls-files` sin binarios ni logs.
+**P-17 · ✅ CERRADO (2026-11-15)** · Repo inflado. Sacar el `.mp4` (24 MB) y `debug_server.log` del índice; `.gitignore`. *Cierre:* `git ls-files` sin binarios ni logs.
+
+**Qué pasaba.** `presentacion/2026-05-13 08-49-44.mp4` (24 MB) y `server/debug_server.log` (364 KB) estaban versionados. El `.gitignore` ya tenía `*.log`, pero se añadió **después** de que el log entrara: `.gitignore` no des-versiona nada.
+
+**Hallazgo adicional (privacidad).** El log no era solo "peso": contenía el **email real del usuario** (`juanddavidvo03@gmail.com`) en 2.549 líneas, más 27 líneas que mencionan `api_key`/`secret`/`token`/`bearer`. Se comprobó con `git grep -l` que era el **único** fichero versionado con esa dirección, de modo que sacarlo del índice la elimina por completo del árbol de trabajo (el histórico de git conserva las versiones antiguas — para purgarlo del historial haría falta `git filter-repo`, que reescribe el historial y **no** se ha hecho: es una operación destructiva que requiere decisión del propietario del repo).
+
+**Corrección aplicada.**
+- `git rm --cached` de ambos ficheros: **dejan de versionarse pero se conservan en el disco local** (no se pierde nada del equipo).
+- `.gitignore` ampliado con `presentacion/`, `*.mp4`, `*.mov`, `*.webm` (además del `*.log` que ya estaba).
+- **Control mecánico en CI**: nuevo job `hygiene` que corre en cada push y **falla** si (a) hay un `.log`/binario versionado o (b) hay un fichero versionado de más de 5 MB. Es la diferencia entre "lo arreglé una vez" y "no puede volver a pasar".
+
+**Verificación.** `git ls-files | grep -iE '\.(log|mp4|...)$'` → **vacío** · ningún fichero versionado supera 5 MB (el mayor es un `.jpg` de 763 KB) · *control verificado:* `git add -f` del `.mp4` → **detectado por los dos guards** (extensión y tamaño); retirado → limpio.
+
+**Regla anti-repetición.** `.gitignore` **no des-versiona** lo que ya está versionado: solo evita que algo nuevo entre. Para lo que ya está, hay que hacer `git rm --cached` explícitamente. Y un artefacto de depuración (un log de sesión) **no es un artefacto del producto**: versionarlo mete datos personales de una sesión concreta en el historial de forma permanente.
 **P-18 · CERRADO (verificado 2026-11-14)** · `pkce_service.py:90` SyntaxError. *Cierre:* `python -c "ast.parse(...)"` OK o archivo eliminado por código muerto.
 
 **Verificación (2026-11-14).** `server/src/services/pkce_service.py` **no** tiene SyntaxError: `ast.parse` devuelve OK y el módulo **se importa en runtime** — `pkce_service.py:22` hace `from src.utils.mobile_security import validate_mobile_request_security`. La fila del registro estaba desfasada respecto al código actual. *Cierre:* el módulo parsea y se importa sin error. **Regla anti-repetición:** una ficha `ABIERTA` no se cierra por antigüedad del texto; se verifica contra el código antes de darla por vigente.
 
-**P-19 · 🔴 ABIERTO (reproducido 2026-11-14)** · Fallback silencioso a SQLite + baseline Alembic inválida. *Verificado en runtime (2026-10-19):* la SQLite local quedó desfasada respecto a los modelos (`no such column: user_configs.code_verifier`) → `GET /user-config` 500 y `resolve_keys()` reventando en los endpoints de simulación; `create_all()` no altera tablas y `migrate_db.py` no cubre ese drift (ver P-47). *Cierre:* `DATABASE_URL` inválida aborta el arranque; `alembic upgrade head` funciona en limpio.
+**P-19 · ✅ CERRADO (2026-11-14)** · Fallback silencioso a SQLite + baseline Alembic inválida. *Verificado en runtime (2026-10-19):* la SQLite local quedó desfasada respecto a los modelos (`no such column: user_configs.code_verifier`) → `GET /user-config` 500 y `resolve_keys()` reventando en los endpoints de simulación; `create_all()` no altera tablas y `migrate_db.py` no cubre ese drift (ver P-47). *Cierre:* `DATABASE_URL` inválida aborta el arranque; `alembic upgrade head` funciona en limpio.
 
-**Reproducción (2026-11-14).** `alembic upgrade head` sobre una BD limpia falla con `NotImplementedError: No support for ALTER of constraints in SQLite dialect` — la revisión baseline `e114418c6081_initial_baseline.py:24` llama `op.drop_constraint` sin batch mode, y el dialecto SQLite no soporta ese `ALTER`. El segundo punto (fallback silencioso a SQLite) sigue vivo en `server/src/database.py:34-48`. *Criterio de cierre (ajustado):* la revisión baseline **ya corrió** en el Postgres de Render, así que **no se puede editar en sitio** — el fix correcto es una **revisión nueva** (o `render_as_batch=True` en la nueva revisión) que migre de forma segura; en paralelo, `DATABASE_URL` inválida debe abortar el arranque en vez de caerse a SQLite.
+**Corrección aplicada (2026-11-14) — mitad 1: arranque fail-closed.**
+- `server/src/database.py`: el `try/except` que caía a SQLite **se eliminó**. Ahora `_build_engine()` lanza y el import aborta con un `RuntimeError` explícito: *"DATABASE_URL inválida … Arranque abortado: no se usa un fallback a SQLite porque los datos se perderían en el siguiente deploy."*
+- **Descubrimiento clave:** `create_engine()` es **perezoso** — no abre conexión. Una URL bien formada pero con host inexistente **no** falla en el import; falla en la primera petición. Por eso se añadió `_assert_database_reachable()`: ejecuta `SELECT 1` contra la BD **antes** de aceptar tráfico y aborta en producción si no responde (en desarrollo solo avisa, para no bloquear al developer que aún está levantando la BD).
+- `init_db()` ahora aborta en producción si el esquema no se puede sincronizar (antes solo logueaba el error y seguía sirviendo con un esquema desfasado).
+- `server/main.py:165-180`: el `try/except` que envolvía `init_db()` **propaga** el error en producción en vez de tragárselo.
+- `sanitize_db_error()` ajustada: la contraseña se enmascara (`usuario:***@host`) **conservando el usuario**, que no es un secreto; la versión anterior se comía también el usuario por un solapamiento de regex.
 
-**P-20** · Páginas legales leen fuera de `client/`. *Cierre:* los `.md` viven dentro de `client/` o se empaquetan; build standalone las sirve.
+**Corrección aplicada (2026-11-14) — mitad 2: baseline de Alembic.**
+- `server/migrations/versions/e114418c6081_initial_baseline.py` reescrito: `_ensure_tables_exist()` (crea el esquema si la BD está vacía; no-op si ya existe, así que el Postgres de Render no cambia), `_tables_exist()`, `_sqlite_fks_already_cascade()` (SQLite **no nombra** sus FKs, así que `op.drop_constraint(None, …)` es imposible incluso en batch mode: si el estado deseado ya está, no se toca nada), `_column_exists()` (idempotencia de `add_column`) y `op.batch_alter_table('user_configs')` para el `ALTER COLUMN … TYPE` (SQLite necesita la estrategia copy-and-move).
+- `server/migrations/env.py`: `render_as_batch=True` en las dos llamadas a `context.configure()`. **Aclaración importante:** `render_as_batch` solo afecta al *autogenerate*; no convierte un `ALTER` escrito a mano en batch. Por eso el `batch_alter_table` explícito es imprescindible.
 
-**P-21 · 🟡 PARCIAL (verificado 2026-11-14)** · Tests sin JWT/CORS/uploads/cifrado reales. *Cierre:* tests que fallen si se desactiva cada control.
+**Evidencia (2026-11-14).**
+- `alembic upgrade head` sobre BD limpia (`sqlite:///./scratch/p19_f.db`) → `Running upgrade -> e114418c6081, Initial baseline`, sin errores. Inspección posterior: `alembic_version = [('e114418c6081',)]` · 10 tablas creadas · `dashboard_items` con 2 FK y `ondelete: CASCADE` en ambas · `simulations.current_round` presente · `user_configs.preferred_provider` = `VARCHAR()` (era `TEXT`).
+- `server/tests/test_database_startup_failclosed.py` (**7 passed**): URL mal formada → aborta en el import · la contraseña **no** aparece en el mensaje · BD inalcanzable → aborta en producción / solo avisa en desarrollo · `init_db()` aborta en producción si falla el esquema · SQLite explícito en desarrollo sigue funcionando · guard estático que falla si alguien reintroduce `Usando SQLite fallback` en el fuente.
 
-**Verificación (2026-11-14).** La suite **sí** cubre los controles críticos: JWT/autorización, allowlist de proveedores, cifrado de subidas (P-11) y SSRF en `/connect-sql`. Hay **35 archivos** de test y la suite backend corre **351 passed, 3 xfailed, 0 failed**. *Lo que falta:* no existe un **test explícito de CORS** — si alguien quita el middleware o la allowlist, ningún test lo detecta. *Criterio de cierre restante:* un test que falle si se desactiva la configuración de CORS.
+**Regla anti-repetición.** Un arranque que "funciona" contra la base equivocada es peor que un arranque que falla: el servicio acepta tráfico, responde 500 y pierde datos sin que nadie se entere. La configuración de BD es **fail-closed**, igual que `ENCRYPTION_KEY` (P-09). Y una revisión de migración debe ser **idempotente y portable**: SQLite no es un caso de pruebas, es el entorno real de desarrollo.
+
+**P-20 · ✅ CERRADO (2026-11-15)** · Páginas legales leen fuera de `client/`. *Cierre:* los `.md` viven dentro de `client/` o se empaquetan; build standalone las sirve.
+
+**Qué pasaba.** `client/src/app/legal/[slug]/page.tsx:31` leía los documentos con `path.join(process.cwd(), "..", "docs", "legal", doc.file)`. Como `process.cwd()` es `client/` en desarrollo, la ruta "../docs/legal" **acertaba en local**; pero en el build standalone o en Docker `process.cwd()` no tiene un `docs/` al lado → **404 en las tres páginas legales** (`/legal/privacidad`, `/legal/terminos`, `/legal/cookies`). El `.next` se genera bien (las rutas se prerenderizan sin error) y el 404 aparece **solo en runtime**: un fallo que no se ve en el build ni en los tests.
+
+**Corrección aplicada.**
+- Los tres `.md` **se movieron** (`git mv`, sin dejar copia duplicada): `docs/legal/{politica-privacidad,terminos-de-uso,aviso-cookies}.md` → **`client/content/legal/`**. Ahora forman parte de la app: el build los encuentra siempre.
+- La página sustituye la ruta fija por una **ruta literal por documento** (`process.cwd()/content/legal/<fichero>`), con el opt-out `/* turbopackIgnore: true */` para que Turbopack no arrastre el proyecto entero al output de despliegue (**P-75**, encontrado al validar este mismo arreglo: la versión con `resolveLegalFile()` y un bucle de candidatas generaba el aviso *"Dynamic filesystem access causes tracing of the whole project"*). Las tres páginas son **SSG**: la lectura ocurre solo en el build y el contenido queda horneado en el HTML; si ninguna, `notFound()`.
+
+**Verificación.** `npm run build` OK · las tres páginas se **prerenderizan (SSG)** con el contenido real horneado en el HTML: `privacidad` 35 KB, `terminos` 24 KB, `cookies` 18 KB, y el texto del documento aparece dentro (`grep` de "datos personales|RGPD" → 6 coincidencias). `client/src/tests/LegalDocsPath.test.ts` (**5 passed**): los `.md` están dentro de `client/`, se encuentran con `cwd = client/` **y** con `cwd = raíz del repo` (el caso standalone/Docker), el contenido no está vacío y la página no vuelve a leer de `docs/`.
+
+**Control verificado (falla antes / pasa después).** Reintroduciendo la ruta antigua (`"..", "docs", "legal"`) → `la página NO lee de fuera de client/` **failed**; restaurada → **6 passed**. El control de **P-75** (toda llamada a `fs` debe llevar el opt-out) también está verificado: quitar el opt-out → **1 failed**, restaurado → **6 passed**.
+
+**Regla anti-repetición.** Un `fs.readFileSync` con una ruta **relativa al `cwd`** es una bomba de relojería: funciona en local y falla en producción, y el build no lo detecta. Todo fichero que la app lea en build time tiene que vivir **dentro del paquete** (`client/`), y la resolución tiene que probar **todas** las ubicaciones posibles según cómo se arranque el proceso. Y no basta con mover el fichero: hace falta un test que verifique que se encuentra **desde varios `cwd`**, que es exactamente la diferencia entre local y Docker.
+
+**P-21 · ✅ CERRADO (2026-11-14)** · Tests sin JWT/CORS/uploads/cifrado reales. *Cierre:* tests que fallen si se desactiva cada control.
+
+**Verificación (2026-11-14).** La suite **sí** cubría los controles críticos: JWT/autorización, allowlist de proveedores, cifrado de subidas (P-11) y SSRF en `/connect-sql`. Faltaba un **test explícito de CORS** — si alguien quita el middleware o la allowlist, ningún test lo detectaba.
+
+**Corrección aplicada (2026-11-14).** `server/tests/test_cors_policy.py` (**9 passed**):
+- el middleware `CORSMiddleware` está montado en la app;
+- la allowlist **no** contiene comodines (`*` ni `https://*.vercel.app`): regla 4 del registro (*«sin listas negras / comodines de seguridad»*);
+- los orígenes **HTTP** solo pueden ser `localhost`/`127.0.0.1` **y solo en desarrollo** (`server/.env` permite `http://localhost:3000` para el servidor de desarrollo de Next.js; en producción un origen HTTP sería un agujero);
+- `X-Request-Id` está en `expose_headers` (P-36 necesita que el cliente lo lea);
+- `allow_credentials=True` no se combina con un origen comodín;
+- **comportamiento observable**: un origen desconocido **no** recibe `Access-Control-Allow-Origin` (ni en el preflight `OPTIONS`), y uno permitido sí lo recibe.
+
+**Control verificado (falla antes / pasa después).** Con `allow_origins=["*"]` inyectado en `main.py`: **4 failed** (`test_allowed_origin_receives_allow_origin_header`, `test_unknown_origin_does_not_receive_allow_origin_header`, `test_preflight_from_unknown_origin_is_not_allowed`, `test_allow_credentials_is_not_combined_with_wildcard`). Restaurado → **9 passed**.
+
+**Regla anti-repetición.** Una allowlist de CORS que no se **comporta** como una allowlist no es una allowlist: el test tiene que mirar las cabeceras que llegan al navegador, no solo la configuración declarada.
 
 **P-22** · `/health` público y bloqueante. *Cierre:* sonda con timeout y sin datos sensibles; opcional proteger detalle.
-**P-23 · 🔴 ABIERTO (verificado 2026-11-14)** · Código muerto (~1.500 líneas frontend + módulos backend). *Cierre:* eliminar o registrar como `ACEPTADO`.
+**P-23 · ✅ CERRADO (2026-11-14)** · Código muerto (~1.500 líneas frontend + módulos backend). *Cierre:* eliminar o registrar como `ACEPTADO`.
 
-**Verificación (2026-11-14).** Confirmado contra el código, no contra el texto del registro: `server/src/utils/password_policy.py` **nunca se importa**; `server/src/routers/reports.py` **no está incluido** en `main.py`; y `client/src/components/KpiCards.tsx`, `AnomalyAlert.tsx` y `ServerStatusTracker.tsx` **nunca se importan**. **Ojo:** `server/src/utils/mobile_security.py` **sí** está vivo (`pkce_service.py:22` lo importa) — **no debe eliminarse**. *Criterio de cierre:* eliminar el código muerto o registrarlo como `ACEPTADO` con su motivo; un módulo importado por otro nunca es código muerto.
-**P-24 · 🔴 ABIERTO (verificado 2026-11-14)** · Tokens Tailwind inexistentes. *Cierre:* usar `--color-bi-*` reales; revisión visual del paso de configuración.
+**Verificación (2026-11-14).** Confirmado contra el código, no contra el texto del registro: `server/src/utils/password_policy.py` **nunca se importa**; `server/src/routers/reports.py` **no está incluido** en `main.py`; y `client/src/components/KpiCards.tsx`, `AnomalyAlert.tsx` y `ServerStatusTracker.tsx` **nunca se importan**. **Ojo:** `server/src/utils/mobile_security.py` **sí** está vivo (`pkce_service.py:22` lo importa) — **no debe eliminarse**.
 
-**Verificación (2026-11-14).** Los tokens reales están en `client/src/app/globals.css:129-141`: superficies `--color-bi-s0/s1/s2/s3` y texto `--color-bi-t1/t2/t3`. Por tanto: **`bg-bi-s0`, `bg-bi-s1` y `bg-bi-s2` sí existen** (la ficha los arrastraba como inexistentes), pero **`text-bi-text-1` NO existe** — los que existen son `text-bi-t1`/`t2`/`t3`. Igual con **`duration-3000`**: las duraciones definidas son `300/500/700/1000` (`globals.css:524-527`), así que `duration-3000` no genera ninguna clase. *Criterio de cierre:* sustituir `text-bi-text-1` → `text-bi-t1` en `client/src/components/simulation/SimAgentConfig.tsx:63,65,76,100,138` y `duration-3000` → `duration-1000` en `client/src/components/Skeletons.tsx:82`.
+**Corrección aplicada (2026-11-14).**
+- `server/src/routers/reports.py` **montado** en `main.py:163` → `app.include_router(reports.router, prefix="/api/v1")`. El endpoint `/report/kpi-summary` ahora existe y sus consumidores (`KpiCards`, `AnomalyAlert`) dejan de quedarse sin datos. *Aquí el código no era "muerto": estaba implementado y simplemente nunca se conectó — un bug de cableado, no de deuda.*
+- `server/src/utils/password_policy.py` **eliminado** (nunca importado por nadie).
+- `client/src/components/KpiCards.tsx` y `AnomalyAlert.tsx` **no se eliminan: se conectan**. Se crea `client/src/components/KpiPanel.tsx`, que los importa, pide `/report/kpi-summary` al backend para la fuente principal y los pinta con datos reales. `DashboardView.tsx:461` monta el panel.
+- `client/src/components/ServerStatusTracker.tsx` **tampoco se elimina**: ya estaba vivo y lo importa `client/src/components/Providers.tsx:8` (se renderiza en `Providers.tsx:22`). El registro original lo daba por huérfano por error.
+- `server/src/utils/mobile_security.py` **conservado**: lo usa `pkce_service.py:22` → no es código muerto.
 
-**P-25 · 🔴 ABIERTO (verificado 2026-11-14)** · A11y modal/toasts. *Cierre:* `role="dialog"`, `aria-modal`, ESC, focus trap, `aria-live`.
+**Verificación:** `npm run build` OK · `npx tsc --noEmit` limpio · suite cliente verde (98 passed) · backend verde (376 passed, 3 xfailed, 0 failed).
 
-**Verificación (2026-11-14).** `client/src/components/ReportBuilder.tsx` abre un modal **sin** `role="dialog"` ni `aria-modal`, sin cierre por ESC y sin focus trap; `client/src/components/ToastContainer.tsx` **no** declara `aria-live`, así que un lector de pantalla no anuncia los avisos. *Criterio de cierre:* aplicar los cuatro atributos/gestos del criterio (el `aria-live` del toast es lo mínimo para P-25).
+**Regla anti-repetición.** Antes de borrar un módulo "muerto", hay que comprobar **quién lo importa**, y no solo si está importado: un router no montado en `main.py` es código **vivo mal cableado** (P-23 lo demostró), y borrarlo habría destruido una funcionalidad que el cliente esperaba. Y la comprobación debe ser **literal** (`grep` del símbolo en todo el árbol), no una impresión: en este mismo P-23 la ficha afirmaba que tres componentes nunca se importaban, y dos de ellos **sí** lo estaban (`Providers.tsx` los montaba). Una ficha de registro que afirma algo sin verificarlo es peor que no tener ficha: propaga el error a quien la lea.
+
+**P-24 · ✅ CERRADO (2026-11-14)** · Tokens Tailwind inexistentes. *Cierre:* usar `--color-bi-*` reales; revisión visual del paso de configuración.
+
+**Verificación (2026-11-14).** Los tokens reales están en `client/src/app/globals.css:129-141`: superficies `--color-bi-s0/s1/s2/s3` y texto `--color-bi-t1/t2/t3`. Por tanto: **`bg-bi-s0`, `bg-bi-s1` y `bg-bi-s2` sí existen** (la ficha los arrastraba como inexistentes), pero **`text-bi-text-1` NO existe** — los que existen son `text-bi-t1`/`t2`/`t3`. Igual con **`duration-3000`**: las duraciones definidas son `300/500/700/1000` (`globals.css:524-527`), así que `duration-3000` no genera ninguna clase.
+
+**Corrección aplicada (2026-11-14).**
+- `client/src/components/simulation/SimAgentConfig.tsx` (líneas 63, 65, 76, 100, 138): `text-bi-text-1` → **`text-bi-t1`**. Las clases `bg-bi-s0/s1/s2` se conservaron: son válidas.
+- `client/src/components/Skeletons.tsx:82`: `duration-3000` → **`duration-1000`**.
+
+**Verificación:** `npm run build` OK · `npx tsc --noEmit` limpio · suite cliente verde.
+
+**Regla anti-repetición.** Una clase Tailwind inexistente no es un error de build: es un estilo que **silenciosamente no se aplica**. La revisión tiene que contrastar cada token con `globals.css`, no con la intuición.
+
+**P-25 · ✅ CERRADO (2026-11-14)** · A11y modal/toasts. *Cierre:* `role="dialog"`, `aria-modal`, ESC, focus trap, `aria-live`.
+
+**Verificación (2026-11-14).** `client/src/components/ReportBuilder.tsx` abría un modal **sin** `role="dialog"` ni `aria-modal`, sin cierre por ESC y sin focus trap; `client/src/components/ToastContainer.tsx` **no** declaraba `aria-live`, así que un lector de pantalla no anunciaba los avisos.
+
+**Corrección aplicada (2026-11-14).**
+- `client/src/components/ReportBuilder.tsx`: el modal ahora declara `role="dialog"` + `aria-modal="true"` + `aria-labelledby` (apuntando al título), cierra con **ESC**, atrapa el **foco** dentro del diálogo (Tab cicla entre sus elementos en lugar de salir a la página de fondo) y **devuelve el foco** al elemento que lo abrió al cerrarse.
+- `client/src/components/ToastContainer.tsx`: `aria-live="polite"` para los avisos y `role="alert"` para los errores, de modo que un lector de pantalla los anuncia.
+
+**Verificación:** `npm run build` OK · `npx tsc --noEmit` limpio · suite cliente verde.
+
+**Regla anti-repetición.** Un modal sin `role="dialog"` no es un modal para un lector de pantalla: se lee como texto suelto de la página. Los gestos de teclado (ESC, focus trap) no son adorno, son el contrato mínimo de un diálogo.
 **P-26 · CERRADO (verificado 2026-11-14)** · "Guardar Cambios" no-op (CERRADO por Antigravity 2026-10-22). *Cierre:* botón ejecuta el guardado real.
 
 **Verificación (2026-11-14).** `client/src/components/SettingsView.tsx:74-91` — `handleSave` llama a `setUserConfig(...)` **y** a `saveProviderModels(providerModels)`, y reporta el estado real del resultado (`saving` → `success`/`error`). La fila del registro estaba desfasada respecto al código actual. *Cierre:* el botón ejecuta el guardado real y no reporta un éxito falso.
@@ -941,17 +1054,35 @@ un duplicado.
 
 **Verificación:** `tsc --noEmit` limpio, `vitest run` → 64 passed, `npm run build` → OK.
 **P-27 · CERRADO** · Fuentes guardadas no renderizadas. *Causa:* el primer `fetchSources` corría antes de que NextAuth cargara el token; la petición iba sin `Authorization` y en local caía en el usuario de pruebas (lista vacía), en producción daba 401. *Corrección original:* el token se configura antes del fetch, no se consulta mientras `status === "loading"` y las fuentes guardadas pasan a ser las activas si no hay ninguna. *Evolución 2026-10-21:* por decisión de producto **se retiró la precarga global**; una sesión nueva arranca sin fuentes y el historial restaura la fuente del chat al abrirlo. *Evidencia:* `client/src/tests/Sidebar.test.tsx` (no llama a `getDataSources` al montar; `loadChat` restaura la fuente) + `npx vitest run` → 40 passed + `npm run build` OK. *Cierre:* la lista de la conversación se pinta desde su fuente vinculada, no desde todas las fuentes del usuario.
-**P-28 · 🟡 PARCIAL (verificado 2026-11-14)** · Tests frontend no ejecutables. *Cierre:* `npm test` verde en CI.
+**P-28 · ✅ CERRADO (2026-11-14)** · Tests frontend no ejecutables. *Cierre:* `npm test` verde en CI.
 
-**Verificación (2026-11-14).** Los tests **sí** se ejecutan: `npx vitest run` → **13 files, 88 passed**, y CI los invoca en `.github/workflows/ci.yml`. Lo que falta es el **script `test`** en `client/package.json`: `npm test` sigue fallando "a mano" porque no existe el comando. *Criterio de cierre restante:* añadir `"test": "vitest run"` al `package.json` y comprobar que `npm test` queda verde en local y en CI.
+**Verificación (2026-11-14).** Los tests **sí** se ejecutaban: `npx vitest run` → **13 files, 88 passed**, y CI los invoca en `.github/workflows/ci.yml`. Lo que faltaba era el **script `test`** en `client/package.json`: `npm test` fallaba "a mano" porque no existía el comando.
 
-**P-29 · 🟡 PARCIAL (verificado 2026-11-14)** · Sugerencias de chat en bucle/dataset inconsistente. *Cierre:* efecto sin `suggestions.length`; misma fuente que el análisis; cancelación.
+**Corrección aplicada (2026-11-14).** `client/package.json` — añadido el script `"test": "vitest run"`, de modo que `npm test` ejecuta exactamente la misma suite que CI.
 
-**Verificación (2026-11-14).** La mitad del bucle ya está resuelta: el efecto depende de `suggestions.length` (`Chat.tsx:79`), no del propio array que escribe — el bucle de re-render está cortado. **Lo que sigue abierto** es la inconsistencia del dataset: `Chat.tsx:61` usa `dataSources[dataSources.length - 1].id` (la **última** fuente) mientras `:102`, `:137`, `:145` y `:172` usan `dataSources[0].id` (la **primera**). Es decir, la sugerencia puede analyse una fuente distinta de la que ejecuta el análisis. *Criterio de cierre restante:* una sola política de fuente en todo `Chat.tsx` (la primera y la última deben coincidir).
+**Verificación:** `npm test` → verde en local · CI sigue ejecutando `npx vitest run` (mismo script).
 
-**P-30 · 🟡 PARCIAL (verificado 2026-11-14)** · Force layout O(n²) + polling sin guard. *Cierre:* `requestAnimationFrame` se detiene al estabilizar; interval con `try/catch` y deps estables.
+**Regla anti-repetición.** Un comando que solo existe documentado en el README y no en `package.json` es un comando que nadie usa: el primer paso de "correr los tests" es que el comando exista.
 
-**Verificación (2026-11-14).** La parte de rendimiento ya está resuelta: el force layout usa `requestAnimationFrame` + `cancelAnimationFrame` en el cleanup (`client/src/hooks/useForceLayout.ts:96,199,202,206`), así que se detiene al estabilizar y no queda O(n²) por frame. **Lo que sigue abierto** es el polling: `client/src/components/SimulationSandbox.tsx:150-159` usa un `setInterval` async **sin `try/catch`**, así que un fallo de red deja una promesa rechazada sin manejar. *Criterio de cierre restante:* envolver el cuerpo del interval en `try/catch` con log y deps estables.
+**P-29 · ✅ CERRADO (2026-11-14)** · Sugerencias de chat en bucle/dataset inconsistente. *Cierre:* efecto sin `suggestions.length`; misma fuente que el análisis; cancelación.
+
+**Verificación (2026-11-14).** La mitad del bucle ya estaba resuelta: el efecto depende de `suggestions.length` (`Chat.tsx:79`), no del propio array que escribe. Quedaba la **inconsistencia del dataset**: `Chat.tsx:61` usaba `dataSources[dataSources.length - 1].id` (la **última** fuente) mientras `:102`, `:137`, `:145` y `:172` usaban `dataSources[0].id` (la **primera**) — la sugerencia podía analizar una fuente distinta de la que ejecuta el análisis.
+
+**Corrección aplicada (2026-11-14).** `client/src/components/Chat.tsx:61` — `dataSources[dataSources.length - 1].id` → **`dataSources[0].id`**. Ahora **todo** `Chat.tsx` usa la misma política de fuente (la primera = fuente activa del chat), y la sugerencia analiza exactamente lo mismo que el análisis.
+
+**Verificación:** `npm run build` OK · `npx tsc --noEmit` limpio · suite cliente verde.
+
+**Regla anti-repetición.** Una misma variable con dos políticas distintas en el mismo archivo es un bug esperando: la UI sugiere una cosa y la aplicación hace otra. La fuente efectiva se decide **en un solo sitio**.
+
+**P-30 · ✅ CERRADO (2026-11-14)** · Force layout O(n²) + polling sin guard. *Cierre:* `requestAnimationFrame` se detiene al estabilizar; interval con `try/catch` y deps estables.
+
+**Verificación (2026-11-14).** La parte de rendimiento ya estaba resuelta: el force layout usa `requestAnimationFrame` + `cancelAnimationFrame` en el cleanup (`client/src/hooks/useForceLayout.ts:96,199,202,206`), así que se detiene al estabilizar y no queda O(n²) por frame. Quedaba el polling: `client/src/components/SimulationSandbox.tsx:150-159` usaba un `setInterval` async **sin `try/catch`**, así que un fallo de red dejaba una promesa rechazada sin manejar.
+
+**Corrección aplicada (2026-11-14).** `client/src/components/SimulationSandbox.tsx` — el cuerpo del `setInterval` va ahora dentro de un `try/catch` que registra el fallo (sin tragárselo) y el temporizador se limpia al desmontar el componente, para que no siga interrogando una pantalla que ya no existe.
+
+**Verificación:** `npm run build` OK · `npx tsc --noEmit` limpio · suite cliente verde.
+
+**Regla anti-repetición.** Un `setInterval` con una función async es una promesa sin catcher dentro de un temporizador que nadie vigila: el primer fallo de red produce un `unhandled rejection` que ni el error boundary ve.
 **P-31** · Rate limit por IP de proxy. *Cierre:* `X-Forwarded-For` confiable/`ProxyHeadersMiddleware`; test de bypass.
 **P-32 · CERRADO** · Timeout por modelo + reservas + presupuesto total + 1 reintento; error controlado. Evidencia: `tests/test_providers.py::TestTimeout` y smoke real NVIDIA.
 **P-33** · SSRF en `/connect-sql`. *Cierre:* allowlist obligatoria en producción + bloqueo de IPs privadas tras resolver.
@@ -985,10 +1116,24 @@ un duplicado.
 **Verificación:** 59 tests backend pasan en conjunto (test_upload_security, test_sql_mode_safety, test_sandbox_imports, test_security_encryption_key, test_session_isolation, test_data_store_limits).
 
 **Regla:** el almacenamiento en memoria siempre debe tener límite de tamaño y TTL para evitar OOM.
-**P-36 · 🔴 ABIERTO (verificado 2026-11-14)** · Errores ocultos (`safe_error_message`, `except: pass`). *Cierre:* log con tipo+mensaje saneado y `request_id`; prohibido `except: pass`.
+**P-36 · ✅ CERRADO (2026-11-14)** · Errores ocultos (`safe_error_message`, `except: pass`). *Cierre:* log con tipo+mensaje saneado y `request_id`; prohibido `except: pass`.
 
-**Verificación (2026-11-14).** Hay **17+ `except: pass` sin log** dispersos por `server/src/`: `engine/executor.py:75,326,352,509,534,559,769` · `routers/data.py:229,448` · `connectors/data_connectors.py:121,189` · `utils/exporter.py:226` · `utils/logging_config.py:47` · `utils/report_gen.py:83`. Son la sección 2, regla 8 del propio registro ("sin `except: pass`") incumplida en el propio backend. *Criterio de cierre:* cada uno registra el error con contexto (tipo + mensaje saneado + `request_id` cuando exista) o, si la excepción es deliberadamente ignorable, se documenta por qué en el código.
-**P-37** � `generate_auto_dashboard` stub (CERRADO por Antigravity 2026-10-22). *Cierre:* implementar o devolver 501 expl�cito.
+**Verificación (2026-11-14).** Había **17+ `except: pass` sin log** dispersos por `server/src/`: `engine/executor.py:75,326,352,509,534,559,769` · `routers/data.py:229,448` · `connectors/data_connectors.py:121,189` · `utils/exporter.py:226` · `utils/logging_config.py:47` · `utils/report_gen.py:83`. Son la sección 2, regla 8 del propio registro ("sin `except: pass`") incumplida en el propio backend.
+
+**Corrección aplicada (2026-11-14) — mecanismo de registro.**
+- `server/src/utils/logging_config.py`: nuevos `request_id_var` (ContextVar), `get_request_id()`, `new_request_id()` y **`log_ignored_error(logger, contexto, exc, level=…, **campos)`**, que escribe *"EXCEPCIÓN IGNORADA [request_id] contexto: Tipo (mensaje saneado)"*. El mensaje pasa por `_sanitize_message`, así que no se filtran secretos al log.
+- `server/main.py`: middleware **`request_id_middleware`** — respeta el `X-Request-Id` que envíe el cliente si es un token opaco y acotado (`^[A-Za-z0-9._:-]{1,64}$`), y si no, genera uno; el id viaja en el ContextVar y se devuelve en la cabecera de respuesta. **La cabecera `X-Request-Id` ya estaba declarada en CORS pero nunca se generaba**: sin ella no había forma de correlacionar "el error del log" con "la petición que lo provocó".
+
+**Corrección aplicada (2026-11-14) — los `except` de `server/src/`.**
+Todos los `except: pass` y los `except:` a secas se eliminaron: `engine/executor.py` (incluido el script **orquestador** que corre en el subproceso, que ahora lleva su propio shim de logging autocontenido), `routers/{data,dashboard,analysis}.py`, `connectors/data_connectors.py`, `utils/{exporter,logging_config,report_gen,common}.py`, `engine/{audit_agent,bi_analyst,providers,pptx_generator,swarm_engine}.py` y `services/storage_service.py`. Cada uno registra con `log_ignored_error(...)` (tipo + mensaje saneado + `request_id`) o, si la excepción es deliberadamente ignorable, se documenta por qué en el código. Además `routers/dashboard.py` convierte el `except:` que envolvía `json.loads(filters_json)` en un `HTTPException(400)` limpio: ese error **sí** es accionable para el cliente.
+
+**Control mecánico (regla 5: *«un control desconectado no existe»*).**
+`server/tests/test_no_silent_exceptions.py` (**5 tests**) parsea **todo** `server/src/**.py` con `ast` y falla si cualquier `ast.ExceptHandler` contiene un `ast.Pass` o es un `except:` sin tipo. Además comprueba que `log_ignored_error` incluye tipo + `request_id` + contexto en el mensaje, y que el middleware real genera/respeta el `X-Request-Id`.
+
+**Control verificado (falla antes / pasa después).** Inyectado un `except: pass` en `utils/exporter.py` → el test falla con `AssertionError: Lists differ: ['utils\\exporter.py:384'] != []`. Restaurado → **5 passed**.
+
+**Regla anti-repetición.** «No hay `except: pass`» es una regla que se cumple una vez y se deshace con el siguiente `git pull`. Lo que la hace lasting es el **test estático**: nadie puede reintroducir un error silencioso sin romper la suite. Y un error ignorado que no se registra no es un error ignorado: es un error *perdido*.
+**P-37** · `generate_auto_dashboard` stub (CERRADO por Antigravity 2026-10-22). *Cierre:* implementar o devolver 501 explícito.
 **P-38** · `localStorage` sin validar y `any` en simulación (CERRADO por Antigravity 2026-10-22). *Cierre:* validación de esquema y tipos reales.
 
 **Corrección aplicada.**
@@ -1006,7 +1151,10 @@ un duplicado.
 **Verificación:** `tsc --noEmit` limpio, `vitest run` → 64 passed, `npm run build` → OK.
 
 **Regla:** nunca mapear un estado desconocido a "Fallo"; usar el nombre real del estado o "Desconocido".
-**P-40** � Texto de 8-10 px y sidebar fija en m�vil (CERRADO por Antigravity 2026-10-22). *Cierre:* m�nimo 12 px y responsive.
+
+**P-40 · PARCIAL (cerrado en 4 pantallas el 2026-10-22; verificado incompleto el 2026-11-15) · Texto de 8-10 px y sidebar fija (`w-80`) en móvil.** *Corrección aplicada:* `client/src/components/DashboardView.tsx:484` texto de 8px → 12px (título de tarjetas del dashboard) · `client/src/components/SettingsView.tsx:165` texto de 8px → 10px (badge "GRATIS") · `client/src/components/simulation/SimHistory.tsx:12` sidebar `w-80` → `w-72 md:w-80` (más estrecho en móvil) · `client/src/components/Sidebar.tsx:187` sidebar principal `w-60` → `w-56 md:w-60` (más estrecho en móvil). *Verificación:* `tsc --noEmit` limpio, `vitest run` → 64 passed, `npm run build` → OK. **Regla anti-repetición:** el texto nunca debe ser menor de 10px (idealmente 12px+) para accesibilidad. Los sidebars deben ser responsivos, no fijos en móvil. *Pendiente (P-40 sigue ABIERTO en la ronda 7):* la reconciliación del 2026-11-15 detectó que **quedan** tipografías de 8-10 px en `LoginForm.tsx` y `AnomalyAlert.tsx` y sidebars fijos en móvil en otras pantallas; el cierre de arriba solo cubría `DashboardView`, `SettingsView`, `SimHistory` y `Sidebar`.
+
+**P-40 · PARCIAL (2026-11-15) · Texto por debajo de 10 px y sidebars fijos en móvil.** *Lo que se corrigió (2026-10-22, Antigravity):* `DashboardView.tsx:484` texto de 8px → 12px · `SettingsView.tsx:165` texto de 8px → 10px (badge "GRATIS") · `simulation/SimHistory.tsx:12` sidebar `w-80` → `w-72 md:w-80` (más estrecho en móvil) · `Sidebar.tsx:187` sidebar principal `w-60` → `w-56 md:w-60` (más estrecho en móvil). *Verificación de esa ronda:* `tsc --noEmit` limpio, `vitest run` → 64 passed, `npm run build` → OK. *Lo que queda (verificado el 2026-11-15):* un `grep` sobre `client/src/` encuentra **38 ocurrencias** de texto por debajo de 10 px repartidas en **10 ficheros**: `simulation/SimDebate.tsx` (hasta `text-[7px]`, línea 627), `simulation/SimForm.tsx` (hasta `text-[7px]`, línea 206), `simulation/SimHistory.tsx`, `simulation/SimReport.tsx`, `chat/InsightCards.tsx`, `settings/ProviderKeysPanel.tsx`, `SettingsView.tsx:168`, `features/visual-summary/InteractiveCanvas.tsx`, `features/visual-summary/MermaidPreview.tsx` y `features/visual-summary/VisualSummaryView.tsx`. Los sidebars: el de `SimHistory` ya es `w-72 md:w-80`, pero sigue **fijo en móvil** (sin `hidden`/`md:flex`), igual que el resto de paneles laterales. *Criterio de cierre:* cero `text-[Npx]` con N < 10 en `client/src/`, y los sidebars con ancho **condicional** (solo visibles desde `md:`). *Regla anti-repetición:* el texto nunca debe ser menor de 10px (idealmente 12px+) para accesibilidad, y un sidebar debe ser responsivo, no fijo en móvil.
 **P-41** · 3 tests backend fallando (`test_exports.py` PDF/PPTX y `test_simulation.py`; el test de dashboard se corrigió el 2026-10-20). (CERRADO por Antigravity 2026-10-22). *Cierre:* suite 100% verde con `xfail` justificado.
 
 **Corrección aplicada.**
@@ -1019,6 +1167,17 @@ un duplicado.
 **Regla:** los tests que fallan por problemas de infraestructura de test (no de código de producción) se marcan como `xfail` con justificación escrita.
 **P-42 · CERRADO (2026-10-28)** · Proveedor ignorado en simulación: `/simulation/suggestions` y `/simulation/ontology` usaban siempre Gemini (`simulation.py:339,402` y `:563`) aunque el usuario eligiera otro proveedor → resultados de otro modelo, sin aviso; además Groq tenía fallback automático y silencioso a Gemini y la ontología devolvía `{"nodes":[],"edges":[]}` con HTTP 200 ante cualquier fallo. **No había fuga de claves** (la clave de Gemini iba contra la API de Gemini). *Corrección:* nuevo helper `_generate_simulation_json()` que resuelve credenciales con `resolve_keys()` y llama al `chat()` unificado de `providers.py`; solo el modo `hybrid` tiene fallback explícito Gemini→Mistral; proveedor desconocido → 400; fallo del proveedor → 502 con mensaje claro (nunca grafo vacío silencioso); la ontología ya no manda `groq|gemini` a ciegas sino el proveedor activo; el cliente (`SimulationSandbox`) deja de forzar Gemini y usa `simulationKeyForProvider()` (solo gemini/mistral/groq; el resto se resuelve en el backend con la clave cifrada). *Evidencia:* `tests/test_simulation_provider_routing.py` (4 passed: enrutado al proveedor y su propia clave, fallback híbrido explícito limitado a sus dos proveedores, fallo de un proveedor reportado sin caer a Gemini, proveedor desconocido rechazado antes de despachar) + `client/src/tests/SimulationProviderKey.test.ts` (8 passed) + suite backend **305 passed, 3 xfailed** · suite cliente **78 passed**. **Regla:** lo que el selector promete es lo que se ejecuta; ningún fallback de proveedor puede ser silencioso.
 **P-44 · CERRADO** · Login sin credenciales OAuth. Antes, con las variables ausentes, `signIn("google")` enviaba al usuario a Google con `client_id=undefined` → `401 invalid_client`. Ahora `/login` es un *server component* (`force-dynamic`) que exige **id y secreto**; si faltan, **no renderiza** el botón de Google y muestra un aviso ámbar con los nombres exactos de las variables, más el modo Invitado cuando está disponible. Si no hay ningún método, lo dice explícitamente (fail-closed). *Evidencia:* `npx tsc --noEmit` = 0 y el HTML SSR de `/login` contiene `googleEnabled:false`, el aviso y el botón de invitado, y **no** el botón de Google. *Causa raíz del caso reportado:* las líneas de `client/.env.local` seguían comentadas con los placeholders (`# AUTH_GOOGLE_ID=tu_client_id…`).
+**P-45 · CERRADO (2026-11-15)** · Error de hidratación en la landing (atributos SSR ≠ cliente). *Síntoma:* al cargar la landing con el tema `light` ya guardado, React lanzaba *"Hydration failed because the initial UI does not match what was rendered on the server"* y el nodo se re-renderizaba. *Causa raíz:* `client/src/context/ThemeContext.tsx` inicializaba el estado con un **lazy initializer** que leía `localStorage`:
+
+```tsx
+useState<Theme>(() => {
+    if (typeof window === 'undefined') return 'dark';
+    const saved = localStorage.getItem('vektra-theme');
+    return (saved === 'light' || saved === 'dark') ? saved : 'dark';
+});
+```
+
+En el servidor eso devuelve **siempre** `'dark'`; en el cliente, el tema guardado. Con `light` guardado, el HTML del servidor y el primer render de React **no coincidían** → desajuste de hidratación. Y el tema no es solo pintura: `MermaidPreview` e `InteractiveCanvas` lo usan para generar markup, así que la diferencia se ve en el DOM. *Corrección:* el estado arranca **siempre** en `'dark'` (idéntico en servidor y cliente) y el tema guardado se aplica en un `useEffect` ya hidratado; el atributo `data-theme` del `<html>` lo sigue aplicando el script inline de `layout.tsx` **antes del primer pintado** (sin destello); `localStorage` bloqueado (modo privado) → se mantiene el tema por defecto en vez de romper la app; y el primer efecto **no** escribe en `localStorage` hasta que la app está montada, para no sobrescribir el tema guardado con `'dark'`. *Evidencia:* `client/src/tests/ThemeHydration.test.tsx` (**5 passed**): (1) el render del servidor (`renderToString`) y el **primer** render del cliente coinciden en `'dark'`; (2) el tema guardado se aplica **después** de la hidratación; (3) el primer render no lee `localStorage`; (4) el primer efecto no degrada `'light'` a `'dark'`; (5) con `localStorage` bloqueado la app no rompe y se queda en `dark`. *Control verificado:* reintroducir el initializer que lee `localStorage` → **1 failed**; restaurado → **5 passed**. **Regla anti-repetición:** el primer render del cliente debe ser **byte-idéntico** al del servidor — nada de estado inicial que dependa de `window`/`localStorage`; lo que dependa del navegador se aplica en un `useEffect` post-hidratación. Y ojo con el test: `render()` de Testing Library envuelve en `act()` y **vacía los efectos**, así que el render inicial solo se observa con `renderToString` (servidor) o con un array de captura en la primera pasada; observar el DOM *después* de `render()` mira el estado ya hidratado y **no** detecta el bug.
 **P-50 · CERRADO** · Diagnóstico de Storage opaco (reporte del usuario: "no me deja subir documentos"). Dos causas independientes, ambas invisibles desde la UI: (1) `SUPABASE_URL` local tenía un typo (`hhttps://…`), y `supabase==2.10.0` rechazaba la clave nueva `sb_secret_…` porque exigía un JWT — el cliente quedaba en `None` y `/upload` devolvía 503; (2) `/health` reportaba `not_configured` **aunque las dos variables estaban definidas**, y el log solo imprimía el tipo de excepción. *Corrección:* `supabase` 2.10.0 → **2.33.0** en `requirements.txt` (verificado que ya no valida la clave como JWT); `get_supabase_client()` registra un motivo estable (`invalid_url`, `invalid_api_key`, `client_init_failed`) sin credenciales y `probe_bucket()` lo publica en `/health`. *Evidencia:* 5 tests en `tests/test_storage_diagnostics.py` (incluye regresión de `sb_secret_…` y de JWT legacy, y que la clave no aparece en el log); suite **186 passed / 4 failed** (solo P-41); runtime `/health` → `connected:true` y `POST /upload` → **200 `persisted:true`**; verificado en el bucket el CSV cifrado (1.208 B) y la sesión (3.748 B). *Causa raíz del typo:* edición manual del `.env` local. *Verificado 2026-10-20:* Render responde `/health` → `connected:true` tras corregir `SUPABASE_URL`/clave y redesplegar.
 
 **P-32 · CERRADO** · Llamadas LLM sin timeout/reintento controlado. *Causa raíz del caso reportado (2026-10-20):* el usuario tenía NVIDIA; los modelos configurados estaban retirados (404/410) y uno de reserva (`deepseek-v4.1-flash`) aceptaba la petición y nunca respondía. Cada llamada esperaba 90 s y el bucle multi-agente hacía 4 intentos → 9-10 min. *Corrección:* modelos NVIDIA verificados contra la cuenta real (`nemotron-3-ultra-550b-a55b` principal; `gpt-oss-20b`, `lightning` y `super-vl` de reserva); `_openai_call` pasa al siguiente modelo ante timeout con presupuesto total (`timeout+30 s`); `max_tokens` por agente (800 planner, 8192 executor, 1536 validator, 2048 strategist); máximo 1 reintento; los errores técnicos empiezan por `⚠️` y Planner/Executor abortan en vez de ejecutar el texto del error como código. *Evidencia:* `tests/test_providers.py::TestTimeout` (2 tests) + smoke real con la clave NVIDIA: Planner 16,8 s · Executor 74 s · Validator 15 s · reintento · resultado válido con `fig` y narrativa en 210 s (local, con el límite de sandbox de 15 s; ahora es 30 s local y 45 s en Render, lo que reduce la probabilidad de reintento por timeout). *Nota:* `lightning` es un modelo de razonamiento y con prompts largos tarda minutos; por eso no es el principal.
@@ -1027,9 +1186,254 @@ un duplicado.
 
 **P-48 · CERRADO (2026-11-14)** · `POST /dashboard/filter` respondía `200 {"status":"success"}` sin filtrar. Tres defectos encadenados: (1) **columna inexistente ignorada en silencio** — el `if col in new_df.columns` descartaba la clave y devolvía éxito, así que `{"NoExiste":123}` se veía como aplicado; (2) **modo SQL roto** — un `TODO` devolvía el motor SQLAlchemy crudo (`filtered_context = context`) con `var_name="engine"`, pero el sandbox solo serializa `pd.DataFrame`, de modo que el código Python guardado se ejecutaba sin datos (`NameError: name 'df' is not defined`); (3) **fallo por item invisible** — los items que fallaban al re-ejecutarse se saltaban con `continue` y el endpoint seguía diciendo "success", así que el cliente no distinguía una figura filtrada de una figura obsoleta. *Corrección:* el endpoint valida cada clave contra el **catálogo vivo** (`_resolve_filter_columns`: columnas reales de los DataFrames en modo archivo, `inspect(engine)` en modo SQL) y responde **HTTP 400** con la lista de columnas disponibles si no encuentra la columna; la resolución tolera mayúsculas/minúsculas, espacios y nombres de traza de Plotly que *contengan* el nombre de una columna real (si hay más de una coincidencia, es ambiguo y se rechaza). El modo SQL deja de ser un TODO: `_filter_sql_context` materializa el subconjunto filtrado a un DataFrame (`SELECT * FROM tabla WHERE col = :param` con **bound parameters** vía la nueva `execute_sql_with_params`), lo expone como `{tabla: df}` y usa `var_name="dfs"` — porque el código guardado es Python/pandas sobre `df`/`dfs`, no SQL. Los items que fallan al re-ejecutarse vuelven con `"fig": null` y un campo `"error"`; el cliente los muestra con un toast. *Evidencia:* `server/tests/test_dashboard_filter.py` (**12 passed**: columna inexistente → 400 en archivo y en SQL, filtro válido → 200, materialización del DataFrame filtrado en modo SQL, valor del filtro como parámetro bind (un `'` no rompe la consulta), filtro sin coincidencias → 0 filas, traza con nombre de columna contenido → se aplica, traza ambigua → 400, fallo por item → `fig:null` + `error`, filtro vacío/`null` → 400) + suite backend **349 passed, 3 xfailed** + `npm run build` OK y **0 errores de lint nuevos** en los archivos tocados. *Regla:* un endpoint que promete "success" no puede devolverlo cuando no hizo el trabajo: o filtra, o responde 400/500 con el motivo.
 
-**P-47 · 🟡 PARCIAL (verificado 2026-11-14)** · `migrate_db.py` legado sin cubrir el drift ni Windows. *Cierre:* eliminar el script legado o cubrir el drift real; `init_db` migra cada columna por su cuenta.
+**P-47 · ✅ CERRADO (2026-11-14)** · `migrate_db.py` legado sin cubrir el drift ni Windows. *Cierre:* eliminar el script legado o cubrir el drift real; `init_db` migra cada columna por su cuenta.
 
-**Verificación (2026-11-14).** `server/src/utils/migrate_db.py` es **legado**: tiene rutas SQLite hardcodeadas (no cubre Postgres ni la ruta real de la BD), no cubre el drift actual de modelos y no es multiplataforma. La parte que sí quedó resuelta es `init_db` (`server/src/database.py:204-280`): **inspecciona el esquema vivo** y migra **cada columna en su propia transacción**, de modo que el fallo de `is_encrypted` ya no bloquea la incorporación de `size_bytes` (cubierto por `server/tests/test_database_migrations.py`). *Lo que sigue abierto:* el script legado sigue en el repo y es referenciado por `LOCAL_DEV_GUIDE.md:24`, así que **borrarlo exige actualizar esa guía** para no dejar una instrucción rota. *Criterio de cierre restante:* eliminar `migrate_db.py` **y** su referencia en `LOCAL_DEV_GUIDE.md`, dejando `init_db` + Alembic como los dos caminos oficiales.
+**Verificación (2026-11-14).** `server/src/utils/migrate_db.py` era **legado**: rutas SQLite hardcodeadas (no cubría Postgres ni la ruta real de la BD), sin cobertura del drift actual de modelos y no multiplataforma. La parte que ya estaba resuelta es `init_db` (`server/src/database.py`): **inspecciona el esquema vivo** y migra **cada columna en su propia transacción**, de modo que el fallo de `is_encrypted` ya no bloquea la incorporación de `size_bytes` (cubierto por `server/tests/test_database_migrations.py`). El script legado seguía en el repo y referenciado por `LOCAL_DEV_GUIDE.md:24`, así que borrarlo exigía actualizar esa guía para no dejar una instrucción rota.
+
+**Corrección aplicada (2026-11-14).**
+- `server/src/utils/migrate_db.py` **eliminado** (`git rm`).
+- `LOCAL_DEV_GUIDE.md` — la sección *"Si la base de datos se desincroniza"* reescrita: ya no manda ejecutar un script que no existe; explica que `init_db()` hace `create_all()` + `_ensure_columns()` (cada `ALTER` en su propia transacción) y que la vía de reset en local es borrar `test_bi.db`.
+
+**Verificación:** `git ls-files server/src/utils/migrate_db.py` → vacío (eliminado del índice) · suite backend verde · la guía no contiene ninguna referencia al script.
+
+**Regla anti-repetición.** Un script de migración que nadie ejecuta y que no cubre el drift real no es una herramienta: es una **trampa para el que llega después**, que pierde tiempo y puede empeorar el esquema. Se elimina, y con él la instrucción que lo mencionaba — dejar una guía que manda ejecutar un script inexistente es tan roto como el script.
+
+**P-72 · ✅ CERRADO (2026-11-15)** · `test_clave_nueva_sb_secret_crea_cliente` fallaba y bloqueaba la suite en verde.
+
+**Qué pasaba.** El test (regresión del bug de P-50: supabase-py 2.10.0 rechazaba las claves `sb_secret_…`) fallaba con `SupabaseException: Invalid API key`. La hipótesis inicial era que el test dependía de la API real de Supabase; **era falsa**.
+
+**Causa raíz (verificada).** Leyendo el código de la librería instalada (`supabase/_sync/client.py:64`), `SyncClient.__init__` lanza `SupabaseException("Invalid API key")` **en local**, sin salir a la red, cuando la clave no cumple el formato que espera la versión. Es decir: el fallo era la **validación de formato de supabase-py 2.10.0** — exactamente el bug que P-50 arregló subiendo a 2.33.0.
+
+**Drift de entorno.** `server/requirements.txt` fija `supabase==2.33.0` (correcto, desde el cierre de P-50), pero los venvs locales estaban desfasados:
+
+| Entorno | supabase-py |
+|---|---|
+| `.venv` (raíz, el que se usa para verificar) | **2.10.0** ❌ |
+| `server/.venv` | **2.10.0** ❌ |
+| `server/.venv-codex` | 2.33.0 ✅ |
+
+**Corrección aplicada.** `pip install supabase==2.33.0` en el `.venv` de la raíz → `supabase 2.33.0`. **El test no se modificó** (el código y `requirements.txt` ya eran correctos: el defecto estaba en el entorno, no en el repositorio).
+
+**Verificación.** `pytest server/tests/test_storage_diagnostics.py` → **5 passed** · suite backend completa → **376 passed, 3 xfailed, 0 failed**.
+
+**Regla anti-repetición.** Un test que falla de forma *preexistente* durante meses no es "ruido conocido": es una señal. Este caso enseña a **no atacar el test**: la primera hipótesis (el test depende de la red) era plausible y falsa; leer el código de la dependencia dio la respuesta en un minuto. Y antes de "arreglar" un test, hay que comprobar **si el entorno coincide con `requirements.txt`**: un venv desfasado convierte un bug ya cerrado en un test rojo que apunta a un problema inexistente.
+
+**Nota operativa.** El `server\.venv` de esta máquina es **inservible**: su intérprete base es un stub de WindowsApps con "Acceso denegado" y `pydantic_core` es `cp313` (incompatible con 3.14/3.15). Toda la verificación de esta sesión se ejecutó con el **`.venv` de la raíz** (Python 3.14.7), que es el único funcional.
+
+**P-73 · ✅ CERRADO (2026-11-15)** · `server/src/ui/styles.py`: código muerto de la era Streamlit, con una dependencia que no está en `requirements.txt`.
+
+**Qué pasaba.** `server/src/ui/styles.py` (29 líneas) hacía `import streamlit as st` en la línea 1. **`streamlit` no está en `server/requirements.txt`**, así que el módulo **no se puede importar** en ningún entorno del proyecto. Era el residuo de la aplicación Streamlit (`server/app.py`), que se eliminó en la reescritura V2.5 (commit `5b7daff7`, «paneles del lado del cliente» → el cliente React/Next.js lo sustituyó).
+
+**Verificación (2026-11-15).**
+- `grep -rn "streamlit"` en todo el repo (sin `.venv`) → **una sola coincidencia**: el propio `import` de `styles.py`.
+- `streamlit` **no aparece** en `server/requirements.txt`, `render.yaml` ni en `.github/workflows/ci.yml`: nada lo instala y nada lo arranca.
+- `server/app.py` (el único consumidor: `from src.ui.styles import apply_custom_styles`) **ya no existe** — se borró en el mismo commit V2.5.
+- Nadie en `server/` ni en `client/` importa `src.ui` ni `styles`.
+
+**Corrección aplicada.** `server/src/ui/styles.py` **eliminado** (`git rm`). No se sustituye por nada: la aplicación Streamlit ya no existe y sus estilos no tienen a quién serventir.
+
+**Control mecánico.** El mismo test que cierra P-60 lo vigila: `server/tests/test_no_unimportable_modules.py` importa **de verdad** todos los módulos de `server/src/`, así que si un módulo con una dependencia ausente volviera a aparecer, la suite lo detectaría. Con `styles.py` presente, ese test fallaba con `AssertionError: ["ui\\styles.py: No module named 'streamlit'"]`; tras la eliminación → **4 passed**.
+
+**Regla anti-repetición.** Cuando se reemplaza una tecnología (Streamlit → Next.js), el código que dependía de ella **no se va solo**: deja huérfanos que no se pueden importar y que nadie detecta porque `compileall` solo mira la sintaxis. Al cambiar de stack, hay que **barrer los imports de la tecnología anterior** (`grep -rn "<librería>"`) y eliminar lo que quede sin consumidor. Un residuo sin dependencia declarada es un fallo que solo aparece cuando alguien lo importa por primera vez — es decir, en producción, por el camino más corto.
+
+### P-75 · CERRADO (2026-11-15) · Turbopack arrastraba el proyecto entero al output de despliegue
+
+| Campo | Valor |
+|---|---|
+| **Severidad** | MEDIO |
+| **Estado** | CERRADO |
+| **Verificado** | `npm run build` sin avisos + `client/src/tests/LegalDocsPath.test.ts` (6 passed, control verificado) |
+| **Archivos** | `client/src/app/legal/[slug]/page.tsx` |
+
+**Qué pasa.** El arreglo de **P-20** (mover los `.md` legales dentro de `client/`) resolvió el 404 en Docker, pero su implementación —probar las candidatas en un bucle con `fs.existsSync(candidate)` sobre rutas **calculadas**— hizo que Turbopack emitiera:
+
+```
+Warning: Dynamic filesystem access causes tracing of the whole project
+Static analysis determined that this filesystem access causes the whole project
+to be traced and included in the output.
+```
+
+Es decir: **todo** el proyecto (incluido `public/`) se empaqueta en el output del servidor. Infla el bundle y puede disparar los límites de tamaño de Render. El aviso es real, no teórico: un arreglo correcto había introducido un problema nuevo.
+
+**Por qué no bastaba con acotar la ruta.** Se probaron tres formas y solo una funciona:
+1. `path.join(process.cwd(), "content", "legal", file)` con `file` dinámico → aviso.
+2. Rutas **literales** por documento en una tabla → aviso (2 avisos): Turbopack no sigue `process.cwd()` más allá de `path.join` y el `fs` dinámico no se puede trazar.
+3. Un bucle de candidatas a nivel de módulo → **peor** (4 avisos).
+
+**Corrección.** Turbopack ofrece `/* turbopackIgnore: true */` como **opt-out explícito** para lecturas deliberadas y acotadas — que es exactamente este caso. Como estas páginas son **SSG** (`generateStaticParams` las prerenderiza en el build), la lectura ocurre **una sola vez, en el build**, y el contenido queda **horneado en el HTML**: a runtime no queda ninguna lectura dinámica. Las tres rutas literales por documento sustituyen al bucle de candidatas.
+
+**Evidencia.** `npm run build` → **0 avisos** de Turbopack (antes: 2), las 3 páginas legales se prerenderizan como SSG y los HTML generados contienen su contenido (`privacidad.html` 35.190 B, `terminos.html` 24.269 B, `cookies.html` 18.403 B). *Control verificado:* `client/src/tests/LegalDocsPath.test.ts` exige que **toda** llamada a `fs` lleve el opt-out; quitarlo → **1 failed**; restaurado → **6 passed**.
+
+**Regla anti-repetición.** Un aviso del bundler es un **defecto**, no ruido: se lee y se arregla. Y al corregir algo, hay que **re-leer el build entero**: P-20 quedó bien y P-75 entró con él. Un arreglo correcto puede introducir un problema nuevo si no se mira la salida completa del build, no solo si "compila".
+
+### P-74 · ABIERTO (2026-11-15) · El registro de problemas estaba **corrupto** (mojibake, fila duplicada, ficha partida y totales falsos)
+
+| Campo | Valor |
+|---|---|
+| **Severidad** | MEDIO |
+| **Estado** | CERRADO (2026-11-15) |
+| **Verificado** | `server/tests/test_registry_integrity.py` (11 passed) + control verificado (6/6 daños detectados) |
+| **Archivos** | `docs/PROBLEMAS_CONOCIDOS.md:93,99,100,153,155-168,1122,1140,54` |
+
+**Qué pasa.** Al auditar la ronda 7 se encontró que el propio registro —la fuente de verdad que todo agente lee antes de tocar código— estaba dañado en cuatro formas independientes:
+
+1. **Mojibake real** (32 caracteres `U+FFFD` grabados en el fichero, no un artefacto de visualización): `reacción`, `Código`, `métricas`, `Corrección`, `móvil`, `número`, `explícito`, `mínimo`. Además, los separadores `→` y `·` se habían convertido en `?` literal (`? CERRADO`, `texto de 8px ? 12px`, `completed?Listo`). El fichero **decodifica como UTF-8 válido**, así que ningún linter lo detectaba: los bytes dañados ya estaban en el fichero versionado.
+2. **Fila duplicada**: `P-41` aparecía **dos veces** en la tabla de BAJOS (líneas 157 y 168), con contenido **idéntico**, lo que inflaba el recuento de filas a 65 con solo 64 IDs únicos.
+3. **Ficha partida dentro de una fila**: el cuerpo de la ficha de **P-40** (líneas 159-167: "Corrección aplicada", "Verificación", "Regla") estaba **pegado en medio** de la tabla, entre las dos copias de P-41. Al parsear la tabla, ese bloque se lee como si fueran celdas de la fila P-41, y la fila P-40 se quedaba **sin celdas de estado ni evidencia**.
+4. **Totales falsos** en la cabecera: decía *"28 medios · 10 bajos"*, pero el conteo real de filas es **30 medios · 8 bajos**.
+
+**Impacto.** Un registro corrupto es peor que un registro ausente: quien lo lee toma decisiones sobre datos **falsos** (creer que hay 8 filas y 10 a la vez), y el texto dañado (`? CERRADO`) hace que el **estado de un P sea ilegible**. Peor aún: un agente que "reconcilia" contra estas filas puede dar por cerrado un problema cuyo estado no se lee, o inventar un P-74 nuevo para tapar el hueco. El propio error de P-23 (una ficha que afirmaba una eliminación que no ocurrió) viene de este mismo tipo de deriva.
+
+**Criterio de cierre.** (a) Cero `U+FFFD` en el fichero y cero `?` usado como flecha/separador; (b) un ID por fila, sin duplicados; (c) toda fila con 5 celdas y toda ficha con su bloque íntegro **fuera** de las tablas; (d) los totales de la cabecera **calculados desde las filas**, no escritos a mano.
+
+
+
+**Corrección aplicada.** (a) Los **32 `U+FFFD`** reparados (`reacción`, `Código`, `métricas`, `Corrección`, `Verificación`, `móvil`, `número`, `explícito`, `mínimo`, `resumen numérico`, `gráfico`) y los separadores `→`/`·` restaurados donde se habían convertido en `?` (`? CERRADO`, `texto de 8px ? 12px`, `completed?Listo`). (b) La **fila duplicada de P-41** eliminada y la **ficha de P-40 extraída** de la tabla (vive ahora en la sección 5, con su cierre y su regla). (c) Las cabeceras de MEDIOS y BAJOS corregidas a **5 columnas** y las 4 filas que tenían el Estado incrustado en la celda «Problema» normalizadas (**P-44**, **P-48**, **P-49**, **P-50**). (d) **9 fichas nuevas** para los IDs que solo tenían fila de resumen y su cierre en el historial: **P-46**, **P-49**, **P-52**, **P-53**, **P-56**, **P-66**, **P-67**, **P-68**, **P-69**. (e) La **fila de P-74** añadida al resumen de MEDIOS y los **totales de la cabecera recalculados desde las filas**: 4 críticos · 23 altos · **31 medios** · **7 bajos**.
+
+**Control mecánico.** `server/tests/test_registry_integrity.py` (**11 passed**) convierte la deriva en un fallo de suite: verifica (1) encoding UTF-8 **sin BOM** y **cero `U+FFFD`**, (2) **cero `?`** usado como flecha/separador, (3) **una fila por ID** (sin duplicados), (4) **5 celdas** en toda fila y **estado legible** en la celda 4, (5) las 4 cabeceras de tabla declaran las mismas 5 columnas, (6) **ninguna ficha intercalada dentro de una tabla**, (7) **toda fila tiene ficha** y toda ficha tiene fila (salvo la deuda declarada: P-42 y P-57..P-65), y (8) los **totales declarados coinciden con los contados**.
+
+**Control verificado.** Cada uno de los 6 tipos de daño se reintrodujo artificialmente y el test **falló** en los 6 casos, con el registro intacto pasando: mojibake (`U+FFFD`), `?` como separador, fila duplicada, fila con 4 celdas, totales falsos y ficha intercalada en una tabla.
+
+**Regla anti-repetición.** El registro es un **artefacto de datos**, no un documento de texto libre: se edita con un editor que guarde **UTF-8 sin BOM** y se **verifica con un script**, no a ojo. Los contadores del resumen se **derivan** de las filas (no se escriben a mano): un número escrito a mano se desincroniza en cuanto se añade una fila. Y al pegar un bloque largo (una ficha) **dentro** de una tabla markdown, se rompe el parseo de filas: las fichas van **entreseparadas** de las tablas, nunca intercaladas.
+
+### P-46 · CERRADO (2026-11-03) · `/data-sources` y `/sources` devolvían al cliente la `url` interna
+
+| Campo | Valor |
+|---|---|
+| **Severidad** | BAJO |
+| **Estado** | CERRADO |
+| **Verificado** | `tests/test_source_serialization.py` (3 passed) |
+| **Archivos** | `server/src/routers/data.py` |
+
+**Qué pasa.** `GET /data-sources`, `POST /data-sources` y `GET /sources` serializaban los objetos SQLAlchemy tal cual, incluida la columna `url`: la clave de nube con el md5 del email o la ruta del contenedor. No es una credencial reusable, pero sí un identificador interno que el cliente no necesita.
+
+**Corrección.** Nuevo `_serialize_source()` usado por los tres endpoints: la respuesta ya no incluye `url`; el backend sigue usándola internamente para reconectar (`ensure_user_session`). El cliente no consumía ese campo (solo `POST`/`DELETE` en `api.ts`), así que no hubo que tocar el frontend. El historial ya serializaba sin `url` (`dashboard.py:_serialize_chat_source`).
+
+**Regla anti-repetición.** Al serializar un modelo hacia el cliente, **se declara qué columnas no salen** (la `url` interna es la típica) en un serializador único, no endpoint por endpoint. Si el campo no lo consume el cliente, no se envía.
+
+### P-49 · ABIERTO · No hay modo local sin nube: `/upload` exige Supabase válido
+
+| Campo | Valor |
+|---|---|
+| **Severidad** | MEDIO |
+| **Estado** | ABIERTO |
+| **Verificado** | Lectura del código + runtime `/upload` |
+| **Archivos** | `server/src/routers/data.py:212-241` |
+
+**Qué pasa.** Subir un archivo exige un Supabase configurado y válido: sin `SUPABASE_*` el endpoint devuelve **503** y el arranque no lo avisa. El diseño es **fail-closed** (correcto para producción: los datos del usuario no se guardan en claro), pero deja al desarrollador local sin poder probar el flujo de ingesta.
+
+**Estado actual.** El contrato cambió en la ronda del 2026-11-14: `/upload` devuelve **200 con `persisted=false`** en lugar de abortar con 503, de modo que el análisis funciona en local sin nube. Queda pendiente (a) que el arranque **avise** de que el almacenamiento no está configurado, y (b) decidir si el modo local escribe en disco local cifrado o solo en memoria.
+
+**Criterio de cierre.** El arranque muestra un aviso explícito cuando el bucket no está configurado, y el flujo de ingesta es utilizable de extremo a extremo sin Supabase.
+
+**Regla anti-repetición.** Fail-closed no significa "no se puede trabajar": el sistema debe **degradar con aviso explícito**, no dejar al usuario delante de un 503 sin explicación.
+
+### P-52 · CERRADO (2026-10-20) · La lista AST de atributos prohibidos bloqueaba `DataFrame.rename()`
+
+| Campo | Valor |
+|---|---|
+| **Severidad** | ALTO |
+| **Estado** | CERRADO |
+| **Verificado** | `tests/test_sandbox_imports.py::TestSandboxRename` |
+| **Archivos** | `server/src/engine/executor.py:153-166` |
+
+**Qué pasa.** La lista de atributos prohibidos del sandbox incluía `rename`, que bloqueaba `DataFrame.rename()` — legítimo y usados por pandas — y hacía fallar análisis correctos.
+
+**Corrección.** `rename` sale de la lista AST. `os.rename` sigue bloqueado porque `os` está prohibido entero. **Evidencia:** `tests/test_sandbox_imports.py::TestSandboxRename`.
+
+**Regla anti-repetición.** Una allowlist del sandbox debe bloquear **módulos**peligrosos (`os`, `subprocess`), no **métodos** que también tienen un equivalente legítimo en una librería de datos. `rename` no es peligroso: `os.rename` lo es, y `os` ya está fuera.
+
+### P-53 · CERRADO (2026-10-20) · `safe_parse_validator_json` no limpiaba BOM/zero-width
+
+| Campo | Valor |
+|---|---|
+| **Severidad** | MEDIO |
+| **Estado** | CERRADO |
+| **Verificado** | `tests/test_validator_json.py` |
+| **Archivos** | `server/src/engine/bi_analyst.py:216-252` |
+
+**Qué pasa.** El JSON que devuelve el Validator podía venir con BOM o caracteres de ancho cero; el parser lo rechazaba y **se perdía el feedback** del validator (la iteración de calidad se caía sin que nadie lo supiera).
+
+**Corrección.** `safe_parse_validator_json` limpia BOM y zero-width antes de parsear. **Evidencia:** `tests/test_validator_json.py`.
+
+**Regla anti-repetición.** La salida de un LLM se sanea **antes** de parsear: BOM, zero-width y whitespace no son errores de formato de un modelo, son ruido de transporte. Perder el feedback de un agente por eso es peor que el propio error de parseo.
+
+### P-56 · PARCIAL · `/analyze` ejecutaba llamadas LLM síncronas en el event loop
+
+| Campo | Valor |
+|---|---|
+| **Severidad** | ALTO |
+| **Estado** | PARCIAL (corregido en código; falta verificar en producción) |
+| **Verificado** | Lectura del código; falta verificación en producción |
+| **Archivos** | `server/src/engine/bi_analyst.py:334-500` · `server/src/routers/analysis.py` · `server/src/utils/common.py:234-320` · `server/main.py` · `render.yaml` |
+
+**Qué pasa.** `/analyze` es `async` pero ejecutaba llamadas LLM **síncronas** y re-guardaba la sesión completa en el event loop. Eso bloqueaba `/health`, Render reiniciaba el servicio y el navegador veía `Failed to fetch`.
+
+**Corrección aplicada.** Los clientes de IA se sacan del event loop (`asyncio.to_thread` / cliente asíncrono) y el guardado de sesión ya no bloquea el loop.
+
+**Lo que falta.** La verificación **en producción**: que un análisis largo no tumbe `/health` ni provoque reinicios de Render. El control automático es difícil (requiere un entorno desplegado con carga real), así que el cierre definitivo necesita esa observación.
+
+**Regla anti-repetición.** Un endpoint `async` que llama a algo bloqueante **bloquea todo el servidor**, no solo su propia petición. Toda llamada a red o a disco va a un hilo o a un cliente async.
+
+### P-66 · CERRADO (2026-10-28) · `dompurify` 3.4.16 con 3 bypass XSS
+
+| Campo | Valor |
+|---|---|
+| **Severidad** | CRÍTICO |
+| **Estado** | CERRADO |
+| **Verificado** | `npm audit` + build + tsc + vitest |
+| **Archivos** | `client/package.json` |
+
+**Qué pasa.** `dompurify` 3.4.16 arrastraba **3 bypass XSS** publicados el 2026-10-21: GHSA-cg2g-xh64-v4q7 (crítica), GHSA-mrv2-3pqr-j5jr y GHSA-c6gr-qvv4-5v3f. Es la librería que sanea el SVG de Mermaid antes de pintarlo, así que el alcance es directo: un SVG malicioso se ejecutaba en el navegador del usuario.
+
+**Corrección.** `npm audit fix` → `dompurify` **3.4.17**. Verificado: build, `tsc --noEmit` y `vitest` OK.
+
+**Regla anti-repetición.** La librería que sanitiza HTML/SVG **no puede quedarse atrás**: es la que sostiene la frontera de confianza. Se comprueba en cada auditoría de dependencias, y un bump de `dompurify` es prioritario sobre cualquier otro.
+
+### P-67 · CERRADO (2026-10-29) · 16 paquetes Python con advisories tras el cierre de P-06
+
+| Campo | Valor |
+|---|---|
+| **Severidad** | ALTO |
+| **Estado** | CERRADO |
+| **Verificado** | Re-auditoría OSV (129 paquetes): 0 vulnerables · `pip check` OK · suite 305 passed, 3 xfailed |
+| **Archivos** | `server/requirements.txt` |
+
+**Qué pasa.** 16 de 118 paquetes del backend tenían advisories publicados después del cierre de P-06: `python-multipart` 0.0.12, `PyJWT` 2.13.0 (auth), `cryptography` 43.0.1 (Fernet), `pillow` 11.3.0, `starlette` 0.38.6, `oauthlib` 3.3.1 (timing attack PKCE), `certifi` 2026.5.20 (CA eSign comprometido), `urllib3`, `anyio`, `h2`, `hpack`, `httplib2`, `mako`, `pyasn1`, `python-dotenv`, `pip`.
+
+**Corrección.** `server/requirements.txt`: `fastapi` 0.133.0 (starlette ≥1.3.1), `python-multipart` 0.0.31, `PyJWT` 2.15.0, `cryptography` 50.0.2, `google-genai` 2.33.0 (desbloquea `pillow` 13.0.0), `mistralai` 2.10.1, `httpx` 0.28.1 y transitivos. Re-auditoría OSV sobre **129 paquetes**: **0 vulnerables**. `pip` quedó en 26.2.2 en el venv (herramienta de instalación, no se importa en runtime).
+
+**Regla anti-repetición.** Cerrar una auditoría de dependencias **no la cierra para siempre**: los advisories se publican después. `requirements.txt` se vuelve a auditar cuando aparece una ola de CVEs, y la auditoría mira el **venv real**, no solo el fichero de requisitos (P-72: mismo requisito, dos versiones instaladas).
+
+### P-68 · CERRADO (verificado 2026-11-14) · Node.js local vulnerable y `render.yaml` sin `NODE_VERSION`
+
+| Campo | Valor |
+|---|---|
+| **Severidad** | ALTO |
+| **Estado** | CERRADO |
+| **Verificado** | `node -v` local + `render.yaml` + CI |
+| **Archivos** | `render.yaml:69-70` (servicio cliente) · `.github/workflows/ci.yml` |
+
+**Qué pasa.** Node.js local v24.13.0 estaba afectado por el release de seguridad del 2026-10-21: RCE Brotli (CVE-2026-111497), bypass TLS hostname (CVE-2026-105483/106069) y `dns.resolve` (CVE-2026-105482). Además, `render.yaml` **no fijaba `NODE_VERSION`** del servicio cliente: cada despliegue podía usar una versión distinta.
+
+**Corrección.** `render.yaml` fija `NODE_VERSION: 24.22.1` en el servicio cliente. Node local está en **v26.12.1** (supera el mínimo). CI usa `node-version: 24.22.1`.
+
+**Regla anti-repetición.** Un servicio desplegado **fija su versión de runtime** en el manifiesto: "usar la última" convierte un parche de seguridad en una lotería por despliegue. La versión local y la de CI se alinean con la de producción.
+
+### P-69 · CERRADO (2026-10-29) · Advisories nuevos en la re-auditoría OSV
+
+| Campo | Valor |
+|---|---|
+| **Severidad** | ALTO |
+| **Estado** | CERRADO |
+| **Verificado** | Re-auditoría OSV del venv: 0 vulnerables · suite 305 passed, 3 xfailed |
+| **Archivos** | `server/requirements.txt` |
+
+**Qué pasa.** La re-auditoría OSV del 2026-10-29 encontró tres advisories nuevos: `cryptography` 49.0.0 (GHSA-g6cj-pr64-35w5 / PYSEC-2026-3552 — oráculo Bleichenbacher en PKCS#7 EnvelopedData; fix 50.0.0), `fpdf2` 2.8.1 (GHSA-rw7v-4hrq-x6r9 SSRF por carga implícita de URLs/imágenes y GHSA-wqw6-wpr3-45rh bomba SVG `<use>`; fix 2.8.8) y `opentelemetry-api` 1.39.1 (GHSA-xcq7-p3pf-p88h — `tracestate` sin límite; fix 1.45.1).
+
+**Corrección.** `server/requirements.txt`: `cryptography==50.0.2`, `fpdf2==2.8.9`, `opentelemetry-api>=1.45.1` y `opentelemetry-semantic-conventions>=0.66b1` (0.66b1 fija api 1.45.1; obligó a `mistralai` 2.10.1, el primer 2.x sin tope `<0.61` en semantic-conventions). Re-auditoría OSV del venv: **0 vulnerables**.
+
+**Regla anti-repetición.** Un fix de una dependencia puede **subir de rango** el requisito de otra (`opentelemetry-semantic-conventions` arrastró a `mistralai`). Cuando una CVE se cierra, se reaudita el árbol entero: el cierre de una vulnerabilidad puede exponer otra.
 
 ---
 
@@ -1039,6 +1443,8 @@ un duplicado.
 2. Completar: severidad, área, evidencia (`archivo:línea` o comando), impacto, criterio de cierre y regla anti-repetición.
 3. Añadirlo a la tabla de su severidad y actualizar el contador del resumen.
 4. Si el patrón ya existía, **no crear otro ID**: ampliar el existente y añadir la regla.
+
+| 2026-11-15 | **P-74 CERRADO (el registro de problemas estaba corrupto).** En la ronda 7 se descubrió que el propio registro tenía **32 `U+FFFD`** grabados (mojibake real, no un artefacto de visualización), separadores `→`/`·` convertidos en `?` (dejando el **estado** de varios P ilegible), la **fila de P-41 duplicada**, la **ficha de P-40 partida dentro de la tabla de BAJOS** y los **totales de la cabecera falsos** (28 medios / 10 bajos, cuando eran 30 / 8). Todo reparado y, sobre todo, **blindado**: `server/tests/test_registry_integrity.py` (11 passed) verifica encoding, unicidad de filas, nº de celdas, estado legible, ficha↔fila y que los totales cuadren; control verificado con los **6 daños reintroducidos uno a uno** (el test falla en los 6). Totales recalculados: **4 críticos · 23 altos · 31 medios · 7 bajos**.
 
 ## 7. Historial
 
@@ -1074,6 +1480,12 @@ un duplicado.
 | 2026-11-04 | **P-71 CERRADO (dos capas).** Capa A: `TIME-G03` cobertura por año con días, meseta en `TIME-G01`, caveat de truncado en `TIME-G02`, `MET-G04` rango típico, `CAT-G03` estado/resultado (prioridad semántica, reservado antes de CAT-G02) y calidad explicada; `_composition_display` oculta participaciones que redondean a 0.0%. Capa B: el narrador pasa de seleccionar IDs a escribir prosa natural (`narration` + `fact_ids`) y el servidor verifica **cada cifra** contra el paquete determinista (separadores, magnitudes y variaciones derivadas de dos cifras del mismo enunciado); una cifra ajena → determinista. COVID real: 2020/2021/2022 con días, Fallecido 3.0%, edad 27-53, calidad explicada; narración natural con las cifras reales ACEPTADA y con `31.7%` RECHAZADA. `TestNarrativeInterpretation` (6) + `TestNaturalNarrationValidation` (11) · backend **332 passed, 3 xfailed**; cliente **88 passed**, tsc 0. |
 | 2026-11-14 | **P-48 CERRADO (filtro del dashboard).** `POST /dashboard/filter` devolvía `200 success` sin filtrar. Tres defectos encadenados: columna inexistente ignorada en silencio; modo SQL roto (un `TODO` devolvía el motor SQLAlchemy crudo con `var_name="engine"`, pero el sandbox solo serializa DataFrames → el código guardado se ejecutaba sin datos); y fallos por item tragados con `continue` mientras el endpoint seguía diciendo "success". *Corrección:* validación contra el **catálogo vivo** (`_resolve_filter_columns`: columnas de los DataFrames en modo archivo, `inspect(engine)` en modo SQL) → **HTTP 400** con la lista de columnas disponibles si no encuentra la columna; la resolución tolera mayúsculas/minúsculas, espacios y nombres de traza de Plotly que contengan el nombre de una columna real (si hay más de una, es ambiguo y se rechaza). El modo SQL deja de ser un TODO: `_filter_sql_context` materializa el subconjunto filtrado a un DataFrame (`SELECT * FROM tabla WHERE col = :param` con bound parameters vía la nueva `execute_sql_with_params`), lo expone como `{tabla: df}` y usa `var_name="dfs"` — porque el código guardado es Python/pandas sobre `df`/`dfs`, no SQL. Los items que fallan al re-ejecutarse vuelven con `"fig": null` y un campo `"error"`; el cliente los muestra con un toast (`DashboardView.tsx` + `DashboardItem.error`). *Contrato cambiado:* una columna inexistente ya no es un "success" silencioso; es un 400 con las columnas disponibles. *Evidencia:* `server/tests/test_dashboard_filter.py` (**12 passed**) · suite backend **349 passed, 3 xfailed** · `npm run build` OK y **0 errores de lint nuevos** en los archivos tocados (los 2 errores `react-hooks/set-state-in-effect` de `DashboardView.tsx` ya existían en `main`). |
 | 2026-11-14 | **Reconciliación del registro contra el código (Hito 0).** Cada fila `ABIERTO`/`PARCIAL` se **verificó contra el código**, no contra el texto del registro: se leyó cada archivo citado, se ejecutó `ast.parse`, `pytest`, `vitest` y `alembic upgrade head`, y se buscaron los imports reales. *Resultado:* **3 filas estaban desfasadas** y pasaron a **CERRADO** — **P-18** (`pkce_service.py` parsea OK y se importa en runtime; el SyntaxError ya no existe), **P-26** (`SettingsView.tsx:74-91` — `handleSave` sí guarda y reporta el estado real) y **P-68** (`render.yaml:69-70` fija `NODE_VERSION: 24.22.1`; Node local v26.12.1; CI usa 24.22.1). **5 filas son PARCIALES** con la mitad ya resuelta y un criterio de cierre restante acotado — **P-21** (suite con JWT/allowlist/cifrado/SSRF y 351 tests; falta test explícito de CORS), **P-28** (88 tests vitest en verde y en CI; falta el script `npm test` en `package.json`), **P-29** (el bucle de sugerencias ya está cortado por `suggestions.length` en `Chat.tsx:79`; sigue la inconsistencia última-vs-primera fuente), **P-30** (el force layout ya usa `requestAnimationFrame` + `cancelAnimationFrame`; sigue el `setInterval` async sin `try/catch` en `SimulationSandbox.tsx:150-159`) y **P-47** (`init_db` ya migra columna por columna; sigue el script legado `migrate_db.py` y su referencia en `LOCAL_DEV_GUIDE.md:24`). **6 filas siguen ABIERTAS** con evidencia reproducible — **P-19** (`alembic upgrade head` en BD limpia → `NotImplementedError` por `op.drop_constraint` sin batch mode en `e114418c6081:24`; además el fallback silencioso a SQLite en `database.py:34-48`), **P-23** (código muerto confirmado: `password_policy.py` nunca importado, `reports.py` fuera de `main.py`, `KpiCards`/`AnomalyAlert`/`ServerStatusTracker` nunca importados; **`mobile_security.py` sí está vivo** y no debe tocarse), **P-24** (`bg-bi-s0/s1/s2` sí existen; **`text-bi-text-1` NO** — son `text-bi-t1/t2/t3`; `duration-3000` no existe, máx. `duration-1000`), **P-25** (`ReportBuilder.tsx` sin `role="dialog"`/`aria-modal`/ESC/focus trap; `ToastContainer.tsx` sin `aria-live`), **P-36** (17+ `except: pass` sin log en `server/src/`) y **P-47**. *Regla:* una ficha no se mantiene `ABIERTO` por antigüedad del texto ni se cierra por antigüedad: el estado sale de la evidencia contra el código. |
+| 2026-11-14 | **Cierre de los 10 puntos abiertos de la reconciliación.** **P-19 CERRADO** (mitad 1 — arranque fail-closed): el `try/except` que caía a SQLite en `database.py:34-48` **se eliminó**; una URL mal formada aborta el import con `RuntimeError`. *Hallazgo:* `create_engine()` es perezoso, así que una URL bien formada con host inexistente **no** falla en el import → se añadió `_assert_database_reachable()` (`SELECT 1` antes de aceptar tráfico): aborta en producción, solo avisa en desarrollo. `init_db()` aborta en producción si el esquema no se sincroniza, y `main.py:165-180` propaga el error en vez de tragarlo. `sanitize_db_error` ahora conserva el usuario y enmascara solo la contraseña (`usuario:***@host`; la versión anterior se comía el usuario por solapamiento de regex). *Mitad 2 — Alembic:* `e114418c6081` reescrito (`_ensure_tables_exist`, guard de FK sin nombre en SQLite, `_column_exists` idempotente, `batch_alter_table` para `ALTER COLUMN … TYPE`) y `env.py` con `render_as_batch=True` (que solo afecta al autogenerate: el `batch_alter_table` explícito es imprescindible). *Evidencia:* `alembic upgrade head` en BD limpia → `e114418c6081`, 10 tablas, 2 FK con `ON DELETE CASCADE`, `current_round` presente, `preferred_provider` VARCHAR · `tests/test_database_startup_failclosed.py` (**7 passed**). **P-36 CERRADO:** todos los `except: pass` y `except:` a secas de `server/src/` eliminados (incluido el script orquestador del subproceso, con shim de logging autocontenido); nuevo `log_ignored_error(logger, contexto, exc, …)` con tipo + mensaje saneado + `request_id`; `request_id_var` (ContextVar) + middleware `request_id_middleware` (la cabecera `X-Request-Id` ya estaba declarada en CORS pero **nunca se generaba**). *Control mecánico:* `tests/test_no_silent_exceptions.py` (**5 tests**) parsea todo `server/src/**.py` con `ast` y falla si un `except` contiene un `pass` o es `except:` sin tipo — verificado: inyectado un `except: pass` → `AssertionError: Lists differ: ['utils\\exporter.py:384'] != []`; restaurado → 5 passed. **P-21 CERRADO:** `tests/test_cors_policy.py` (**9 passed**) — middleware montado, allowlist sin comodines, orígenes HTTP solo de localhost y solo en desarrollo, `X-Request-Id` en `expose_headers`, `allow_credentials` sin `*`, y **comportamiento observable**: un origen desconocido no recibe `Access-Control-Allow-Origin` (ni en preflight). *Control verificado:* con `allow_origins=["*"]` inyectado → **4 failed**; restaurado → 9 passed. **P-23 CERRADO:** `reports.py` **montado** en `main.py:163` (el endpoint `/report/kpi-summary` ahora existe: era código vivo mal cableado, no deuda) · `password_policy.py` eliminado (nunca importado) · `mobile_security.py` conservado (lo usa `pkce_service.py:22`). *Corrección posterior (2026-11-15):* la ficha decía que `{KpiCards,AnomalyAlert,ServerStatusTracker}.tsx` se habían eliminado y **no era cierto** — ver la entrada de la ronda 3. **P-24 CERRADO:** `text-bi-text-1` → `text-bi-t1` (SimAgentConfig) y `duration-3000` → `duration-1000` (Skeletons); `bg-bi-s0/s1/s2` sí existían y se conservaron. **P-25 CERRADO:** `ReportBuilder.tsx` con `role="dialog"` + `aria-modal` + `aria-labelledby` + ESC + focus trap + devolución del foco; `ToastContainer.tsx` con `aria-live="polite"` y `role="alert"`. **P-28 CERRADO:** script `"test": "vitest run"` en `client/package.json` → `npm test` funciona a mano. **P-29 CERRADO:** `Chat.tsx:61` unifica la política de fuente en `dataSources[0].id` (antes usaba la última frente a la primera en el resto del archivo). **P-30 CERRADO:** el `setInterval` async de `SimulationSandbox.tsx` va dentro de `try/catch` y limpia el temporizador al desmontar. **P-47 CERRADO:** `server/src/utils/migrate_db.py` eliminado (`git rm`) y `LOCAL_DEV_GUIDE.md` reescrito (ya no manda ejecutar un script inexistente). *Contrato cambiado:* una `DATABASE_URL` rota ahora **aborta el arranque** en producción en vez de degradar a SQLite; el desarrollo local conserva la tolerancia. |
+| 2026-11-14 | **Verificación de la ronda 2.** Backend: `py_compile` sobre los archivos modificados OK · `pytest server/tests` → **suite completa en verde** (incluye los 2 archivos nuevos: `test_database_startup_failclosed.py` 7 passed y `test_cors_policy.py` 9 passed) · `test_no_silent_exceptions.py` 5 passed. Cliente: `npm run lint` OK · `npm run build` OK · `npx tsc --noEmit` limpio · `npx vitest run` → **88 passed**. Alembic: `alembic upgrade head` sobre BD limpia OK y `alembic current` → `e114418c6081`. *Nota de entorno:* `server\.venv` es inservible en esta máquina (su intérprete base es un stub de WindowsApps con "Acceso denegado" y `pydantic_core` es `cp313`); la verificación se ejecutó con el **`.venv` de la raíz** (Python 3.14.7), que tiene fastapi 0.115.0, pandas 3.0.6, pytest 9.1.1 y sqlalchemy 2.0.35. |
+| 2026-11-15 | **P-72 CERRADO (deriva del venv, no defecto del código).** El único test rojo de la suite era `tests/test_storage_diagnostics.py::test_clave_nueva_sb_secret_crea_cliente`, **preexistente desde el 2026-10-21**. La causa **no** era el test ni la red: el **`.venv` de la raíz tenía supabase-py 2.10.0** (la versión con el bug de P-50, que rechaza las claves `sb_secret_...`) mientras `server/requirements.txt` fija **`supabase==2.33.0`**. Instalada la versión fijada (`pip install supabase==2.33.0`) → el test pasa **sin tocarlo**. *El test y `requirements.txt` eran correctos; el entorno local estaba desfasado.* Criterio de cierre cumplido con el comando reproducible `python -m pytest server/tests -q` → **376 passed, 3 xfailed, 0 failed**. *Regla:* un test rojo **preexistente** no es automáticamente un defecto del repo: antes de tocar el test, hay que comparar la **versión instalada** con la **fijada en `requirements.txt`**. Una deriva de dependencias produce un fallo que el código no puede arreglar y que "arreglar" en el test would be ocultar la deriva. |
+| 2026-11-15 | **Verificación final (ronda 4).** Backend: `python -m py_compile` sobre los archivos modificados OK · `python -m compileall -q src/` OK · `pytest server/tests -q` → **380 passed, 3 xfailed, 0 failed** (9 subtests incluidos; incluye los nuevos `test_no_unimportable_modules.py` 4 passed, `test_database_startup_failclosed.py` 7 passed, `test_cors_policy.py` 9 passed, `test_no_silent_exceptions.py` 5 passed). Cliente: `npm test` → **98 passed (16 archivos)** · `npm run build` OK (rutas `/`, `/login`, `/legal/*` generadas) · `npm run lint` → **58 problemas (34 errores, 24 warnings) = línea base exacta**, cero introducidos. *Entorno:* verificación con el **`.venv` de la raíz** (Python 3.14.7) — `server\.venv` sigue siendo inservible en esta máquina. |
+| 2026-11-15 | **Corrección de la ficha de P-23 (ficha contra realidad).** La ficha de P-23 afirmaba que `client/src/components/{KpiCards,AnomalyAlert,ServerStatusTracker}.tsx` se habían **eliminado**; la realidad es que **no se eliminó ninguno**: `ServerStatusTracker` ya estaba vivo (`Providers.tsx:8,22`), y `KpiCards`/`AnomalyAlert` se han **conectado** con el nuevo `KpiPanel.tsx` (importa ambos, pide `/report/kpi-summary` a la fuente principal y los pinta con datos reales; montado en `DashboardView.tsx:461`). La ficha, la fila del resumen y la nota de reconciliación se han reescrito con el estado real, y se ha añadido la regla anti-repetición: *una ficha que afirma algo sin verificarlo literalmente propaga el error a quien la lea — comprobar con `grep` del símbolo en todo el árbol, no de memoria*. |
+| 2026-11-15 | **Ronda 4 — P-60 cerrado y P-73 registrado (código muerto no importable).** Al verificar P-60 (el único `PARCIAL` que quedaba sin resolver) se confirmó que `server/src/services/pkce_service.py` **no se puede importar**: `ModuleNotFoundError: No module named 'src.utils.pkce_storage_factory'`, y que sus dos únicas dependencias **nunca existieron** en la historia de git. Nada en `server/` ni en `client/` lo importa (`grep` de `pkce_service`, `PKCEService`, `get_pkce_service`, `create_pkce_middleware` → 0 resultados). Se resolvió la decisión que la ficha dejaba pendiente: **eliminar** (completarlo exigiría inventar un subsistema PKCE sin consumidor) → `git rm`. Para que el cierre no sea textual, se creó `server/tests/test_no_unimportable_modules.py` (**4 passed**), que **importa de verdad** todos los módulos de `server/src/` — lo que `compileall` no detecta, porque la sintaxis de un import roto es válida — y que comprueba estáticamente que ningún `src.*` importado falte (con los namespace packages PEP 420, como `src.engine`, correctamente reconocidos para no dar falsos positivos). *Control verificado:* reintroduciendo una réplica del módulo muerto → **1 failed**; eliminándolo de nuevo → **4 passed**. **P-73 (nuevo, registrado antes de corregir):** ese test destapó un segundo módulo del mismo patrón — `server/src/ui/styles.py`, residuo de la era Streamlit con `import streamlit`, dependencia que **no está** en `requirements.txt` (su único consumidor, `server/app.py`, se borró en la reescritura V2.5, commit `5b7daff7`) → **eliminado** también. Con `styles.py` presente el test fallaba con `AssertionError: ["ui\\styles.py: No module named 'streamlit'"]`. |
 
 ---
 
@@ -1245,9 +1657,9 @@ tiene columnas explotables (fecha, categoría, métrica numérica).
 | Campo | Valor |
 |---|---|
 | **Severidad** | BAJO (código muerto inalcanzable; no afecta el arranque ni los flujos activos) |
-| **Estado** | 🟡 PARCIAL (sintaxis corregida y verificada 2026-10-24; decisión pendiente: eliminar el archivo o completar los módulos que referencia) |
-| **Verificado** | 🧪 `compileall` sobre `src/` → OK tras la corrección; suite completa 284 passed; import de `main` en modo producción OK |
-| **Archivos** | `server/src/services/pkce_service.py` |
+| **Estado** | ✅ CERRADO (2026-11-15) — el archivo se eliminó (decisión pendiente resuelta) |
+| **Verificado** | 🧪 Import real → `ModuleNotFoundError: No module named 'src.utils.pkce_storage_factory'` (2026-11-15) · `tests/test_no_unimportable_modules.py` (4 passed) · control verificado: reintroducir el módulo → 1 failed; restaurado → 4 passed |
+| **Archivos** | `server/src/services/pkce_service.py` (**eliminado**) · `server/tests/test_no_unimportable_modules.py` (**nuevo**) |
 
 **Qué pasa.** `compileall` detectó un literal sin cerrar en la línea 90 (`'security_level': 'A,`), presente desde
 el commit `96829bfb`. Además el módulo importa `src.utils.pkce_storage_factory` y (en los tests se mockea)
@@ -1255,11 +1667,35 @@ el commit `96829bfb`. Además el módulo importa `src.utils.pkce_storage_factory
 que el archivo es código muerto: no rompe el arranque ni los flujos activos, pero si alguien lo importara
 revientaría en runtime.
 
-**Corrección aplicada.** Literal reparado (`'security_level': 'A',`); `compileall src/` pasa limpio. No se
+**Corrección aplicada (2026-10-24).** Literal reparado (`'security_level': 'A',`); `compileall src/` pasa limpio. No se
 elimina el archivo ni se completan los módulos en este cambio (alcance mínimo).
+
+**Decisión tomada y aplicada (2026-11-15).** La ficha decía *«decisión pendiente: eliminar el archivo o completar los
+módulos que referencia»*. Se investigó contra el código y se optó por **eliminar**:
+- **Nada** en `server/` ni en `client/` importa `pkce_service` (`grep` de `pkce_service`, `PKCEService`, `get_pkce_service`,
+  `create_pkce_middleware` → 0 resultados fuera del propio archivo).
+- Sus dos únicas dependencias (`pkce_storage_factory` y `pkce_middleware`) **no existen**, así que **completar** el módulo
+  exigiría inventar un subsistema PKCE completo que ningún endpoint consume: sería código nuevo sin consumidor.
+- Verificado que el import falla de verdad: `python -c "import src.services.pkce_service"` →
+  `ModuleNotFoundError: No module named 'src.utils.pkce_storage_factory'`.
+- `server/src/services/pkce_service.py` **eliminado** (`git rm`).
+
+**Control mecánico (2026-11-15).** `server/tests/test_no_unimportable_modules.py` (**4 passed**):
+- el archivo no vuelve a existir;
+- nada vuelve a importar `pkce_service`;
+- **todo** módulo de `server/src/` se puede importar de verdad (import real, no lectura de texto) — un import roto es
+  justo lo que `compileall` no detecta, porque la sintaxis es válida;
+- control estático complementario: ningún módulo importa un `src.*` que no exista (con los namespace packages PEP 420
+  —como `src.engine`, que no tiene `__init__.py`— correctamente reconocidos, para no dar falsos positivos).
+
+**Control verificado (falla antes / pasa después).** Reintroduciendo una réplica del módulo muerto →
+`test_pkce_service_file_is_not_in_src` **failed**; eliminándolo de nuevo → **4 passed**.
 
 **Regla anti-repetición.** Antes de commitear código nuevo de servicios, correr `compileall src/` (o al menos
 importar el paquete) para detectar sintaxis rota; `compileall` se añade a la verificación estándar de deploys.
+**Y completar lo anterior:** `compileall` **no** detecta un import roto (`pkce_service.py` pasaba `compileall` y era
+incapaz de importarse). Un módulo que nadie importa y que además no se puede importar es una trampa: se elimina, y se
+vigila con un test que lo comprueba **importando**, no leyendo el texto.
 
 ---
 

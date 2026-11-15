@@ -10,6 +10,7 @@ import dynamic from "next/dynamic";
 import { Responsive } from "react-grid-layout";
 import { DashboardItem } from "@/types/shared";
 import { DashboardSkeleton, ChartSkeleton } from "@/components/Skeletons";
+import { KpiPanel } from "@/components/KpiPanel";
 
 // Estilos de react-grid-layout
 import "react-grid-layout/css/styles.css";
@@ -94,7 +95,7 @@ const cleanTitle = (text: string) => {
 
 export function DashboardView() {
     const { data: session } = useSession();
-    const { setView, filters, setFilters, setSidebarOpen } = useDashboard();
+    const { setView, filters, setFilters, setSidebarOpen, dataSources } = useDashboard();
     const { addToast } = useToast();
     const [items, setItems] = useState<DashboardItem[]>([]);
     const [originalItems, setOriginalItems] = useState<DashboardItem[]>([]); // Para resetear sin re-cargar
@@ -456,6 +457,13 @@ export function DashboardView() {
             <div className="flex-1 overflow-y-auto bg-[var(--bi-canvas)]">
                 <div className="p-6 max-w-7xl mx-auto space-y-6">
                     {renderExecutiveSummary()}
+
+                    {/* P-23: perfilado del dataset (KPICards + AnomalyAlert).
+                        Usa la fuente principal — la primera — que es la misma
+                        que el backend toma como `data_source` del chat. */}
+                    {dataSources.length > 0 && dataSources[0].id !== undefined && (
+                        <KpiPanel dataSourceId={dataSources[0].id} />
+                    )}
 
                     {items.length === 0 ? (
                         <div className="py-24 flex flex-col items-center justify-center text-center max-w-sm mx-auto p-12 animate-in fade-in duration-500">

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from "react";
-import { Brain, Download, PlusCircle, Menu } from "lucide-react";
+import { Brain, Download, PlusCircle, Menu, AlertTriangle, X } from "lucide-react";
 import { useDashboard } from "@/context/DashboardContext";
 import { useToast } from "@/context/ToastContext";
 import { 
@@ -37,6 +37,10 @@ export function SimulationSandbox() {
     const [activeSim, setActiveSim] = useState<Simulation | null>(null);
     const [messages, setMessages] = useState<SimulationMessage[]>([]);
     const [polling, setPolling] = useState(false);
+    // P-30: el polling es async; un fallo de red no puede tragarse. El primer
+    // error se guarda aquí y se muestra al usuario en lugar de acumular
+    // rejections sin manejar en cada tick.
+    const [pollingError, setPollingError] = useState<string | null>(null);
     const [selectedSources, setSelectedSources] = useState<Set<number>>(new Set());
     const [allHistoricalSources, setAllHistoricalSources] = useState<DataSource[]>([]);
     const [suggestions, setSuggestions] = useState<{ title: string; hypothesis: string }[]>([]);
@@ -147,14 +151,24 @@ export function SimulationSandbox() {
     useEffect(() => {
         let interval: NodeJS.Timeout;
         if (polling && activeSim?.id) {
+            const simulationId = activeSim.id;
             interval = setInterval(async () => {
-                const details = await getSimulationDetails(activeSim.id) as Simulation;
-                const msgs = await getSimulationMessages(activeSim.id) as SimulationMessage[];
-                setMessages(msgs);
-                setActiveSim(details);
-                if (details.status === 'completed' || details.status === 'error') {
-                    setPolling(false);
-                    fetchSimulations();
+                // P-30: el interval es async, así que un fallo de red dejaba una
+                // promesa rechazada sin manejar (unhandled rejection) y el
+                // polling seguía dando vueltas en silencio. Ahora el error se
+                // registra y se avisa una sola vez, sin tumbar el temporizador.
+                try {
+                    const details = await getSimulationDetails(simulationId) as Simulation;
+                    const msgs = await getSimulationMessages(simulationId) as SimulationMessage[];
+                    setMessages(msgs);
+                    setActiveSim(details);
+                    if (details.status === 'completed' || details.status === 'error') {
+                        setPolling(false);
+                        fetchSimulations();
+                    }
+                } catch (err) {
+                    console.error("Error en el polling de la simulación", err);
+                    setPollingError((prev) => prev || ((err as Error).message || "Error desconocido"));
                 }
             }, 2000);
         }
@@ -242,6 +256,7 @@ export function SimulationSandbox() {
             const initialDetails = await getSimulationDetails(res.simulation_id) as Simulation;
             setActiveSim(initialDetails);
             setMessages([]);
+            setPollingError(null);
             setPolling(true);
             
             // Limpiar formulario y resetear paso
@@ -349,16 +364,37 @@ export function SimulationSandbox() {
                         )
                     ) : (
                         <div className="flex flex-col h-full animate-in fade-in duration-500">
+                            {/* P-30: el error del polling se muestra al usuario en
+                                lugar de quedarse en una promesa rechazada. */}
+                            {pollingError && (
+                                <div
+                                    role="alert"
+                                    className="mb-4 flex items-start gap-2 rounded-lg border border-red-500/40 bg-red-500/10 px-4 py-3 text-xs text-red-300"
+                                >
+                                    <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+                                    <div>
+                                        <span className="font-semibold">Se perdió la conexión con la simulación.</span>{" "}
+                                        {pollingError} — el seguimiento se reintentará automáticamente.
+                                    </div>
+                                    <button
+                                        onClick={() => setPollingError(null)}
+                                        className="ml-auto shrink-0 text-red-300/70 hover:text-red-200"
+                                        aria-label="Descartar aviso"
+                                    >
+                                        <X className="w-3.5 h-3.5" />
+                                    </button>
+                                </div>
+                            )}
                             <div className="grid grid-cols-12 gap-8 h-full">
-                                <SimDebate 
-                                    messages={messages} 
-                                    polling={polling} 
-                                    activeSim={activeSim} 
+                                <SimDebate
+                                    messages={messages}
+                                    polling={polling}
+                                    activeSim={activeSim}
                                 />
-                                <SimReport 
-                                    activeSim={activeSim} 
-                                    userId={userId} 
-                                    polling={polling} 
+                                <SimReport
+                                    activeSim={activeSim}
+                                    userId={userId}
+                                    polling={polling}
                                 />
                             </div>
                         </div>

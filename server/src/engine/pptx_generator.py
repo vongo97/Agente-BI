@@ -8,9 +8,13 @@ try:
     from pptx.enum.text import PP_ALIGN
     from pptx.dml.color import RGBColor
     from pptx.enum.shapes import MSO_SHAPE
-except ImportError:
+except ImportError as exc:
+    # P-36: python-pptx es una dependencia opcional. Si no está, la exportación
+    # a PowerPoint debe fallar con un mensaje claro; se registra la causa real
+    # en lugar de dejar `Presentation = None` sin explicación.
     Presentation = None
     MSO_SHAPE = None
+    _PPTX_IMPORT_ERROR = exc
 
 logger = logging.getLogger(__name__)
 from src.utils.exporter import export_plotly_to_image, clean_text
@@ -154,6 +158,10 @@ def create_presentation(title, summary, items, output_path, template_path="templ
     Genera un archivo .pptx a partir de hallazgos usando una plantilla maestra.
     """
     if Presentation is None:
+        # P-36: la ausencia de la dependencia ya tenía un mensaje de usuario
+        # claro; aquí se registra además la causa real del ImportError.
+        logger.warning("PPTX no disponible: python-pptx no está instalado (%s)",
+                       type(_PPTX_IMPORT_ERROR).__name__)
         return False, "Librería python-pptx no instalada."
 
     try:

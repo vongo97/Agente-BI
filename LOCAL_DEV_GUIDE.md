@@ -19,10 +19,18 @@ taskkill /F /PID [EL_NÚMERO_AQUÍ]
 ```
 
 ### B. Si la base de datos se desincroniza
-Si agregamos nuevas funciones y te sale un error de `OperationalError` (columna no encontrada), ejecuta:
+Si agregamos nuevas funciones y te sale un error de `OperationalError` (columna no encontrada), **no hay que ejecutar ningún script**: el servidor migra solo.
+
+Al arrancar, `init_db()` (`server/src/database.py`) hace dos cosas:
+1. `create_all()` crea las tablas que falten.
+2. `_ensure_columns()` **inspecciona el esquema vivo** y añade, una por una y en su propia transacción, las columnas nuevas de los modelos.
+
+Si además quieres partir de una base limpia, lo más simple es borrarla y dejar que el servidor la recreate:
 ```bash
-python server/src/utils/migrate_db.py
+# Desde la carpeta server/
+del test_bi.db
 ```
+(P-47: el script legado `server/src/utils/migrate_db.py` se eliminó — solo cubría SQLite con rutas hardcodeadas y no llegaba a las columnas nuevas. `init_db` + Alembic son ahora los dos caminos oficiales.)
 
 ---
 

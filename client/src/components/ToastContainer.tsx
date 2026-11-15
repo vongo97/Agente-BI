@@ -7,8 +7,6 @@ import { CheckCircle2, AlertCircle, Info, AlertTriangle, X } from 'lucide-react'
 export function ToastContainer() {
     const { toasts, removeToast } = useToast();
 
-    if (toasts.length === 0) return null;
-
     const getIcon = (type: string) => {
         switch (type) {
             case 'success':
@@ -38,7 +36,16 @@ export function ToastContainer() {
     };
 
     return (
-        <div className="fixed bottom-6 right-6 z-[100] flex flex-col gap-3 max-w-sm w-full pointer-events-none">
+        // P-25: `aria-live` + `role="status"` para que un lector de pantalla
+        // anuncie los avisos; `aria-atomic` fuerza a leer el toast completo.
+        // El contenedor se monta siempre (aunque esté vacío) para que la región
+        // viva exista antes de que llegue el primer toast.
+        <div
+            role="status"
+            aria-live="polite"
+            aria-atomic="true"
+            className="fixed bottom-6 right-6 z-[100] flex flex-col gap-3 max-w-sm w-full pointer-events-none"
+        >
             {toasts.map((toast: Toast) => (
                 <div
                     key={toast.id}
@@ -52,6 +59,7 @@ export function ToastContainer() {
                     </div>
                     <button
                         onClick={() => removeToast(toast.id)}
+                        aria-label="Cerrar aviso"
                         className="text-[var(--bi-text-3)] hover:text-[var(--bi-text-1)] hover:bg-[var(--bi-surface-2)] p-1 rounded-md transition-colors cursor-pointer shrink-0"
                     >
                         <X className="w-3.5 h-3.5" />

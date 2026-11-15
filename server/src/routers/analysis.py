@@ -458,9 +458,11 @@ async def analyze(
                 output_text = (
                     f"{output_text}\n\n---\n**Hechos verificados (pandas, sin LLM):**\n{verified_facts}"
                 )
-        except AuditError:
+        except AuditError as exc:
             # Dataset no auditable: continuar con el flujo normal sin auditoría.
-            pass
+            # P-36: el motivo queda registrado (antes el `pass` lo hacía invisible
+            # y no se distinguía "dataset sin auditar" de "auditoría rota").
+            logger.info("Auditoría no disponible para este dataset: %s", type(exc).__name__)
         
         # Persistencia
         if chat_id:

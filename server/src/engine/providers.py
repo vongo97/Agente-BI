@@ -22,6 +22,8 @@ from typing import Optional, Tuple
 
 import requests
 
+from src.utils.logging_config import log_ignored_error
+
 logger = logging.getLogger(__name__)
 
 # Estilos de API: "gemini" (SDK propio), "openai" (compatible con /chat/completions),
@@ -211,7 +213,17 @@ def get_model(provider: str, user_config=None) -> Optional[str]:
         return None
     try:
         chosen = json.loads(raw).get(provider)
-    except Exception:
+    except Exception as exc:
+        # P-36: `provider_models` guardado no es JSON válido. Se ignora la
+        # elección (el backend usa el modelo por defecto) pero el motivo queda
+        # registrado; antes la config corrupta era indistinguible de "no choice".
+        log_ignored_error(
+            logger,
+            "lectura del modelo elegido por el usuario",
+            exc,
+            level=logging.WARNING,
+            provider=provider,
+        )
         return None
     meta = get_meta(provider)
     # Si el proveedor retiró ese modelo del catálogo, se ignora la elección y se usa

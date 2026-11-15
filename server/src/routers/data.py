@@ -14,6 +14,7 @@ from src.utils.common import check_authorization, get_user_data, get_session_fil
 from src.services.storage_service import upload_bytes, delete_object, is_cloud_key
 from src.engine.bi_analyst import ai_data_cleaner
 from src.utils.limiter import limiter
+from src.utils.logging_config import log_ignored_error
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["Data Management"])
@@ -226,8 +227,17 @@ async def upload_file(request: Request, file: UploadFile = File(...), db: Sessio
             try:
                 if os.path.exists(permanent_path):
                     os.remove(permanent_path)
-            except Exception:
-                pass
+            except Exception as cleanup_err:
+                # P-36: el borrado del archivo parcial falló. La subida ya va a
+                # fallar con 500 de todos modos, pero dejar un archivo cifrado
+                # huérfano en disco sin registro era invisible: ahora queda traza.
+                log_ignored_error(
+                    logger,
+                    "limpieza del archivo parcial tras fallo de escritura",
+                    cleanup_err,
+                    level=logging.WARNING,
+                    file=permanent_name,
+                )
             raise HTTPException(
                 status_code=500,
                 detail="No se pudo guardar el archivo en el servidor. Inténtalo de nuevo más tarde.",
@@ -445,8 +455,17 @@ async def clear_session(request: Request, db: Session = Depends(get_db)):
                 try:
                     if os.path.exists(source.url):
                         os.remove(source.url)
-                except Exception:
-                    pass
+                except Exception as exc:
+                    # P-36: el borrado del archivo local de una fuente falló. La
+                    # limpieza del pool sigue adelante (el registro de la DB se
+                    # borra igualmente), pero el archivo huérfano queda registrado.
+                    log_ignored_error(
+                        logger,
+                        "borrado del archivo local de una fuente",
+                        exc,
+                        level=logging.WARNING,
+                        source_id=source.id,
+                    )
         db.query(DataSource).filter(DataSource.user_id == authenticated_user).delete()
         db.commit()
 

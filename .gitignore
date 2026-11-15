@@ -33,6 +33,17 @@ exports/
 *.pptx
 *.png
 
+# P-17: binarios y logs que no deben versionarse.
+# - `server/debug_server.log` es output de depuración: 2.549 líneas con el
+#   email real del usuario y 27 menciones de claves/tokens. No es un artefacto
+#   del producto: es una captura de una sesión concreta.
+# - `presentacion/*.mp4` es una grabación de pantalla (24 MB) que no usa nada.
+# Los ficheros se conservan en el disco local; solo se dejan de versionar.
+presentacion/
+*.mp4
+*.mov
+*.webm
+
 # Data files
 *.csv
 *.xlsx

@@ -10,6 +10,7 @@ from src.engine.executor import execute_analysis, execute_sql_with_params
 from src.engine.insight_auditor import AUDIT_MARKER
 from src.utils.common import check_authorization, get_user_data, get_authenticated_user, ensure_user_session
 from src.utils.limiter import limiter
+from src.utils.logging_config import log_ignored_error
 import pandas as pd
 
 logger = logging.getLogger(__name__)
@@ -161,7 +162,17 @@ async def get_dashboard(db: Session = Depends(get_db)):
                 "fig": json.loads(item.message.figure_json) if item.message.figure_json else None,
                 "pinned_at": item.pinned_at
             })
-        except:
+        except Exception as exc:
+            # P-36: un item del dashboard con `figure_json` corrupto no puede
+            # romper la carga de los demás. Se salta ese item, pero se registra
+            # cuál fue para poder repararlo (antes el fallo era invisible).
+            log_ignored_error(
+                logger,
+                "serialización de un item del dashboard",
+                exc,
+                level=logging.WARNING,
+                item_id=item.id,
+            )
             continue
     return results
 
@@ -440,7 +451,15 @@ async def filter_dashboard(
     check_authorization(authenticated_user)
     try:
         filters = json.loads(filters_json)
-    except:
+    except (json.JSONDecodeError, TypeError, ValueError) as exc:
+        # P-36: el bare `except:` también capturaba KeyboardInterrupt/SystemExit.
+        # Se acota al error de parseo real del JSON.
+        log_ignored_error(
+            logger,
+            "parseo del JSON de filtros",
+            exc,
+            level=logging.INFO,
+        )
         raise HTTPException(status_code=400, detail="JSON de filtros inválido")
 
     if not isinstance(filters, dict):

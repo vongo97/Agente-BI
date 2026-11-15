@@ -7,6 +7,39 @@ on:
     branches: [main]
 
 jobs:
+  hygiene:
+    name: Higiene del repo (P-17)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # P-17: ni binarios pesados ni logs en el control de versiones.
+      #
+      # `server/debug_server.log` es output de depuración con el email real del
+      # usuario y 27 menciones de claves/tokens; `presentacion/*.mp4` era una
+      # grabación de pantalla de 24 MB. Ninguno de los dos es un artefacto del
+      # producto, y los dos ya están fuera de git (`.gitignore`).
+      #
+      # El control es mecánico y corre en **cada** push: si alguien versiona un
+      # `.log` o un binario, el job falla antes de que llegue al historial.
+      - name: Sin binarios ni logs versionados (P-17)
+        run: |
+          offenders="$(git ls-files | grep -iE '\.(log|mp4|mov|webm|mp3|wav|zip|7z|tar|gz|exe|dmg|iso)$' || true)"
+          if [ -n "$offenders" ]; then
+            echo "::error::P-17: hay binarios o logs versionados. Quítalos de git (git rm --cached) y añade la regla a .gitignore:"
+            echo "$offenders"
+            exit 1
+          fi
+
+      - name: Sin ficheros versionados por encima de 5 MB (P-17)
+        run: |
+          offenders="$(git ls-files -z | xargs -0 -I{} sh -c 'test -f "{}" && echo "$(wc -c < "{}") {}"' | awk '$1 > 5242880 {print}')"
+          if [ -n "$offenders" ]; then
+            echo "::error::P-17: hay ficheros versionados de más de 5 MB. Sácalos de git o usa Git LFS:"
+            echo "$offenders"
+            exit 1
+          fi
+
   backend:
     name: Backend (pytest + compileall)
     runs-on: ubuntu-latest
@@ -63,7 +96,7 @@ jobs:
         run: npx tsc --noEmit
 
       - name: Unit tests
-        run: npx vitest run
+        run: npm test
 
       - name: Build
         run: npm run build

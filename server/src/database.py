@@ -11,13 +11,21 @@ logger = logging.getLogger(__name__)
 DB_URL = os.getenv("DATABASE_URL", "sqlite:///./bi_agent.db")
 
 def sanitize_db_error(msg: str) -> str:
-    """Enmascara contraseñas y credenciales de URLs de bases de datos dentro de mensajes de error."""
+    """Enmascara contraseñas y credenciales de URLs de bases de datos dentro de mensajes de error.
+
+    P-19: el usuario **no** es un secreto; la contraseña sí. Por eso el
+    enmascarado conserva el usuario (`usuario:***@host`): se puede leer *qué*
+    usuario falló sin filtrar la contraseña.
+    """
     if not msg:
         return ""
     # Enmascarar contraseñas en URLs de tipo dialect+driver://user:password@host:port/db
-    sanitized = re.sub(r'([a-zA-Z0-9+.-]+://)([^:]+):([^@]+)@', r'\1\2:***@', msg)
-    # Por si hay URLs SQL sin dialecto (ej: user:password@host)
-    sanitized = re.sub(r'([^:@]+):([^@]+)@([a-zA-Z0-9.-]+)', r'\1:***@\3', sanitized)
+    sanitized = re.sub(r'([a-zA-Z0-9+.-]+://)([^:@/]+):([^@/]+)@', r'\1\2:***@', msg)
+    # Por si hay URLs SQL sin dialecto (ej: user:password@host).
+    # Ni el usuario ni la contraseña pueden contener '/' (sería parte de una URL
+    # con esquema, ya tratada arriba) ni '*' (sería una credencial ya
+    # enmascarada: no hay que enmascarar dos veces, o el usuario acabaría comido).
+    sanitized = re.sub(r'(?<![a-zA-Z0-9+.\-*/])([^:@/\s*]+):([^@/\s*]+)@([a-zA-Z0-9.-]+)', r'\1:***@\3', sanitized)
     return sanitized
 
 # Limpieza básica de la URL
@@ -31,21 +39,79 @@ if DB_URL.startswith("postgres://"):
     DB_URL = DB_URL.replace("postgres://", "postgresql://", 1)
 
 # Crear Engine
+# P-19: una `DATABASE_URL` inválida NO puede caerse a SQLite en silencio. Con el
+# fallback, un Postgres mal configurado arrancaba "bien" y el servicio quedaba
+# guardando chats y claves en un SQLite efímero: los datos se perdían en cada
+# deploy y los usuarios veían un 500 al leer su configuración.
+# Ahora el arranque es fail-closed: si la URL está mal formada, se aborta con un
+# mensaje claro. Si la URL es válida pero el servidor no responde, se aborta
+# también (ver `_assert_database_reachable`), salvo en desarrollo local.
+def _is_production() -> bool:
+    """True si el entorno NO se declara explicitamente como desarrollo.
+
+    Mismo criterio que `is_development_mode()`: la ausencia de configuración
+    se interpreta como producción (fail-closed), nunca al revés.
+    """
+    return os.getenv("ENVIRONMENT", "production").strip().lower() not in {
+        "development",
+        "dev",
+        "local",
+        "test",
+    }
+
+
+def _build_engine(url: str):
+    """Construye el engine. Lanza si la URL no es utilizable como URL de BD."""
+    if "sqlite" in url:
+        return create_engine(url, connect_args={"check_same_thread": False})
+    return create_engine(
+        url,
+        connect_args={"connect_timeout": 10},
+        pool_pre_ping=True,
+        pool_recycle=300
+    )
+
+
 try:
-    if "sqlite" in DB_URL:
-        engine = create_engine(DB_URL, connect_args={"check_same_thread": False})
-    else:
-        engine = create_engine(
-            DB_URL,
-            connect_args={"connect_timeout": 10},
-            pool_pre_ping=True,
-            pool_recycle=300
-        )
+    engine = _build_engine(DB_URL)
 except Exception as e:
-    logger.critical("CRITICAL: Fallo al crear engine de DB: %s. Usando SQLite fallback.",
-                    sanitize_db_error(str(e)))
-    DB_URL = "sqlite:///./bi_agent.db"
-    engine = create_engine(DB_URL, connect_args={"check_same_thread": False})
+    # P-19: la URL está mal formada (o falta el driver). Abortar es lo correcto:
+    # arrancar con otra base de datos es peor que no arrancar, porque el
+    # servicio "parece" sano mientras pierde datos.
+    raise RuntimeError(
+        "DATABASE_URL inválida: no se pudo crear el engine de base de datos "
+        f"({sanitize_db_error(str(e))}). Arranque abortado: no se usa un "
+        "fallback a SQLite porque los datos se perderían en el siguiente deploy."
+    ) from e
+
+
+def _assert_database_reachable() -> None:
+    """Verifica que la BD responde ANTES de aceptar tráfico.
+
+    `create_engine()` es perezoso: no abre ninguna conexión, así que una URL
+    bien formada pero con un host inexistente no falla aquí, sino en la
+    primera petición (o peor, a los pocos minutos). P-19 pide que el arranque
+    aborte cuando la `DATABASE_URL` es inválida; "inválida" incluye "inalcanzable".
+
+    En desarrollo local se permite continuar (el developer puede estar levantando
+    la BD después); en producción el arranque aborta.
+    """
+    try:
+        with engine.connect() as conn:
+            conn.execute(text("SELECT 1"))
+    except Exception as exc:
+        message = sanitize_db_error(str(exc))
+        if _is_production():
+            raise RuntimeError(
+                "DATABASE_URL configurada pero la base de datos no responde "
+                f"({message}). Arranque abortado: no se degrada a SQLite porque "
+                "los datos del usuario se perderían al reiniciar."
+            ) from exc
+        logger.warning(
+            "ATENCIÓN: la base de datos configurada no responde (%s). Se continúa "
+            "en modo desarrollo; en producción esto abortaría el arranque.",
+            message,
+        )
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
@@ -271,7 +337,14 @@ def _ensure_columns(table: str, columns: list[tuple[str, str]]) -> None:
 
 
 def init_db():
-    """Crea las tablas y agrega las columnas nuevas de forma idempotente."""
+    """Crea las tablas y agrega las columnas nuevas de forma idempotente.
+
+    P-19: si la BD configurada no responde, el arranque aborta (fail-closed).
+    Un servicio que arranca contra una BD caída parece sano y falla en la
+    primera petición de cada usuario.
+    """
+    _assert_database_reachable()
+
     try:
         Base.metadata.create_all(bind=engine)
         logger.info("Tablas sincronizadas con Base.metadata.create_all")
@@ -309,6 +382,14 @@ def init_db():
         )
     except Exception as e:
         logger.error("ERROR en init_db: %s", sanitize_db_error(str(e)))
+        if _is_production():
+            # P-19: el esquema no se pudo sincronizar. Continuar serviría datos
+            # con un esquema desfasado (el drift que provocó el 500 en
+            # /user-config). Es preferible no arrancar.
+            raise RuntimeError(
+                "No se pudo inicializar el esquema de base de datos "
+                f"({sanitize_db_error(str(e))}). Arranque abortado."
+            ) from e
 
 
 def get_db():

@@ -1,6 +1,11 @@
 from fpdf import FPDF
 import datetime
 import io
+import logging
+
+from src.utils.logging_config import log_ignored_error
+
+logger = logging.getLogger(__name__)
 
 class BIReport(FPDF):
     def header(self):
@@ -80,8 +85,16 @@ def generate_pdf_report(narrative_text, analysis_summary, fig_image=None):
             # Calcular ancho para que no se salga
             pdf.image(img_buffer, x=15, w=180)
             pdf.ln(10)
-        except:
-            pass
+        except Exception as exc:
+            # P-36: la imagen no se pudo incrustar (formato no soportado por fpdf,
+            # buffer corrupto). El PDF sigue siendo válido sin la sección visual,
+            # pero el motivo queda registrado en vez de desaparecer.
+            log_ignored_error(
+                logger,
+                "incrustación de la figura en el PDF",
+                exc,
+                level=logging.WARNING,
+            )
 
     # 3. DIAGNÓSTICO
     pdf.set_font('helvetica', 'B', 12)
