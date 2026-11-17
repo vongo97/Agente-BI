@@ -7,7 +7,6 @@ import type { NextConfig } from "next";
 // llamadas con "Refused to connect because it violates the document's Content
 // Security Policy".
 const apiBaseUrl = (process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000").replace(/\/+$/, "");
-const apiUrlNoScheme = apiBaseUrl.replace(/^https?:\/\//, "");
 
 const connectSources = [
   "'self'",
@@ -32,6 +31,13 @@ const cspHeader = `
 `.replace(/\s{2,}/g, ' ').trim();
 
 const nextConfig: NextConfig = {
+  // La actualización de seguridad de Next.js (16.4.2 → 16.4.6) la aplicó el
+  // propio `next upgrade --agent=security`. Esta bandera deja constancia de
+  // que el canal de upgrades es "security": el build avisa si vuelve a detectar
+  // una versión con un aviso de seguridad publicado.
+  experimental: {
+    agentUpgrade: "security",
+  },
   async headers() {
     return [
       {
