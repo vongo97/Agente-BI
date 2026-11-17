@@ -37,10 +37,15 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 REGISTRY = REPO_ROOT / "docs" / "PROBLEMAS_CONOCIDOS.md"
 
 # IDs con ficha pero SIN fila en el resumen. Son fichas de detalle que el
-# resumen no lista: P-42 (deuda de registro declarada) y los P-57..P-65.
+# resumen no lista: los P-57..P-65.
 # La lista es explícita a propósito: si aparece un ID nuevo aqui, el test
 # falla y hay que decidir explicitamente si entra al resumen o no.
-FICHAS_SIN_RESUMEN = {42, 57, 58, 59, 61, 62, 63, 64, 65}
+#
+# P-42 salió de esta lista el 2026-11-16: era "deuda de registro" porque su
+# ficha vivía como línea en negrita sin encabezado `###` y sin fila en el
+# resumen. Ya tiene ambas cosas (ficha `### P-42` + fila en la tabla de
+# MEDIOS), así que la exención caducó.
+FICHAS_SIN_RESUMEN = {57, 58, 59, 61, 62, 63, 64, 65}
 
 FICHAS_RE = re.compile(r"^(?:#{2,4}\s*|\*\*)P-(\d+)")
 FILA_RE = re.compile(r"^\|\s*\*\*P-(\d+)\*\*\s*\|")
