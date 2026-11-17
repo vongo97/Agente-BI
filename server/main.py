@@ -17,12 +17,49 @@ load_dotenv()
 # Importar routers, utilidades y rate limiting
 from src.database import init_db
 from src.utils.limiter import limiter
-from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 
 app = FastAPI(title="Vektra BI API (Modular)")
 app.state.limiter = limiter
-app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+
+@app.exception_handler(RateLimitExceeded)
+async def _rate_limit_handler(request, exc: RateLimitExceeded):
+    """P-76: el límite de peticiones debe explicar qué hacer, no soltar un código.
+
+    El manejador por defecto de slowapi devuelve el detalle crudo del límite
+    ("5 per 1 minute"), que el cliente muestra tal cual. Durante las pruebas
+    manuales —subir varios archivos seguidos— eso le llega al usuario como un
+    error sin explicación, indistinguible de un fallo real del servidor.
+
+    Aquí se traduce a un mensaje accionable y se añade `Retry-After` para que
+    el cliente (y cualquier proxy) sepa cuándo reintentar.
+    """
+    detail = getattr(exc, "detail", None) or str(exc)
+    retry_after = 60
+    match = re.search(r"(\d+)\s+per\s+(\d+)\s+(minute|hour|second|day)", str(detail), re.IGNORECASE)
+    if match:
+        cantidad, unidad = int(match.group(1)), match.group(3).lower()
+        retry_after = {"second": 1, "minute": 60, "hour": 3600, "day": 86400}.get(unidad, 60)
+        if unidad == "minute":
+            # El cubo se vacía cada minuto: espera media vuelta del intervalo.
+            retry_after = max(1, round(60 / max(cantidad, 1)))
+    logging.getLogger(__name__).warning(
+        "RATE_LIMITED path=%s detalle=%s retry_after=%ss",
+        getattr(request, "url", None).path if request else "?",
+        detail,
+        retry_after,
+    )
+    return JSONResponse(
+        status_code=429,
+        content={
+            "detail": (
+                f"Demasiadas peticiones seguidas (máximo {detail}). "
+                f"Espera unos {retry_after} segundos e inténtalo de nuevo."
+            )
+        },
+        headers={"Retry-After": str(retry_after)},
+    )
 
 from src.routers import auth, data, analysis, dashboard, exports, simulation, visual_summary, reports
 from src.utils.common import request_var, is_development_mode
@@ -148,6 +185,28 @@ if is_development_mode() and os.getenv("RENDER", "false").strip().lower() != "tr
         "permitido SOLO desde localhost. En produccion define ENVIRONMENT=production.",
         os.getenv("ENVIRONMENT", "production"),
     )
+
+# ── P-49: auditoría del almacenamiento al arrancar ───────────────────────────
+# Sin SUPABASE_* el servicio arranca, pero cada archivo subido se queda en el
+# disco del contenedor: en Render ese disco es efímero, así que el archivo se
+# pierde en el siguiente reinicio. El aviso tiene que salir AL ARRANCAR, no
+# solo cuando alguien sube un archivo y lee el error.
+#
+# Se distinguen los dos casos que se confundían:
+#   - credenciales ausentes  -> no hay nube configurada (modo local).
+#   - credenciales presentes pero el bucket no responde -> la nube está mal
+#     configurada (o caída), que es un fallo de configuración, no "modo local".
+from src.utils.supabase_storage import storage_configured  # noqa: E402
+
+if not storage_configured():
+    logger.warning(
+        "CONFIG: SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY no configuradas -> los "
+        "archivos y las sesiones se guardan SOLO en el disco local (cifrado), que "
+        "en Render se pierde en cada reinicio. /upload seguirá funcionando, pero "
+        "con 'persisted=false'. Define ambas variables para tener persistencia."
+    )
+else:
+    logger.info("CONFIG: almacenamiento en nube configurado")
 
 # Registrar Routers
 app.include_router(auth.router, prefix="/api/v1")
