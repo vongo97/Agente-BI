@@ -279,9 +279,56 @@ async def upload_file(request: Request, file: UploadFile = File(...), db: Sessio
             is_encrypted=True,
             size_bytes=file_size,
         )
-        db.add(new_source)
-        db.commit()
-        db.refresh(new_source)
+        # P-76: el fallo de la BD NO es un problema del archivo. Antes caía en
+        # el `except Exception` genérico de más abajo y devolvía 500 con
+        # "verifica que el formato sea válido": el usuario cambiaba el CSV
+        # repetidamente mientras el servidor era el que estaba roto (BD caída,
+        # tabla ausente, conexión perdida). Ahora el error dice lo que es y
+        # se distingue del error de formato.
+        try:
+            db.add(new_source)
+            db.commit()
+            db.refresh(new_source)
+        except Exception as db_exc:
+            # Rollback: sin él la sesión de SQLAlchemy queda envenenada y el
+            # siguiente request hereda el fallo ("PendingRollbackError").
+            try:
+                db.rollback()
+            except Exception as rollback_exc:
+                # P-36: el rollback también puede fallar; se registra para que
+                # quede traza en vez de tapar el error original.
+                log_ignored_error(
+                    logger,
+                    "rollback tras fallo al registrar la fuente en la BD",
+                    rollback_exc,
+                    level=logging.WARNING,
+                    file=clean_name,
+                )
+            logger.error(
+                "UPLOAD_DB_FAILED file=%s user=%s tipo=%s",
+                clean_name, authenticated_user, type(db_exc).__name__,
+            )
+            # El archivo ya está escrito en disco (cifrado) pero sin fila en la
+            # BD no es recuperable: se borra para no dejar un huérfano.
+            try:
+                if os.path.exists(permanent_path):
+                    os.remove(permanent_path)
+            except Exception as cleanup_exc:
+                log_ignored_error(
+                    logger,
+                    "borrado del archivo huérfano tras fallo de la BD",
+                    cleanup_exc,
+                    level=logging.WARNING,
+                    file=permanent_name,
+                )
+            raise HTTPException(
+                status_code=503,
+                detail=(
+                    "No pudimos guardar el archivo en la base de datos del servidor. "
+                    "Tu archivo es válido: es un problema temporal del servicio. "
+                    "Espera unos segundos e inténtalo de nuevo."
+                ),
+            )
 
         session_data["sources"].append(new_source.id)
         data_store[get_session_key(authenticated_user)] = session_data
@@ -326,9 +373,19 @@ async def upload_file(request: Request, file: UploadFile = File(...), db: Sessio
             logger.exception("ERROR CRÍTICO /upload: %s", clean_msg)
         else:
             logger.error("ERROR CRÍTICO /upload: %s", clean_msg)
+        # P-76: este es el ÚLTIMO recurso: ya se han descartado las causas
+        # conocidas (formato, tamaño, cuotas, zip-bomb, BD). Decirle al usuario
+        # "verifica que el formato sea válido" es mentira cuando el fallo es del
+        # servidor: le hace reformatear un CSV correcto para siempre. El
+        # mensaje acknowledge que el archivo ya pasó las validaciones.
         raise HTTPException(
             status_code=500,
-            detail="Error en el servidor al procesar el archivo. Por favor verifica que el formato sea válido.",
+            detail=(
+                "Error inesperado del servidor al guardar el archivo. "
+                "El archivo superó las validaciones de formato y tamaño, "
+                "así que el problema está en el servicio, no en tu archivo. "
+                "Inténtalo de nuevo en unos segundos."
+            ),
         )
 
 @router.post("/connect-sql")
