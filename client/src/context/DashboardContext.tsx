@@ -4,6 +4,22 @@ import { setApiAuthToken, getUserConfig, setUserConfig, BACKEND_BASE_URL } from 
 import { ChatMessage, DataSource } from '@/types/shared';
 import { useToast } from '@/context/ToastContext';
 
+/**
+ * Orden posicional de los argumentos de `setUserConfig` (client/src/lib/api.ts).
+ *
+ * Vive a nivel de modulo (y no dentro del componente) para que su referencia
+ * sea estable: si se recreara en cada render, `syncConfig` cambiaria de
+ * identidad en cada render y dispararia los efectos de sincronizacion en
+ * bucle (react-hooks/exhaustive-deps).
+ */
+const SYNC_FIELD_ORDER = [
+    "gemini_key", "mistral_key", "gamma_key", "preferred_provider", "groq_key",
+    "temperature", "anomaly_sensitivity", "magic_clean_strategy",
+    "currency_format", "date_format", "brand_color", "brand_logo_url",
+    "report_org_name", "report_footer_text", "pdf_orientation",
+    "pdf_include_data_table", "chart_theme",
+] as const;
+
 export type Message = ChatMessage;
 export type { DataSource };
 
@@ -152,6 +168,9 @@ const [aiProvider, setAiProvider] = useState<string>("gemini");
     // Cargar API Keys y preferencias desde el Backend antes de permitir autosync.
     useEffect(() => {
         let cancelled = false;
+        // Al cambiar de usuario se reinicia la configuracion cargada antes de
+        // pedir la nueva: es una transicion de estado, no un calculo del render.
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         setLoadedConfigUser(null);
         pendingSyncRef.current = {};
         if (syncTimerRef.current) {
@@ -242,14 +261,6 @@ const [aiProvider, setAiProvider] = useState<string>("gemini");
     // Guardar en Backend automáticamente (Hardening: No guardar en LocalStorage)
     // Debounce: agrupa ráfagas de cambios (la carga inicial dispara 16 efectos)
     // en UNA sola petición POST /user-config para no agotar el rate limit (429).
-    // Orden posicional de los argumentos de setUserConfig en client/src/lib/api.ts
-    const SYNC_FIELD_ORDER = [
-        "gemini_key", "mistral_key", "gamma_key", "preferred_provider", "groq_key",
-        "temperature", "anomaly_sensitivity", "magic_clean_strategy",
-        "currency_format", "date_format", "brand_color", "brand_logo_url",
-        "report_org_name", "report_footer_text", "pdf_orientation",
-        "pdf_include_data_table", "chart_theme",
-    ] as const;
 
     const syncConfig = useCallback(async (value: string | number | boolean, field: string) => {
         // No persistir defaults, ni cambios de otra cuenta, antes de hidratar

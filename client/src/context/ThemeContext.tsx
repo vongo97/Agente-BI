@@ -40,10 +40,24 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
             // Se mantiene el tema por defecto en vez de romper la app.
             saved = null;
         }
+        // P-45: el tema guardado se lee DESPUES de la hidratacion. El primer
+        // render del servidor y el del cliente deben coincidir (siempre
+        // 'dark'); aplicar el tema guardado durante el render volveria a
+        // introducir el error de hidratacion que este efecto evita. Por eso
+        // es un efecto y no una inicializacion perezosa del estado.
+        // P-45: aplicar el tema guardado aqui (y no durante el render) es
+        // deliberado: el primer render del servidor y el del cliente deben
+        // coincidir. La regla de "setState en un efecto" marca esto porque ve
+        // un setState sincrono, pero es exactamente el patron que P-45 exige.
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         if (saved) setTheme(saved);
         setMounted(true);
     }, []);
 
+    // El tema se aplica al DOM como efecto a proposito: se lee el atributo ya
+    // montado (no durante el render) para no provocar un desajuste de
+    // hidratacion con el HTML del servidor. Es una escritura de DOM, no un
+    // calculo derivado del render.
     useEffect(() => {
         // dark = :root (no attribute needed), light = [data-theme="light"]
         document.documentElement.setAttribute('data-theme', theme);

@@ -293,12 +293,24 @@ export function DashboardView() {
     }, [userId]);
 
     useEffect(() => {
+        // Carga inicial del dashboard: es una peticion a la API, no un calculo
+        // derivable del render. `fetchDashboard` actualiza el estado despues
+        // de su `await`.
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         fetchDashboard();
     }, [userId, fetchDashboard]);
 
     // EFECTO DE FILTRADO DINÁMICO
+    //
+    // Al quitar los filtros se restaura el conjunto original. Es una
+    // sincronizacion con el estado de filtros, no un calculo derivable del
+    // render: moverlo al render exigiria comparar el filtro anterior con el
+    // actual. La regla `set-state-in-effect` se desactiva aqui de forma
+    // puntual y justificada (no hay una alternativa sin reescribir la
+    // logica de filtros).
     useEffect(() => {
         if (Object.keys(filters).length > 0) {
+        // eslint-disable-next-line react-hooks/set-state-in-effect
             applyRemoteFilters();
         } else if (originalItems.length > 0) {
             setItems(originalItems);

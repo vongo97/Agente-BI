@@ -78,7 +78,7 @@ export function Sidebar() {
             // Al cargar historial, eliminar el campo 'audit' de los mensajes para
             // que las tarjetas de auditoría (InsightCards) no se muestren de nuevo.
             // La auditoría solo debe mostrarse una vez, al subir el archivo.
-            const messagesWithoutAudit = (res.messages || []).map((m: any) => {
+            const messagesWithoutAudit = ((res.messages || []) as ChatMessage[]).map((m) => {
                 if (m.audit) {
                     const { audit, ...rest } = m;
                     return rest;

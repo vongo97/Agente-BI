@@ -10,7 +10,6 @@ export interface ForceNode {
   vy: number;
   fx?: number | null;
   fy?: number | null;
-  [key: string]: any;
 }
 
 export interface ForceLink {
@@ -104,7 +103,7 @@ export function useForceLayout(
           const nodeB = currentNodes[j];
           
           let dx = nodeB.x - nodeA.x;
-          let dy = nodeB.y - nodeA.y;
+          const dy = nodeB.y - nodeA.y;
           
           // Evitar división por cero
           if (dx === 0) dx = 0.1;

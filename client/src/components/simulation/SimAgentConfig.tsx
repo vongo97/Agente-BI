@@ -205,7 +205,7 @@ export function SimAgentConfig({
 
                     {/* Descripción de rol */}
                     <p className="text-[11px] text-bi-t2 leading-relaxed italic bg-bi-s0/40 rounded p-2.5 border border-bi-border/40">
-                      "{agent.description}"
+                      &quot;{agent.description}&quot;
                     </p>
                   </div>
 
@@ -225,7 +225,7 @@ export function SimAgentConfig({
           <ShieldAlert className="w-8 h-8 text-bi-t2/40" />
           <h4 className="text-xs font-bold text-bi-t1">No se han generado agentes</h4>
           <p className="text-[11px] text-bi-t2 max-w-xs">
-            Regresa a la pestaña anterior y haz click en "Autogenerar Enjambre" para crear analistas dinámicos adaptados a los datos.
+            Regresa a la pestaña anterior y haz click en &quot;Autogenerar Enjambre&quot; para crear analistas dinámicos adaptados a los datos.
           </p>
         </div>
       )}

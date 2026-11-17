@@ -48,6 +48,22 @@ const runningSim = {
   created_at: '2026-01-01T00:00:00.000Z',
 };
 
+/**
+ * Timeout de estos tests, en ms.
+ *
+ * El polling corre **cada 2 s**, así que las esperas tienen que sobrevivir a
+ * uno o dos ticks. El default de vitest (5000 ms) era MENOR que el timeout
+ * de los `waitFor` internos (6000 ms): el test moría antes de que su propia
+ * espera pudiera resolverse, y solo se notaba cuando la suite completa
+ * cargaba la máquina y cada test iba más lento (los 3 tests tardaban
+ * 2,5-4,3 s en aislamiento, contra un techo de 5 s).
+ *
+ * 20 s deja margen de sobra para el tick del polling sin convertir un
+ * fallo real en un test lento: si el polling no dispara, el `waitFor` interno
+ * sigue fallando a los 6 s con su mensaje propio.
+ */
+const TEST_TIMEOUT_MS = 20_000;
+
 describe('SimulationSandbox · P-30 · el polling no se traga los errores', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -90,9 +106,9 @@ describe('SimulationSandbox · P-30 · el polling no se traga los errores', () =
         'Error en el polling de la simulación',
         expect.anything(),
       );
-    });
+    }, { timeout: 6000 });
     errorSpy.mockRestore();
-  });
+  }, TEST_TIMEOUT_MS);
 
   it('el polling sigue activo tras un fallo: el interval no se cancela', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => {});
@@ -110,7 +126,7 @@ describe('SimulationSandbox · P-30 · el polling no se traga los errores', () =
     await waitFor(() => {
       expect(api.getSimulationDetails.mock.calls.length).toBeGreaterThan(callsAfterFirstTick);
     }, { timeout: 6000 });
-  });
+  }, TEST_TIMEOUT_MS);
 
   it('el fallo del polling se muestra al usuario en la interfaz', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => {});
@@ -121,5 +137,5 @@ describe('SimulationSandbox · P-30 · el polling no se traga los errores', () =
     // El aviso visible para el usuario (no una promesa rechazada sin manejar).
     const alert = await screen.findByRole('alert', undefined, { timeout: 6000 });
     expect(alert).toHaveTextContent(/Se perdió la conexión con la simulación/i);
-  });
+  }, TEST_TIMEOUT_MS);
 });

@@ -31,6 +31,10 @@ export default function Home() {
     if (status === "authenticated" && session?.user?.email) {
       const email = session.user.email;
       if (hasAuthorizedEmailsConfigured() && !isAuthorizedEmail(email)) {
+        // El estado depende de la sesion de NextAuth, que solo se resuelve en
+        // el cliente: no hay forma de derivarlo durante el render sin
+        // desincronizar la comprobacion con la sesion real.
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         setEmailDenied(true);
       }
     }

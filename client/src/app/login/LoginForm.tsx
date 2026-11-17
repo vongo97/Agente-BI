@@ -4,6 +4,7 @@ import { signIn, useSession } from "next-auth/react";
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Activity, AlertCircle } from "lucide-react";
+import Link from "next/link";
 
 type LoginFormProps = {
     /** True si el servidor encontró AUTH_GOOGLE_ID/GOOGLE_CLIENT_ID y el secreto. */
@@ -114,11 +115,11 @@ export default function LoginForm({ googleEnabled, guestEnabled }: LoginFormProp
                 {/* Footer note + enlaces legales */}
                 <div className="mt-6 space-y-2">
                     <div className="flex items-center justify-center gap-3 text-[10px] text-[var(--bi-text-3)]">
-                        <a href="/legal/privacidad" className="hover:text-[var(--bi-teal)] transition-colors">Privacidad</a>
+                        <Link href="/legal/privacidad" className="hover:text-[var(--bi-teal)] transition-colors">Privacidad</Link>
                         <span aria-hidden>·</span>
-                        <a href="/legal/terminos" className="hover:text-[var(--bi-teal)] transition-colors">Términos</a>
+                        <Link href="/legal/terminos" className="hover:text-[var(--bi-teal)] transition-colors">Términos</Link>
                         <span aria-hidden>·</span>
-                        <a href="/legal/cookies" className="hover:text-[var(--bi-teal)] transition-colors">Cookies</a>
+                        <Link href="/legal/cookies" className="hover:text-[var(--bi-teal)] transition-colors">Cookies</Link>
                     </div>
                     <p className="text-center text-[10px] text-[var(--bi-text-3)] uppercase tracking-wider">
                         Análisis de datos con IA · 2026

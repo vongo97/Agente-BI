@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useRef, useState, useEffect } from "react";
-import { useForceLayout, ForceNode, ForceLink } from "@/hooks/useForceLayout";
+import { useForceLayout, ForceNode } from "@/hooks/useForceLayout";
 import { Network, HelpCircle, ArrowRight, Zap, RefreshCw, ZoomIn, ZoomOut } from "lucide-react";
 
 interface SimOntologyGraphProps {
@@ -36,7 +36,7 @@ export function SimOntologyGraph({
   useEffect(() => {
     if (containerRef.current) {
       const resizeObserver = new ResizeObserver((entries) => {
-        for (let entry of entries) {
+        for (const entry of entries) {
           const { width, height } = entry.contentRect;
           setDimensions({
             width: Math.max(width, 400),

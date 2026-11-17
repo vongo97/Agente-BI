@@ -37,8 +37,10 @@ describe('P-15 auth-allowlist', () => {
     expect(mod.isAuthorizedEmail('LUIS@EMPRESA.COM')).toBe(true); // case-insensitive
     expect(mod.isAuthorizedEmail('otro@correo.com')).toBe(false);
     expect(mod.isAuthorizedEmail('')).toBe(false);
-    expect(mod.isAuthorizedEmail(undefined as any)).toBe(false);
-    expect(mod.isAuthorizedEmail(null as any)).toBe(false);
+    // La firma es `string | undefined | null`: los `as any` de antes no eran
+    // necesarios y solo ocultaban un cambio real en el contrato.
+    expect(mod.isAuthorizedEmail(undefined)).toBe(false);
+    expect(mod.isAuthorizedEmail(null)).toBe(false);
   });
 
   it('ignorar espacios y entradas vacías en la lista', async () => {
