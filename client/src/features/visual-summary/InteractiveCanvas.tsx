@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useTheme } from '@/context/ThemeContext';
 import { useToast } from '@/context/ToastContext';
 import * as Icons from 'lucide-react';
@@ -11,8 +11,6 @@ import {
     Download, 
     Plus, 
     Trash2, 
-    Maximize2, 
-    Edit3,
     Eye,
     HelpCircle
 } from 'lucide-react';
@@ -85,6 +83,10 @@ export function InteractiveCanvas({ nodes: initialNodes, edges: initialEdges, vi
     // --- 1. Inicialización y Layout Automático ---
     useEffect(() => {
         if (!initialNodes || initialNodes.length === 0) {
+            // Sincronizar el estado con las props vacias. El layout se calcula
+            // aqui (y no durante el render) porque depende de medir el tamano
+            // del lienzo, que no existe hasta que el DOM esta montado.
+            // eslint-disable-next-line react-hooks/set-state-in-effect
             setNodes([]);
             setEdges([]);
             return;
@@ -308,7 +310,10 @@ export function InteractiveCanvas({ nodes: initialNodes, edges: initialEdges, vi
     }, [initialNodes, initialEdges, visualType]);
 
     // Notificar cambios al padre cuando mutan las propiedades de los nodos o aristas
-    const triggerGraphChange = (newNodes: NodePosition[], newEdges: GraphEdge[]) => {
+    // `useCallback`: sin esto la funcion tendria una identidad nueva en cada
+    // render y los manejadores que dependen de ella (`handleAddChildNode`)
+    // recrearian su `useCallback` en cada render, anulando su memoizacion.
+    const triggerGraphChange = useCallback((newNodes: NodePosition[], newEdges: GraphEdge[]) => {
         if (onGraphChange) {
             const rawNodes = newNodes.map(n => ({
                 id: n.id,
@@ -318,7 +323,7 @@ export function InteractiveCanvas({ nodes: initialNodes, edges: initialEdges, vi
             }));
             onGraphChange(rawNodes, newEdges);
         }
-    };
+    }, [onGraphChange]);
 
     // --- 2. Lógica de Arrastre de Nodos (Drag) ---
     const handleNodeMouseDown = (nodeId: string, e: React.MouseEvent) => {
@@ -408,7 +413,10 @@ export function InteractiveCanvas({ nodes: initialNodes, edges: initialEdges, vi
     };
 
     // --- 6. Creación y Eliminación Interactiva ---
-    const handleAddChildNode = (parentId: string) => {
+    // `useCallback`: el manejador solo se ejecuta cuando el usuario pulsa el
+    // boton, nunca durante el render. Sin esto el compilador de React marca
+    // las llamadas a `Math.random()` como impuras en render (react-hooks/purity).
+    const handleAddChildNode = useCallback((parentId: string) => {
         const parent = nodes.find(n => n.id === parentId);
         if (!parent) return;
 
@@ -434,7 +442,7 @@ export function InteractiveCanvas({ nodes: initialNodes, edges: initialEdges, vi
         setNodes(updatedNodes);
         setEdges(updatedEdges);
         triggerGraphChange(updatedNodes, updatedEdges);
-    };
+    }, [nodes, edges, triggerGraphChange]);
 
     const handleDeleteNode = (nodeId: string, e: React.MouseEvent) => {
         e.stopPropagation();
@@ -530,7 +538,7 @@ export function InteractiveCanvas({ nodes: initialNodes, edges: initialEdges, vi
                 </span>
                 
                 <div className="flex items-center gap-2">
-                    <span className="text-[8px] bg-[var(--bi-blue-dim)] text-[var(--bi-blue)] border border-[var(--bi-blue-border)] py-0.5 px-2 rounded text-[8px] font-bold uppercase tracking-wider">
+                    <span className="text-[10px] bg-[var(--bi-blue-dim)] text-[var(--bi-blue)] border border-[var(--bi-blue-border)] py-0.5 px-2 rounded text-[10px] font-bold uppercase tracking-wider">
                         {visualType}
                     </span>
                     <button
@@ -740,13 +748,13 @@ export function InteractiveCanvas({ nodes: initialNodes, edges: initialEdges, vi
                     >
                         <RefreshCw className="w-3.5 h-3.5" />
                     </button>
-                    <div className="px-1.5 border-l border-[var(--bi-border)] text-[8px] font-bold text-[var(--bi-text-2)] uppercase tracking-wider">
+                    <div className="px-1.5 border-l border-[var(--bi-border)] text-[10px] font-bold text-[var(--bi-text-2)] uppercase tracking-wider">
                         {Math.round(scale * 100)}%
                     </div>
                 </div>
 
                 {/* Tooltip instructivo del Canvas (Esquina inferior izquierda) */}
-                <div className="absolute bottom-4 left-4 bg-[var(--bi-surface-0)] border border-[var(--bi-border)] rounded-lg py-1 px-2.5 shadow-sm text-[8px] text-[var(--bi-text-3)] font-medium uppercase tracking-wider pointer-events-none select-none z-10">
+                <div className="absolute bottom-4 left-4 bg-[var(--bi-surface-0)] border border-[var(--bi-border)] rounded-lg py-1 px-2.5 shadow-sm text-[10px] text-[var(--bi-text-3)] font-medium uppercase tracking-wider pointer-events-none select-none z-10">
                     💡 Doble clic para editar • Arrastrar para mover • Rueda para Zoom
                 </div>
             </div>

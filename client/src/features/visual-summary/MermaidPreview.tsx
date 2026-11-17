@@ -1,5 +1,18 @@
 'use client';
 
+/**
+ * Contador monotono para los ids de renderizado de Mermaid.
+ *
+ * Mermaid exige un id único por renderizado; antes se usaba
+ * `Math.random()`, que el compilador de React marca como impuro en render
+ * (`react-hooks/purity`). Un contador del módulo es determinista y único.
+ */
+let mermaidRenderCounter = 0;
+function nextMermaidRenderId(): number {
+  mermaidRenderCounter += 1;
+  return mermaidRenderCounter;
+}
+
 import React, { useEffect, useRef, useState } from 'react';
 import { useTheme } from '@/context/ThemeContext';
 import { 
@@ -36,14 +49,27 @@ export function MermaidPreview({ code }: MermaidPreviewProps) {
     const [isDragging, setIsDragging] = useState<boolean>(false);
     const [dragStart, setDragStart] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
     
-    // Generar un ID único para la renderización de Mermaid
-    const renderId = useRef(`mermaid-${Math.floor(Math.random() * 1000000)}`);
+    // Generar un ID único para la renderización de Mermaid.
+    //
+    // El `useRef` con valor inicial evalúa su argumento en CADA render (aunque
+    // solo se conserve el primero), así que `Math.random()` se llamaba de
+    // sobra en cada repintado; con StrictMode el id además cambiaba entre el
+    // render descartado y el conservado. `useState` con inicializador perezoso
+    // (`() => ...`) lo evalúa **una sola vez**, en el primer render.
+    const [renderId] = useState(() => `mermaid-${nextMermaidRenderId()}`);
 
-    // Resetear zoom y posición cuando cambia el código
-    useEffect(() => {
+    // Resetear zoom y posición cuando cambia el código.
+    //
+    // Se ajusta durante el render (el patrón que React documenta para
+    // "sincronizar estado con una entrada externa") y no en un efecto: el
+    // efecto obligaba a un render extra y la regla `set-state-in-effect` lo
+    // marca. Se guarda el `code` anterior para detectar el cambio.
+    const [prevCode, setPrevCode] = useState(code);
+    if (prevCode !== code) {
+        setPrevCode(code);
         setScale(1);
         setOffset({ x: 0, y: 0 });
-    }, [code]);
+    }
 
     useEffect(() => {
         let isMounted = true;
@@ -96,7 +122,7 @@ export function MermaidPreview({ code }: MermaidPreviewProps) {
                 }
 
                 // Renderizar de forma asíncrona
-                const { svg } = await mermaid.render(renderId.current, code);
+                const { svg } = await mermaid.render(renderId, code);
                 
                 if (isMounted) {
                     // Adaptar el SVG para que sea responsivo y tome el 100%
@@ -137,7 +163,7 @@ export function MermaidPreview({ code }: MermaidPreviewProps) {
             isMounted = false;
             clearTimeout(timer);
         };
-    }, [code, theme]);
+    }, [code, theme, renderId]);
 
     // Copiar código Mermaid al portapapeles
     const handleCopyCode = async () => {
@@ -462,7 +488,7 @@ export function MermaidPreview({ code }: MermaidPreviewProps) {
                             <h4 className="text-xs font-bold text-[var(--bi-text-1)] uppercase tracking-wider">Error de Sintaxis</h4>
                             <p className="text-[11px] text-[var(--bi-text-2)] leading-relaxed">{error}</p>
                         </div>
-                        <pre className="mt-4 text-[9px] font-mono bg-[var(--bi-surface-1)] border border-[var(--bi-border)] p-3 rounded-lg w-full max-w-md text-left overflow-x-auto text-[var(--bi-text-2)] max-h-32 custom-scrollbar">
+                        <pre className="mt-4 text-[10px] font-mono bg-[var(--bi-surface-1)] border border-[var(--bi-border)] p-3 rounded-lg w-full max-w-md text-left overflow-x-auto text-[var(--bi-text-2)] max-h-32 custom-scrollbar">
                             {code}
                         </pre>
                     </div>
@@ -517,7 +543,7 @@ export function MermaidPreview({ code }: MermaidPreviewProps) {
                         >
                             <RefreshCw className="w-3.5 h-3.5" />
                         </button>
-                        <div className="px-1.5 border-l border-[var(--bi-border)] text-[8px] font-bold text-[var(--bi-text-2)] uppercase tracking-wider">
+                        <div className="px-1.5 border-l border-[var(--bi-border)] text-[10px] font-bold text-[var(--bi-text-2)] uppercase tracking-wider">
                             {Math.round(scale * 100)}%
                         </div>
                     </div>

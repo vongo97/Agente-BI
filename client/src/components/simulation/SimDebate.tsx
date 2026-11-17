@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { useForceLayout } from "@/hooks/useForceLayout";
-import { Loader2, User, Layers, Brain, CheckCircle, Clock, ChevronRight, Activity, MessageSquare } from "lucide-react";
+import { Loader2, Brain, Activity, MessageSquare } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
@@ -222,7 +222,7 @@ export function SimDebate({ messages, polling, activeSim }: SimDebateProps) {
                 <div className="flex items-center gap-4">
                     <h3 className="text-[10px] font-bold text-[var(--bi-text-3)] uppercase tracking-widest flex-shrink-0">Interacción del Enjambre</h3>
                     {agentsList.length > 0 && (
-                        <div className="flex bg-[var(--bi-surface-1)] border border-[var(--bi-border)] rounded-lg p-0.5 text-[8px] font-bold uppercase tracking-wider">
+                        <div className="flex bg-[var(--bi-surface-1)] border border-[var(--bi-border)] rounded-lg p-0.5 text-[10px] font-bold uppercase tracking-wider">
                             <button
                                 type="button"
                                 onClick={() => setViewMode('brain')}
@@ -252,7 +252,7 @@ export function SimDebate({ messages, polling, activeSim }: SimDebateProps) {
                 </div>
                 <div className="flex items-center gap-2">
                     <span className={`w-2.5 h-2.5 rounded-full ${polling ? 'bg-[var(--module-simulation-accent)] animate-pulse' : 'bg-[var(--bi-green)]'}`}></span>
-                    <span className={`text-[9px] font-bold uppercase tracking-widest ${polling ? 'text-[var(--module-simulation-accent)]' : 'text-[var(--bi-green)]'}`}>
+                    <span className={`text-[10px] font-bold uppercase tracking-widest ${polling ? 'text-[var(--module-simulation-accent)]' : 'text-[var(--bi-green)]'}`}>
                         {polling ? 'Debate en Curso' : 'Simulación Completada'}
                     </span>
                 </div>
@@ -298,12 +298,12 @@ export function SimDebate({ messages, polling, activeSim }: SimDebateProps) {
                                         {isCompleted ? "✓" : step.stepNum}
                                     </div>
 
-                                    <span className={`text-[9px] font-bold mt-2.5 uppercase tracking-wider transition-colors duration-200 ${
+                                    <span className={`text-[10px] font-bold mt-2.5 uppercase tracking-wider transition-colors duration-200 ${
                                         isActive ? "text-[var(--module-simulation-accent)]" : isCompleted ? "text-[var(--bi-text-2)]" : "text-[var(--bi-text-3)]"
                                     }`}>
                                         {step.title}
                                     </span>
-                                    <span className="text-[8px] text-[var(--bi-text-3)] font-semibold mt-0.5 max-w-[90px] truncate leading-tight uppercase tracking-tight">
+                                    <span className="text-[10px] text-[var(--bi-text-3)] font-semibold mt-0.5 max-w-[90px] truncate leading-tight uppercase tracking-tight">
                                         {step.desc}
                                     </span>
                                 </div>
@@ -624,7 +624,7 @@ export function SimDebate({ messages, polling, activeSim }: SimDebateProps) {
                         </svg>
 
                         <div className="absolute bottom-2.5 left-2.5 right-2.5 flex items-center justify-between">
-                            <span className="text-[7px] font-bold text-[var(--bi-text-3)] uppercase tracking-wider">Haz clic en los nodos para inspeccionar analistas</span>
+                            <span className="text-[10px] font-bold text-[var(--bi-text-3)] uppercase tracking-wider">Haz clic en los nodos para inspeccionar analistas</span>
                             {polling && currentSpeaker && (
                                 <span className="text-[7.5px] font-bold text-[var(--module-simulation-accent)] uppercase tracking-wider animate-pulse flex items-center gap-1">
                                     <Activity className="w-2.5 h-2.5" /> Turno: {currentSpeaker.name}
@@ -694,7 +694,7 @@ export function SimDebate({ messages, polling, activeSim }: SimDebateProps) {
                             >
                                 {/* Badge de Ronda */}
                                 {m.round_number && (
-                                    <div className="absolute top-0 right-0 px-3 py-1 bg-[var(--bi-surface-1)] text-[8px] font-bold uppercase tracking-wider rounded-bl-lg border-l border-b border-[var(--bi-border)] text-[var(--bi-text-2)]">
+                                    <div className="absolute top-0 right-0 px-3 py-1 bg-[var(--bi-surface-1)] text-[10px] font-bold uppercase tracking-wider rounded-bl-lg border-l border-b border-[var(--bi-border)] text-[var(--bi-text-2)]">
                                         Ronda {m.round_number}
                                     </div>
                                 )}
@@ -709,18 +709,18 @@ export function SimDebate({ messages, polling, activeSim }: SimDebateProps) {
                                             <span className="text-xs font-bold text-[var(--bi-text-1)] tracking-tight">
                                                 {m.agent_name || "Agente"}
                                             </span>
-                                            <span className="text-[8px] font-bold uppercase tracking-wider bg-[var(--bi-surface-1)] px-2 py-0.5 rounded border border-[var(--bi-border)] text-[var(--bi-text-2)]">
+                                            <span className="text-[10px] font-bold uppercase tracking-wider bg-[var(--bi-surface-1)] px-2 py-0.5 rounded border border-[var(--bi-border)] text-[var(--bi-text-2)]">
                                                 {m.agent_role || "Analista"}
                                             </span>
                                         </div>
                                         <div className="flex items-center gap-2 mt-1">
                                             {m.agent_personality && (
-                                                <span className="text-[8px] font-bold text-[var(--module-simulation-accent)] uppercase tracking-widest">
+                                                <span className="text-[10px] font-bold text-[var(--module-simulation-accent)] uppercase tracking-widest">
                                                     Enfoque: {m.agent_personality}
                                                 </span>
                                             )}
                                             {m.agent_description && (
-                                                <span className="text-[8px] text-[var(--bi-text-3)] font-semibold uppercase tracking-tight truncate max-w-[200px]">
+                                                <span className="text-[10px] text-[var(--bi-text-3)] font-semibold uppercase tracking-tight truncate max-w-[200px]">
                                                     • {m.agent_description}
                                                 </span>
                                             )}
@@ -749,7 +749,7 @@ export function SimDebate({ messages, polling, activeSim }: SimDebateProps) {
                                     <span className="text-[10px] font-bold text-[var(--module-simulation-accent)] uppercase tracking-wider">
                                         {currentSpeaker ? `${currentSpeaker.name} está redactando...` : "El Enjambre está analizando..."}
                                     </span>
-                                    <span className="text-[8px] text-[var(--bi-text-3)] font-bold uppercase tracking-widest">
+                                    <span className="text-[10px] text-[var(--bi-text-3)] font-bold uppercase tracking-widest">
                                         {currentSpeaker ? currentSpeaker.role : "Sincronizando modelos"}
                                     </span>
                                 </div>

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { CheckCircle2, Eye, EyeOff, Key } from "lucide-react";
+import { Eye, EyeOff } from "lucide-react";
 import { getAiProviders, getProviderModels, saveProviderKeys, saveProviderModels, validateApiKey } from "@/lib/api";
 
 export type AiProvider = {
@@ -113,7 +113,7 @@ export function ProviderKeysPanel({ compact = false }: { compact?: boolean }) {
                             <span className="flex items-center gap-2">
                                 {p.label}
                                 {p.free_tier && (
-                                    <span className="text-[9px] px-1.5 py-0.5 rounded border border-[var(--bi-green-border)] text-[var(--bi-green)]">GRATIS</span>
+                                    <span className="text-[10px] px-1.5 py-0.5 rounded border border-[var(--bi-green-border)] text-[var(--bi-green)]">GRATIS</span>
                                 )}
                             </span>
                             <a href={p.console} target="_blank" rel="noreferrer"

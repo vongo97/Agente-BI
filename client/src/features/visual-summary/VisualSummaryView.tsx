@@ -21,7 +21,7 @@ export function VisualSummaryView() {
                     <div>
                         <div className="flex items-center gap-2">
                             <h2 className="text-sm font-semibold tracking-tight text-[var(--bi-text-1)] uppercase">Resumen Visual</h2>
-                            <span className="text-[9px] bg-[var(--bi-blue-dim)] border border-[var(--bi-blue-border)] text-[var(--bi-blue)] py-0.5 px-2 rounded-md font-bold uppercase tracking-wider">Próximamente</span>
+                            <span className="text-[10px] bg-[var(--bi-blue-dim)] border border-[var(--bi-blue-border)] text-[var(--bi-blue)] py-0.5 px-2 rounded-md font-bold uppercase tracking-wider">Próximamente</span>
                         </div>
                         <p className="text-[10px] text-[var(--bi-text-3)] font-medium">Convierte ideas complejas y chats en diagramas visuales</p>
                     </div>

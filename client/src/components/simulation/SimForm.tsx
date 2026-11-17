@@ -1,4 +1,4 @@
-import { Sparkles, Brain, Activity, ChevronRight, FileText, AlertCircle, Loader2, Zap, Layers, Cpu } from "lucide-react";
+import { Sparkles, Brain, ChevronRight, FileText, AlertCircle, Loader2, Zap, Layers, Cpu } from "lucide-react";
 import { useEffect, useState } from "react";
 import { DataSource } from "@/types/shared";
 import { getAiProviders } from "@/lib/api";
@@ -99,7 +99,7 @@ export function SimForm({
                                     <div className={`flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider ${aiProvider === p.id ? 'text-[var(--module-simulation-accent)]' : ''}`}>
                                         {p.icon} {p.label}
                                     </div>
-                                    <span className="text-[8px] text-[var(--bi-text-3)] font-medium">{p.desc}</span>
+                                    <span className="text-[10px] text-[var(--bi-text-3)] font-medium">{p.desc}</span>
                                 </button>
                             ))}
                         </div>
@@ -129,7 +129,7 @@ export function SimForm({
                                     <div className={`flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider ${numRounds === r.id ? 'text-[var(--module-simulation-accent)]' : ''}`}>
                                         {r.icon} {r.label}
                                     </div>
-                                    <span className="text-[8px] text-[var(--bi-text-3)] font-medium">{r.desc}</span>
+                                    <span className="text-[10px] text-[var(--bi-text-3)] font-medium">{r.desc}</span>
                                 </button>
                             ))}
                         </div>
@@ -168,7 +168,7 @@ export function SimForm({
                             <label className="text-xs font-bold text-[var(--bi-text-1)] uppercase tracking-wider flex items-center gap-2">
                                 <FileText className="w-4 h-4 text-[var(--module-simulation-accent)]" /> Cimientos Factuales
                             </label>
-                            <span className="text-[8px] font-bold bg-[var(--module-simulation-accent-soft)] text-[var(--module-simulation-accent)] px-2 py-0.5 rounded border border-[var(--module-simulation-border)] uppercase tracking-wider flex-shrink-0">
+                            <span className="text-[10px] font-bold bg-[var(--module-simulation-accent-soft)] text-[var(--module-simulation-accent)] px-2 py-0.5 rounded border border-[var(--module-simulation-border)] uppercase tracking-wider flex-shrink-0">
                                 {selectedSources.size} Seleccionado{selectedSources.size !== 1 && 's'}
                             </span>
                         </div>
@@ -197,13 +197,13 @@ export function SimForm({
                                                 }`} />
                                                 <div className="flex flex-col truncate">
                                                     <span className="text-[10px] font-bold tracking-tight truncate text-[var(--bi-text-1)]">{src.name}</span>
-                                                    <span className="text-[8px] text-[var(--bi-text-3)] font-semibold uppercase tracking-wider mt-0.5">
+                                                    <span className="text-[10px] text-[var(--bi-text-3)] font-semibold uppercase tracking-wider mt-0.5">
                                                         {src.created_at ? new Date(src.created_at).toLocaleDateString() : ""}
                                                     </span>
                                                 </div>
                                             </div>
                                             {isCurrentSession && (
-                                                <span className="text-[7px] font-bold bg-[var(--bi-teal-dim)] text-[var(--bi-teal)] border border-[var(--bi-teal-border)] px-1.5 py-0.5 rounded uppercase tracking-wider flex-shrink-0">Activo</span>
+                                                <span className="text-[10px] font-bold bg-[var(--bi-teal-dim)] text-[var(--bi-teal)] border border-[var(--bi-teal-border)] px-1.5 py-0.5 rounded uppercase tracking-wider flex-shrink-0">Activo</span>
                                             )}
                                         </button>
                                     );
@@ -226,7 +226,7 @@ export function SimForm({
                                 type="button"
                                 onClick={fetchSuggestions}
                                 disabled={loadingSuggestions || selectedSources.size === 0}
-                                className="text-[9px] font-bold text-[var(--module-simulation-accent)] bg-[var(--module-simulation-accent-soft)] hover:bg-[var(--module-simulation-accent)]/20 border border-[var(--module-simulation-border)] px-3 py-1 rounded-full transition-all disabled:opacity-30 cursor-pointer"
+                                className="text-[10px] font-bold text-[var(--module-simulation-accent)] bg-[var(--module-simulation-accent-soft)] hover:bg-[var(--module-simulation-accent)]/20 border border-[var(--module-simulation-border)] px-3 py-1 rounded-full transition-all disabled:opacity-30 cursor-pointer"
                             >
                                 {loadingSuggestions ? 'Generando...' : 'Obtener Sugerencias'}
                             </button>
@@ -250,7 +250,7 @@ export function SimForm({
                                 ))}
                             </div>
                         ) : !loadingSuggestions && selectedSources.size > 0 && (
-                            <p className="text-[9px] text-[var(--bi-text-3)] italic text-center py-2">Haz clic en &quot;Obtener Sugerencias&quot; para que la IA diseñe hipótesis a partir de los datos.</p>
+                            <p className="text-[10px] text-[var(--bi-text-3)] italic text-center py-2">Haz clic en &quot;Obtener Sugerencias&quot; para que la IA diseñe hipótesis a partir de los datos.</p>
                         )}
                     </div>
 
@@ -281,7 +281,7 @@ export function SimForm({
                                 <AlertCircle className="w-4.5 h-4.5 text-[var(--bi-amber)] mt-0.5 flex-shrink-0" />
                                 <div>
                                     <p className="text-[10px] font-bold text-[var(--bi-amber)] uppercase tracking-wider mb-0.5">Simulador Bloqueado</p>
-                                    <p className="text-[9px] text-[var(--bi-text-2)] leading-relaxed font-semibold">
+                                    <p className="text-[10px] text-[var(--bi-text-2)] leading-relaxed font-semibold">
                                         Para garantizar que la simulación sea realista y basada en tu negocio, debes cargar al menos un archivo en el Chat antes de comenzar.
                                     </p>
                                 </div>

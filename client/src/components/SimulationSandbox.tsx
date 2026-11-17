@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from "react";
-import { Brain, Download, PlusCircle, Menu, AlertTriangle, X } from "lucide-react";
+import { Brain, Download, PlusCircle, Menu, AlertTriangle, X, History } from "lucide-react";
 import { useDashboard } from "@/context/DashboardContext";
 import { useToast } from "@/context/ToastContext";
 import { 
@@ -37,6 +37,9 @@ export function SimulationSandbox() {
     const [activeSim, setActiveSim] = useState<Simulation | null>(null);
     const [messages, setMessages] = useState<SimulationMessage[]>([]);
     const [polling, setPolling] = useState(false);
+    // P-40: en movil el historial de ensayos es un cajon deslizante; en md+
+    // es la columna fija de siempre.
+    const [isSimHistoryOpen, setIsSimHistoryOpen] = useState(false);
     // P-30: el polling es async; un fallo de red no puede tragarse. El primer
     // error se guarda aquí y se muestra al usuario en lugar de acumular
     // rejections sin manejar en cada tick.
@@ -277,6 +280,9 @@ export function SimulationSandbox() {
 
     const loadSim = async (sim: Simulation) => {
         setActiveSim(sim);
+        // P-40: al elegir un ensayo desde el cajon movil, este se cierra para
+        // dejar ver el debate en pantalla completa.
+        setIsSimHistoryOpen(false);
         const msgs = await getSimulationMessages(sim.id) as SimulationMessage[];
         setMessages(msgs);
         setPolling(sim.status === 'running');
@@ -285,7 +291,9 @@ export function SimulationSandbox() {
             <SimHistory 
                 simulations={simulations} 
                 activeSim={activeSim} 
-                loadSim={loadSim} 
+                loadSim={loadSim}
+                isOpen={isSimHistoryOpen}
+                onClose={() => setIsSimHistoryOpen(false)}
             />
 
             <div className="flex-1 flex flex-col overflow-hidden">
@@ -298,6 +306,15 @@ export function SimulationSandbox() {
                                 aria-label="Abrir menú"
                             >
                                 <Menu className="w-5 h-5" />
+                            </button>
+                            {/* P-40: en movil el historial de ensayos se abre como cajon. */}
+                            <button
+                                type="button"
+                                onClick={() => setIsSimHistoryOpen(true)}
+                                className="md:hidden p-2 rounded-md text-[var(--bi-text-3)] hover:text-[var(--bi-text-1)] hover:bg-[var(--bi-surface-1)] active:bg-[var(--bi-surface-2)] transition-all duration-200 cursor-pointer"
+                                aria-label="Ver historial de ensayos"
+                            >
+                                <History className="w-5 h-5" />
                             </button>
                             <div className="p-2 bg-[var(--sim-accent-soft)] border border-[var(--sim-border)] rounded-lg hidden sm:block">
                                 <Brain className="w-5 h-5 text-[var(--sim-accent)]" />

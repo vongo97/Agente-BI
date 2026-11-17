@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from "react";
-import { Settings, Key, Cpu, Shield, Save, CheckCircle2, AlertCircle, Sparkles, Menu, Palette, Sliders, Activity, Eye, EyeOff, FileText, Columns } from "lucide-react";
+import { Settings, Key, Cpu, Shield, Save, CheckCircle2, AlertCircle, Sparkles, Menu, Palette, Sliders, Activity, FileText, Columns } from "lucide-react";
 import { useDashboard } from "@/context/DashboardContext";
 import { getAiProviders, setUserConfig, saveProviderModels } from "@/lib/api";
 import { ProviderKeysPanel } from "@/components/settings/ProviderKeysPanel";
@@ -10,11 +10,8 @@ type TabType = "ai" | "security" | "appearance";
 
 export function SettingsView() {
     const { 
-        apiKey, setApiKey, 
-        mistralKey, setMistralKey, 
-        groqKey, setGroqKey, 
         aiProvider, setAiProvider, 
-        providerModels, setProviderModels,
+        providerModels,
         autoSuggestionsEnabled, setAutoSuggestionsEnabled, 
         setSidebarOpen,
         temperature, setTemperature,
@@ -165,7 +162,7 @@ export function SettingsView() {
                                                     {p.free_tier && <span className="text-[10px] px-1 py-0.5 rounded border border-[var(--bi-green-border)] text-[var(--bi-green)]">GRATIS</span>}
                                                 </p>
                                                 <p className="text-[10px] text-[var(--bi-text-3)] font-medium leading-normal">{DESC[p.id] ?? "Modelo de IA"}</p>
-                                                <p className="text-[9px] text-[var(--bi-text-2)] mt-1">
+                                                <p className="text-[10px] text-[var(--bi-text-2)] mt-1">
                                                     Modelo:{" "}
                                                     {providerModels[p.id] ?? (
                                                         <span className="italic">por defecto del proveedor</span>
@@ -254,7 +251,7 @@ export function SettingsView() {
                                     </div>
 
                                     <div className="space-y-3 pt-2">
-                                        <label className="text-xs font-semibold text-[var(--bi-text-2)] uppercase tracking-wider">Estrategia "Magic Clean"</label>
+                                        <label className="text-xs font-semibold text-[var(--bi-text-2)] uppercase tracking-wider">Estrategia &quot;Magic Clean&quot;</label>
                                         <select 
                                             value={magicCleanStrategy}
                                             onChange={(e) => setMagicCleanStrategy(e.target.value)}

@@ -68,10 +68,10 @@ function FactCard({ fact }: { fact: AuditFact }) {
     return (
         <article className={`rounded-lg border p-3 ${style.border} ${style.bg}`}>
             <div className="flex items-center justify-between gap-2 mb-1">
-                <span className={`text-[9px] font-semibold uppercase tracking-wider ${style.text}`}>
+                <span className={`text-[10px] font-semibold uppercase tracking-wider ${style.text}`}>
                     {fact.category} · {style.label}
                 </span>
-                <span className="text-[9px] font-mono text-[var(--bi-text-3)]">{fact.id}</span>
+                <span className="text-[10px] font-mono text-[var(--bi-text-3)]">{fact.id}</span>
             </div>
             <h4 className="text-xs font-semibold text-[var(--bi-text-1)] leading-snug">{fact.title}</h4>
             <div className="flex items-end justify-between gap-2 mt-1.5">
@@ -88,7 +88,7 @@ function FactCard({ fact }: { fact: AuditFact }) {
                 </summary>
                 <div className="mt-1.5 rounded border border-[var(--bi-border)] bg-[var(--bi-surface-0)] px-2 py-1.5 space-y-1">
                     <code className="block text-[10px] text-[var(--bi-text-2)] break-words">{fact.evidence}</code>
-                    <p className="text-[9px] text-[var(--bi-text-3)]">
+                    <p className="text-[10px] text-[var(--bi-text-3)]">
                         Muestra: {formatNumber(fact.sample_size)} registros
                     </p>
                 </div>
@@ -122,7 +122,7 @@ export function InsightCards({ audit }: InsightCardsProps) {
                     </div>
                 </div>
                 {audit.source_name && (
-                    <span className="hidden sm:inline text-[9px] font-mono text-[var(--bi-text-3)] truncate max-w-[220px]">
+                    <span className="hidden sm:inline text-[10px] font-mono text-[var(--bi-text-3)] truncate max-w-[220px]">
                         {audit.source_name}
                     </span>
                 )}
@@ -159,7 +159,7 @@ export function InsightCards({ audit }: InsightCardsProps) {
                     <div className="rounded border border-[var(--bi-amber)]/20 bg-[var(--bi-amber-dim)] px-2.5 py-2">
                         <div className="flex items-center gap-1.5 text-[var(--bi-amber)] mb-1">
                             <AlertTriangle className="w-3 h-3" />
-                            <span className="text-[9px] font-semibold uppercase tracking-wider">Calidad del dato</span>
+                            <span className="text-[10px] font-semibold uppercase tracking-wider">Calidad del dato</span>
                         </div>
                         <ul className="space-y-0.5">
                             {quality.slice(0, 4).map((item, index) => (
@@ -169,7 +169,7 @@ export function InsightCards({ audit }: InsightCardsProps) {
                             ))}
                         </ul>
                         {quality.length > 4 && (
-                            <p className="text-[9px] text-[var(--bi-text-3)] mt-1">
+                            <p className="text-[10px] text-[var(--bi-text-3)] mt-1">
                                 +{quality.length - 4} observaciones más en la metodología.
                             </p>
                         )}

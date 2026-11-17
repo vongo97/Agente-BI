@@ -1,15 +1,46 @@
-import { History } from "lucide-react";
+import { History, X } from "lucide-react";
 import { Simulation } from "@/types/shared";
 
 interface SimHistoryProps {
     simulations: Simulation[];
     activeSim: Simulation | null;
     loadSim: (sim: Simulation) => void;
+    /** P-40: en movil el historial es un cajon, no una columna fija. */
+    isOpen: boolean;
+    onClose: () => void;
 }
 
-export function SimHistory({ simulations, activeSim, loadSim }: SimHistoryProps) {
+export function SimHistory({ simulations, activeSim, loadSim, isOpen, onClose }: SimHistoryProps) {
     return (
-        <div className="w-72 md:w-80 border-r border-[var(--bi-border)] flex flex-col bg-[var(--bi-surface-0)] flex-shrink-0">
+        <>
+            {/* P-40: velo del cajon (solo movil). */}
+            {isOpen && (
+                <div
+                    className="fixed inset-0 bg-black/60 backdrop-blur-md z-40 md:hidden"
+                    onClick={onClose}
+                    aria-hidden="true"
+                />
+            )}
+
+            <aside
+                aria-label="Historial de ensayos"
+                className={`
+                    fixed md:relative inset-y-0 left-0 z-50
+                    w-72 md:w-80 border-r border-[var(--bi-border)] flex flex-col
+                    bg-[var(--bi-surface-0)] flex-shrink-0 h-screen md:h-auto
+                    transition-transform duration-300 ease-in-out
+                    ${isOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
+                `}
+            >
+            {/* P-40: cerrar el cajon (solo movil). */}
+            <button
+                type="button"
+                onClick={onClose}
+                className="md:hidden absolute top-3 right-3 p-1.5 rounded text-[var(--bi-text-3)] hover:text-[var(--bi-text-1)] hover:bg-[var(--bi-surface-2)] transition-colors z-10"
+                aria-label="Cerrar historial"
+            >
+                <X className="w-4 h-4" />
+            </button>
             <div className="p-6 border-b border-[var(--bi-border)]">
                 <h2 className="text-[10px] font-bold text-[var(--bi-text-3)] uppercase tracking-[0.25em] flex items-center gap-2">
                     <History className="w-4 h-4 text-[var(--module-simulation-accent)]" /> Historial de Ensayos
@@ -32,7 +63,7 @@ export function SimHistory({ simulations, activeSim, loadSim }: SimHistoryProps)
                                 }`}
                             >
                                 <div className="flex items-center justify-between mb-2">
-                                    <span className={`text-[8px] font-bold uppercase px-2 py-0.5 rounded border tracking-wider transition-all ${
+                                    <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded border tracking-wider transition-all ${
                                         sim.status === 'completed' 
                                             ? 'bg-[var(--bi-green-dim)] text-[var(--bi-green)] border-[var(--bi-green)]/20' 
                                             : sim.status === 'running'
@@ -41,7 +72,7 @@ export function SimHistory({ simulations, activeSim, loadSim }: SimHistoryProps)
                                     }`}>
                                         {sim.status === 'completed' ? 'Listo' : sim.status === 'running' ? 'En Curso' : sim.status === 'pending' ? 'Pendiente' : 'Desconocido'}
                                     </span>
-                                    <span className="text-[9px] text-[var(--bi-text-3)] font-semibold">
+                                    <span className="text-[10px] text-[var(--bi-text-3)] font-semibold">
                                         {new Date(sim.created_at).toLocaleDateString()}
                                     </span>
                                 </div>
@@ -59,6 +90,7 @@ export function SimHistory({ simulations, activeSim, loadSim }: SimHistoryProps)
                     </div>
                 )}
             </div>
-        </div>
+            </aside>
+        </>
     );
 }

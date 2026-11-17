@@ -68,11 +68,11 @@ export function SimReport({ activeSim, userId, polling }: SimReportProps) {
                     
                     <div className="mt-6 pt-6 border-t border-[var(--bi-border)] flex items-center justify-between">
                         <div className="flex flex-col">
-                            <span className="text-[8px] text-[var(--bi-text-3)] font-semibold uppercase tracking-widest">Motor Utilizado</span>
+                            <span className="text-[10px] text-[var(--bi-text-3)] font-semibold uppercase tracking-widest">Motor Utilizado</span>
                             <span className="text-[10px] text-[var(--sim-accent)] font-bold uppercase tracking-tight">{activeSim.provider}</span>
                         </div>
                         <div className="flex flex-col items-end">
-                            <span className="text-[8px] text-[var(--bi-text-3)] font-semibold uppercase tracking-widest">Estado</span>
+                            <span className="text-[10px] text-[var(--bi-text-3)] font-semibold uppercase tracking-widest">Estado</span>
                             <span className="text-[10px] text-[var(--bi-green)] font-bold uppercase tracking-tight">Consolidado</span>
                         </div>
                     </div>
@@ -81,7 +81,7 @@ export function SimReport({ activeSim, userId, polling }: SimReportProps) {
                 <div className="bg-[var(--bi-surface-0)] border border-dashed border-[var(--bi-border)] rounded-lg p-8 text-center space-y-4">
                     <Loader2 className="w-6 h-6 text-[var(--sim-accent)]/40 animate-spin mx-auto" />
                     <p className="text-[10px] font-bold text-[var(--bi-text-2)] uppercase tracking-[0.2em]">Esperando Síntesis Final</p>
-                    <p className="text-[9px] text-[var(--bi-text-3)] max-w-[200px] mx-auto italic leading-relaxed">El estratega está procesando las rondas de debate para emitir el veredicto final.</p>
+                    <p className="text-[10px] text-[var(--bi-text-3)] max-w-[200px] mx-auto italic leading-relaxed">El estratega está procesando las rondas de debate para emitir el veredicto final.</p>
                 </div>
             ) : null}
         </div>
