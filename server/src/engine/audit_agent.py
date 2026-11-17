@@ -302,6 +302,48 @@ def _derivable_from_sentence(
     return False
 
 
+def verify_prose_numbers(text: str, audit: dict[str, Any]) -> tuple[bool, str]:
+    """Verifica que cada cifra de una prosa libre exista en el paquete auditado.
+
+    Es la variante de ``validate_natural_narration`` para el flujo general de
+    ``/analyze``, donde el LLM escribe prosa libre (sin JSON ni ``fact_ids``)
+    pero sus cifras deben seguir respaldadas por los hechos deterministas.
+
+    Reutiliza las mismas reglas de número que la Fase 2 (``_allowed_numbers``,
+    ``_sentence_numbers`` y ``_derivable_from_sentence``) para que no haya dos
+    semánticas distintas de "cifra verificada" en el producto.
+
+    Los identificadores de hecho (``KPI-03``) se ignoran: no son cifras.
+    Devuelve ``(True, "")`` si la prosa no tiene ninguna cifra, porque una
+    explicación sin números no puede alucinar cifras.
+    """
+    if not isinstance(text, str) or not text.strip():
+        return False, "narración ausente"
+
+    known = _fact_index(audit)
+    allowed = _allowed_numbers(audit)
+
+    if not known and not allowed:
+        # Sin paquete auditable no hay contra qué verificar: no se rechaza.
+        return True, ""
+
+    for sentence in _sentence_numbers(text):
+        for index, (token, candidates) in enumerate(sentence):
+            if candidates & allowed:
+                continue
+            others = [
+                value
+                for position, (_, other) in enumerate(sentence)
+                if position != index
+                for value in other
+            ]
+            if _derivable_from_sentence(candidates, others):
+                continue
+            return False, f"cifra no verificada: {token}"
+
+    return True, ""
+
+
 def validate_natural_narration(
     payload: dict[str, Any], audit: dict[str, Any]
 ) -> tuple[bool, str]:

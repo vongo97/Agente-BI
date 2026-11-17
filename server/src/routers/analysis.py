@@ -13,6 +13,7 @@ from src.engine.audit_agent import (
     build_audit_payload,
     generate_audit_narrative,
     is_audit_query,
+    verify_prose_numbers,
 )
 from src.engine.insight_auditor import AUDIT_MARKER, AuditError, build_audit
 from src.engine.executor import execute_sql_safe, validate_sql_safety
@@ -448,15 +449,61 @@ async def analyze(
             )
             audit_payload = build_audit_payload(audit, "deterministic")
             audit_narrative_mode = "deterministic"
-            # Enriquecer la narrativa del LLM con los hechos verificados si el
-            # LLM no aportó cifras verificables.
-            if audit_payload and audit_payload.get("insights"):
+
+            # P-54 (cierre del hueco del flujo general): la prosa del LLM se
+            # verifica contra el paquete determinista ANTES de mostrarla. Antes
+            # se adjuntaban los hechos verificados al final de un texto que
+            # nunca se comprobaba, de modo que el usuario podía leer una cifra
+            # inventada junto a la correcta (el cruce profit/pérdida del
+            # superstore documentado en P-54).
+            #
+            # Una cifra no respaldada invalida la prosa completa: se sustituye
+            # por la narrativa determinista del auditor, que solo contiene
+            # valores medidos con pandas. No se "parchea" el texto porque un
+            # solo número sin respaldo deja la prosa entera sin garantía.
+            prose_ok, prose_reason = verify_prose_numbers(output_text, audit)
+            if not prose_ok:
+                logger.info(
+                    "Narrativa del flujo general rechazada por verificación numérica: %s",
+                    prose_reason,
+                )
+                deterministic_text = str(audit.get("analysis") or "").strip()
+                if deterministic_text:
+                    output_text = deterministic_text
+                    audit_narrative_mode = "deterministic"
+                    # El texto determinista ya lleva sus cifras; añadir los
+                    # hechos otra vez lo duplicaría sin aportar información.
+                    verified_facts_block = None
+                else:
+                    # Sin narrativa determinista se conserva la prosa del LLM
+                    # (no se puede dejar la respuesta vacía) pero se marca como
+                    # no verificada para que la UI no prometa lo que no es.
+                    audit_narrative_mode = "unverified"
+                    verified_facts_block = None
+            else:
+                verified_facts_block = output_text
+
+            # El modo vive en DOS sitios del contrato: el nivel superior de la
+            # respuesta y dentro del payload `audit`. La UI lee el interno
+            # (`msg.audit.narrative_mode`), así que si no se sincronizan aquí
+            # el aviso "sin verificar" no llegaría nunca a la pantalla.
+            if audit_payload is not None:
+                audit_payload["narrative_mode"] = audit_narrative_mode
+
+            # Enriquecer la narrativa con los hechos verificados: el usuario
+            # ve las cifras exactas calculadas con pandas junto al relato.
+            if (
+                verified_facts_block is not None
+                and audit_payload
+                and audit_payload.get("insights")
+            ):
                 verified_facts = "\n".join(
                     f"• {f.get('title', '')}: {f.get('display_value', '')}"
                     for f in audit_payload["insights"][:5]
                 )
                 output_text = (
-                    f"{output_text}\n\n---\n**Hechos verificados (pandas, sin LLM):**\n{verified_facts}"
+                    f"{verified_facts_block}\n\n---\n"
+                    f"**Hechos verificados (pandas, sin LLM):**\n{verified_facts}"
                 )
         except AuditError as exc:
             # Dataset no auditable: continuar con el flujo normal sin auditoría.

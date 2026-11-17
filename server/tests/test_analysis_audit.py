@@ -288,5 +288,174 @@ class TestAnalyzeAuditRouting(unittest.TestCase):
         mock_analyze_data.assert_called_once()
 
 
+class TestGeneralFlowProseVerification(unittest.TestCase):
+    """P-54: el flujo general de /analyze verifica la prosa del LLM.
+
+    Antes los hechos verificados se adjuntaban al final de un texto que nunca
+    se comprobaba, de modo que el usuario leía una cifra inventada junto a la
+    correcta. Ahora una cifra sin respaldo invalida la prosa y se sustituye
+    por la narrativa determinista del auditor.
+    """
+
+    def setUp(self):
+        limiter.reset()
+        app = FastAPI()
+        app.state.limiter = limiter
+        self.db = FakeSession()
+        app.dependency_overrides[get_db] = lambda: self.db
+        app.include_router(analysis_router.router, prefix="/api/v1")
+        self.client = TestClient(app)
+        data_store.clear()
+
+    def tearDown(self):
+        data_store.clear()
+
+    def _data(self):
+        return {
+            "type": "file",
+            "data": pd.DataFrame(
+                {
+                    "order_id": [f"O{i}" for i in range(12)],
+                    "sales": [100.0] * 12,
+                    "profit": [10.0] * 6 + [-20.0] * 6,
+                    "discount": [0.0] * 6 + [0.4] * 6,
+                    "region": ["Norte"] * 6 + ["Sur"] * 6,
+                    "customer": ["Ana"] * 6 + ["Bob"] * 6,
+                }
+            ),
+        }
+
+    def _post(self, llm_text):
+        """Ejecuta /analyze por el flujo general (flag de auditoría apagado)."""
+        with patch(
+            "src.routers.analysis.get_authenticated_user",
+            return_value="test_user_persistence@example.com",
+        ), patch("src.routers.analysis.check_authorization"), patch(
+            "src.routers.analysis.get_user_data", return_value=self._data()
+        ), patch(
+            "src.routers.analysis.analyze_data",
+            new_callable=AsyncMock,
+            return_value=(llm_text, None, "codigo"),
+        ), patch(
+            "src.engine.providers.resolve_keys", return_value=("test-key", None, None)
+        ), patch(
+            "src.engine.providers.set_model_override"
+        ), patch.dict(
+            os.environ, {"AUDIT_AGENT_ENABLED": "false"}
+        ), patch(
+            "src.utils.common.promote_active_session"
+        ):
+            return self.client.post(
+                "/api/v1/analyze",
+                data={"query": "Genera un gráfico de ventas", "api_key": "test-key"},
+            )
+
+    def test_prose_without_invented_numbers_keeps_the_llm_text(self):
+        response = self._post("El dataset tiene ventasconstants y profit positivo.")
+
+        self.assertEqual(response.status_code, 200, response.text)
+        body = response.json()
+        self.assertIn("El dataset tiene ventas", body["analysis"])
+        self.assertEqual(body["narrative_mode"], "deterministic")
+        self.assertTrue(body.get("audit"))
+
+    def test_prose_with_invented_number_is_replaced_by_deterministic_narrative(self):
+        """La cifra inventada no llega al usuario (P-54: cruce profit/pérdida)."""
+        response = self._post("El profit neto del dataset es de -135.4K.")
+
+        self.assertEqual(response.status_code, 200, response.text)
+        body = response.json()
+        # El texto con la cifra inventada no se devuelve tal cual.
+        self.assertNotIn("-135.4K", body["analysis"])
+        self.assertEqual(body["narrative_mode"], "deterministic")
+        self.assertTrue(body.get("audit"))
+
+    def test_invented_number_is_not_saved_in_the_chat(self):
+        """La prosa rechazada tampoco se persiste: el historial queda limpio."""
+        response = self._post("El profit neto del dataset es de -135.4K.")
+
+        self.assertEqual(response.status_code, 200, response.text)
+        assistant = next(
+            obj
+            for obj in self.db.added
+            if obj.__class__.__name__ == "Message" and obj.role == "assistant"
+        )
+        self.assertNotIn("-135.4K", assistant.content)
+
+    def test_verified_facts_are_still_appended(self):
+        """El contrato vigente se mantiene: los hechos verificados acompañan."""
+        response = self._post("El dataset tiene ventas y profit positivo.")
+
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertIn("Hechos verificados", response.json()["analysis"])
+
+    def test_narrative_mode_is_synced_inside_the_audit_payload(self):
+        """El modo vive en dos sitios del contrato y ambos deben coincidir.
+
+        La UI lee `msg.audit.narrative_mode` (el interno), no el de nivel
+        superior: si no se sincronizan, el aviso de la UI miente.
+        """
+        response = self._post("El dataset tiene ventas y profit positivo.")
+
+        self.assertEqual(response.status_code, 200, response.text)
+        body = response.json()
+        self.assertEqual(body["audit"]["narrative_mode"], body["narrative_mode"])
+
+    def test_missing_deterministic_narrative_marks_the_mode_as_unverified(self):
+        """Sin narrativa determinista la respuesta no se vacía, pero se avisa."""
+        audit_sin_texto = {
+            "analysis": "",
+            "insights": [
+                {
+                    "id": "KPI-01",
+                    "title": "Ventas totales",
+                    "value": 1200.0,
+                    "display_value": "$1.2K",
+                    "definition": "Suma de las ventas",
+                    "evidence": "12 filas",
+                    "sample_size": 12,
+                }
+            ],
+            "profile": {},
+            "definitions": [],
+            "methodology": [],
+            "source_name": "test.csv",
+            "generated_at": "2026-11-16T00:00:00+00:00",
+        }
+
+        with patch(
+            "src.routers.analysis.get_authenticated_user",
+            return_value="test_user_persistence@example.com",
+        ), patch("src.routers.analysis.check_authorization"), patch(
+            "src.routers.analysis.get_user_data", return_value=self._data()
+        ), patch(
+            "src.routers.analysis.analyze_data",
+            new_callable=AsyncMock,
+            return_value=("El profit neto es -135.4K.", None, "codigo"),
+        ), patch(
+            "src.routers.analysis.build_audit", return_value=audit_sin_texto
+        ), patch(
+            "src.engine.providers.resolve_keys", return_value=("test-key", None, None)
+        ), patch(
+            "src.engine.providers.set_model_override"
+        ), patch.dict(
+            os.environ, {"AUDIT_AGENT_ENABLED": "false"}
+        ), patch(
+            "src.utils.common.promote_active_session"
+        ):
+            response = self.client.post(
+                "/api/v1/analyze",
+                data={"query": "Genera un gráfico de ventas", "api_key": "test-key"},
+            )
+
+        self.assertEqual(response.status_code, 200, response.text)
+        body = response.json()
+        # El texto no verificado se conserva (no se vacía la respuesta) pero
+        # el modo lo declara, para que la UI no prometa lo que no es.
+        self.assertIn("-135.4K", body["analysis"])
+        self.assertEqual(body["narrative_mode"], "unverified")
+        self.assertEqual(body["audit"]["narrative_mode"], "unverified")
+
+
 if __name__ == "__main__":
     unittest.main()

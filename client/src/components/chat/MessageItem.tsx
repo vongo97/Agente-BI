@@ -2,7 +2,6 @@ import { Bot, User, ShieldAlert, ShieldCheck, Download, Pin } from "lucide-react
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import dynamic from "next/dynamic";
-import { Loader2 } from "lucide-react";
 import AutoDashGrid from "../AutoDashGrid";
 import { InsightCards } from "./InsightCards";
 import { Message } from "@/context/DashboardContext";
@@ -96,7 +95,9 @@ export function MessageItem({ msg, userId, handleExportPng, handlePin, handleSen
                             <span className="text-[10px] font-semibold uppercase tracking-wider">
                                 {msg.audit.narrative_mode === "llm"
                                     ? "Auditoría verificada · narración IA con cifras verificadas"
-                                    : "Auditoría verificada · sin LLM"}
+                                    : msg.audit.narrative_mode === "unverified"
+                                        ? "Auditoría · cifras del texto sin verificar"
+                                        : "Auditoría verificada · sin LLM"}
                             </span>
                         </div>
                     )}

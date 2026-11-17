@@ -21,6 +21,7 @@ from src.engine.audit_agent import (
     generate_audit_narrative,
     is_audit_query,
     validate_natural_narration,
+    verify_prose_numbers,
 )
 from src.engine.insight_auditor import build_audit
 
@@ -266,3 +267,82 @@ def test_payload_records_narrative_mode():
     assert payload["narrative_mode"] == "llm"
     assert payload["insights"] == audit["insights"]
     assert payload["profile"] == audit["profile"]
+
+
+class TestProseNumberVerification:
+    """P-54: verificación numérica de la prosa libre del flujo general."""
+
+    def test_prose_without_numbers_is_accepted(self):
+        audit = _audit()
+
+        valid, reason = verify_prose_numbers(
+            "El dataset mezcla ventas fuertes con pedidos que no dejan margen.", audit
+        )
+
+        assert valid, reason
+        assert reason == ""
+
+    def test_number_present_in_the_audit_is_accepted(self):
+        audit = _audit()
+        fact = _fact(audit, "KPI-03")
+
+        valid, reason = verify_prose_numbers(
+            f"El margen agregado del dataset es {fact['display_value']}.", audit
+        )
+
+        assert valid, reason
+
+    def test_invented_number_is_rejected(self):
+        audit = _audit()
+
+        valid, reason = verify_prose_numbers(
+            "El margen agregado del dataset es 88.8%.", audit
+        )
+
+        assert not valid
+        assert "cifra no verificada" in reason
+
+    def test_confused_figures_are_rejected(self):
+        """P-54: el cruce profit neto vs pérdida bruta es el fallo original."""
+        audit = _audit()
+
+        valid, reason = verify_prose_numbers(
+            "Las ventas fueron de 2.30M y el profit neto de -135.4K.", audit
+        )
+
+        assert not valid
+        assert "cifra no verificada" in reason
+
+    def test_fact_ids_are_not_treated_as_numbers(self):
+        audit = _audit()
+
+        valid, reason = verify_prose_numbers(
+            "El hecho KPI-03 y el hecho DISC-04 describen el dataset.", audit
+        )
+
+        assert valid, reason
+
+    def test_percentage_derivable_from_two_figures_is_accepted(self):
+        """Una variación calculada de dos cifras del mismo enunciado es legítima."""
+        audit = _audit()
+        rows = audit["profile"]["rows"]
+
+        valid, reason = verify_prose_numbers(
+            f"De {rows} filas analizadas, el tramo profundo concentra el 50%.", audit
+        )
+
+        assert valid, reason
+
+    def test_empty_prose_is_rejected(self):
+        audit = _audit()
+
+        valid, reason = verify_prose_numbers("   ", audit)
+
+        assert not valid
+        assert reason == "narración ausente"
+
+    def test_empty_audit_does_not_reject_prose(self):
+        """Sin paquete auditable no hay contra qué verificar: no se rechaza."""
+        valid, reason = verify_prose_numbers("Cualquier cifra 123 aquí.", {})
+
+        assert valid, reason

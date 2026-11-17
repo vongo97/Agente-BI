@@ -109,4 +109,26 @@ describe('MessageItem', () => {
     expect(screen.getByText('Auditoría verificada · narración IA con cifras verificadas')).toBeInTheDocument();
     expect(screen.getByTestId('insight-cards')).toBeInTheDocument();
   });
+
+  it('distingue la auditoría determinista sin LLM', () => {
+    const msg = {
+      id: 9,
+      role: 'assistant' as const,
+      content: 'El margen es 12.5%.',
+      audit: { narrative_mode: 'deterministic' } as AuditPayload,
+    };
+    render(<MessageItem msg={msg} {...defaultProps} />);
+    expect(screen.getByText('Auditoría verificada · sin LLM')).toBeInTheDocument();
+  });
+
+  it('avisa cuando las cifras del texto no están verificadas (P-54)', () => {
+    const msg = {
+      id: 10,
+      role: 'assistant' as const,
+      content: 'El margen es 88.8%.',
+      audit: { narrative_mode: 'unverified' } as AuditPayload,
+    };
+    render(<MessageItem msg={msg} {...defaultProps} />);
+    expect(screen.getByText('Auditoría · cifras del texto sin verificar')).toBeInTheDocument();
+  });
 });

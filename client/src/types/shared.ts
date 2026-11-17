@@ -17,6 +17,14 @@ export interface AutoDashItem {
 export type AuditSeverity = 'alta' | 'media' | 'baja' | 'info';
 export type AuditDirection = 'positive' | 'negative' | 'neutral';
 
+/**
+ * `deterministic`: la narrativa se calculó con pandas, sin LLM.
+ * `llm`: la narrativa la escribió el LLM y superó la verificación numérica.
+ * `unverified`: el LLM escribió cifras que no están respaldadas por los hechos
+ * y no hay narrativa determinista que las sustituya (P-54).
+ */
+export type NarrativeMode = 'deterministic' | 'llm' | 'unverified';
+
 export interface AuditFact {
     id: string;
     title: string;
@@ -56,7 +64,7 @@ export interface AuditPayload {
     methodology: string[];
     source_name: string | null;
     generated_at: string;
-    narrative_mode?: 'deterministic' | 'llm';
+    narrative_mode?: NarrativeMode;
 }
 
 export interface AuditResponse {
@@ -74,7 +82,7 @@ export interface AnalyzeResponse {
     figure?: unknown;
     code?: string | null;
     audit?: AuditPayload;
-    narrative_mode?: 'deterministic' | 'llm';
+    narrative_mode?: NarrativeMode;
 }
 
 export interface ChatMessage {
